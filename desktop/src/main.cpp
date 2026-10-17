@@ -49,10 +49,14 @@ class Runtime {
         return {{"eodhdConfigured", !effective.eodhd_key.empty()},
                 {"fmpConfigured", !effective.fmp_key.empty()},
                 {"twelveConfigured", !effective.twelve_key.empty()},
+                {"alphaConfigured", !effective.alpha_key.empty()},
+                {"finnhubConfigured", !effective.finnhub_key.empty()},
                 {"keySources",
                  {{"eodhd", source(config.eodhd_key, effective.eodhd_key)},
                   {"fmp", source(config.fmp_key, effective.fmp_key)},
-                  {"twelve", source(config.twelve_key, effective.twelve_key)}}},
+                  {"twelve", source(config.twelve_key, effective.twelve_key)},
+                  {"alpha", source(config.alpha_key, effective.alpha_key)},
+                  {"finnhub", source(config.finnhub_key, effective.finnhub_key)}}},
                 {"demo", config.demo}};
     }
     json test(const json &request) {
