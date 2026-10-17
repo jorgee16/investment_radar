@@ -31,6 +31,13 @@ endif()
 target_link_libraries(investment_platform PUBLIC investment_core httplib::httplib OpenSSL::SSL OpenSSL::Crypto SQLite::SQLite3)
 add_executable(investment-radar desktop/src/main.cpp)
 target_link_libraries(investment-radar PRIVATE investment_platform Threads::Threads)
+if(MSVC)
+  # Ship the desktop app as a GUI-subsystem executable so Windows does not
+  # allocate a console window when the user launches investment-radar.exe.
+  # Keep main() as the entry point because the same binary also supports
+  # --headless for CI/smoke tests.
+  target_link_options(investment-radar PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+endif()
 if(IR_BUILD_DESKTOP)
   FetchContent_Declare(webview GIT_REPOSITORY https://github.com/webview/webview GIT_TAG 3ab4b5d722438fc8a13e6ca830c5e2372d19a01d)
   FetchContent_MakeAvailable(webview)
