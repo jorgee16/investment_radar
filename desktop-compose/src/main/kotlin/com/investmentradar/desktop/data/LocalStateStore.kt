@@ -14,11 +14,10 @@ class LocalStateStore(
             runCatching { json.decodeFromString<List<String>>(it) }.getOrNull()
         }?.filter { it.matches(Regex("[A-Z0-9.^:-]{1,32}")) }
             ?.distinct()
-            ?.takeIf { it.isNotEmpty() }
             ?: listOf("AIR.PA","VUAA.DE","6AQQ.DE","JPM","GS","TSM")
 
     fun saveWatchlist(symbols: List<String>) {
-        prefs.put("watchlist", json.encodeToString(symbols.distinct()))
+        prefs.put("watchlist", json.encodeToString(symbols.map { it.trim().uppercase() }.filter { it.matches(Regex("[A-Z0-9.^:-]{1,32}")) }.distinct()))
     }
 
     fun loadPortfolio(): List<PortfolioPosition> =
