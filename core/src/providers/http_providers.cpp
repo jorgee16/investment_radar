@@ -700,19 +700,9 @@ std::optional<EstimateSnapshot> AlphaVantageProvider::estimates(const std::strin
             break;
         }
     }
-    auto estimates = optional_request(
-        get_, "https://www.alphavantage.co/query?function=EARNINGS_ESTIMATES&symbol=" +
-                  enc(symbol) + "&apikey=" + enc(key_));
-    auto annual = estimates.value("annualEarnings", json::array());
-    auto quarterly = estimates.value("quarterlyEarnings", json::array());
-    const auto &candidate = !quarterly.empty() ? quarterly : annual;
-    if (!candidate.empty()) {
-        e.estimated_eps = first(candidate[0], "estimatedEPS", "epsEstimate");
-        if (e.estimated_eps)
-            e.metrics["estimatedEPS"] = {e.source, str(candidate[0], "fiscalDateEnding"), "forward"};
-    }
-    return (e.earnings_surprise_pct || e.estimated_eps) ? std::optional<EstimateSnapshot>(e)
-                                                        : std::nullopt;
+    // Do not probe forward-estimate endpoints here: Alpha Vantage may gate them
+    // behind premium access and the free tier has a very small daily request budget.
+    return e.earnings_surprise_pct ? std::optional<EstimateSnapshot>(e) : std::nullopt;
 }
 std::vector<EarningsEvent> AlphaVantageProvider::earnings(const std::string &s,
                                                           const std::string &from,
