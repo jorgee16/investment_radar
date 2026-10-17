@@ -8,79 +8,95 @@ A base é executável e testável. Os providers estão ligados à aplicação; a
 validação com contas próprias e as medições de performance Android ficam pendentes.
 O calendário demo e os preços demo são sintéticos. O screener filtra a watchlist local; não pesquisa todo o mercado.
 
-## Windows / VS Code
+## Compilar e executar
 
-Para **compilar**: instalar os [Build Tools 2022](https://aka.ms/vs/17/release/vs_BuildTools.exe)
+Os scripts estão **na raiz do repositório**, junto deste README:
+
+| Sistema | Preparar / compilar | Abrir a aplicação |
+|---|---|---|
+| Windows | `install.bat` | `run.bat` |
+| Linux | `./install.sh` | `./run.sh` |
+
+Executar a instalação uma vez e novamente depois de atualizar o código.
+O script `run` abre o binário já compilado. Os scripts não alteram as chaves ou a
+configuração pessoal. Para usar um binário previamente compilado, basta executá-lo.
+
+### Windows / VS Code
+
+Para compilar, instalar os [Build Tools 2022](https://aka.ms/vs/17/release/vs_BuildTools.exe)
 com **Desenvolvimento para desktop com C++**, Windows SDK e ferramentas CMake,
-e Git for Windows. O Visual Studio completo não é necessário. Para **abrir** a
+e Git for Windows. O Visual Studio completo não é necessário. Para abrir a
 aplicação é necessário o [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 
-Na pasta do projeto, basta fazer duplo clique em **`iniciar.cmd`**. Na primeira
-utilização compila e executa os testes; depois abre a aplicação. Nas utilizações
-seguintes abre o binário existente. A primeira compilação descarrega dependências
-e pode demorar. Depois de alterar ou atualizar o código, volta a compilar.
+Fazer duplo clique em **`install.bat`** para preparar as ferramentas, descarregar
+dependências, compilar e executar testes. Quando terminar, fazer duplo clique em
+**`run.bat`**. A primeira compilação pode demorar.
 
-No **VS Code**:
-
-- **Ctrl+Shift+B**: compilar e executar os testes C++.
-- **Terminal → Executar Tarefa → Abrir aplicação Windows**: abrir a aplicação.
-
-No terminal integrado, os mesmos atalhos são:
+No terminal integrado do VS Code:
 
 ```powershell
-.\compilar.cmd
-.\iniciar.cmd
+.\install.bat
+.\run.bat
 ```
 
-O script encontra automaticamente os Build Tools e o CMake, prepara o ambiente
-C++ e o vcpkg. Não precisas de copiar comandos de inicialização nem de alterar
-permanentemente a política de execução do PowerShell. O wrapper aplica a exceção
-apenas ao processo de compilação. Se o build falhar, a janela apresenta o erro e
-não inicia um binário antigo nessa operação.
+**Ctrl+Shift+B** executa a tarefa **Instalar / compilar**. Para abrir, usar
+**Terminal → Executar Tarefa → Executar**. O VS Code escolhe o script do sistema.
+
+O `.bat` é o atalho batch do Windows: chama internamente PowerShell para localizar
+os Build Tools e configurar o compilador. Não é preciso copiar comandos longos,
+abrir outro terminal ou mudar permanentemente a política do PowerShell. Erros
+mantêm a janela aberta; um build falhado não é anunciado como concluído.
 
 Resultado: `build/windows/Release/investment-radar.exe`. Manter a pasta `assets`
-e as DLLs junto do executável.
+e as DLLs junto do executável. Os antigos `compilar.cmd` e `iniciar.cmd` são apenas
+aliases de compatibilidade; os nomes usados daqui em diante são `install` e `run`.
 
 O [workflow do GitHub](https://github.com/jorgee16/investment_radar/actions/workflows/ci.yml)
-compila Windows e, **quando termina com sucesso**, disponibiliza o pacote
-`investment-radar-windows` em **Artifacts**. Extrair o ZIP completo e abrir
-`investment-radar.exe`; para usar esse binário não são necessários Build Tools.
-Ainda não foi possível confirmar o resultado do workflow pela API desta sessão,
-e não afirmamos que exista um binário Windows validado disponível para download.
+executa `install.bat` e, quando build, testes e smoke passam, disponibiliza
+`investment-radar-windows` em **Artifacts**. Extrair o ZIP completo e abrir o EXE.
+Ainda não foi possível confirmar o resultado do workflow pela API desta sessão;
+não afirmamos que exista um binário Windows validado disponível para download.
 
-Para testar apenas a API nativa em Windows:
-
-```powershell
-.\build\windows\Release\investment-radar.exe --headless --port 4173
-```
-
-## Linux / desenvolvimento na nuvem
-
-Numa máquina com instalação de pacotes permitida:
+### Linux
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y build-essential cmake ninja-build git libssl-dev libsqlite3-dev libgtk-3-dev libwebkit2gtk-4.1-dev
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j 2
-ctest --test-dir build --output-on-failure
-./build/investment-radar
+./install.sh
+./run.sh
 ```
 
-Para uma máquina sem ambiente gráfico, usar `-DIR_BUILD_DESKTOP=OFF` e executar
-`./build/investment-radar --headless`. Esta é uma API HTTP em C++, sem servidor
-Node.js. Só escuta em loopback.
+Em Debian/Ubuntu recentes, o instalador deteta as dependências em falta e usa
+`apt-get` com `sudo` quando necessário: compilador C++20, CMake, Ninja, Git,
+pkg-config, OpenSSL, SQLite, GTK3 e WebKit2GTK 4.1, incluindo headers. Outras
+distribuições podem usar os mesmos scripts depois de instalar os pacotes
+equivalentes. O build e os testes correm como utilizador normal.
 
-O ambiente cloud atual tem o sistema protegido. O helper abaixo prepara CMake,
-Ninja e headers SQLite no workspace e testa o workflow headless sem privilégios:
+Resultado: `build/linux/investment-radar` e `assets/` ao lado. Para preparar
+apenas o core/API, sem janela nem dependências GTK/WebKit:
+
+```bash
+./install.sh --headless
+./run.sh --headless
+```
+
+Este modo gera `build/headless/investment-radar` e só escuta em loopback. Para
+configurar a porta: `./run.sh --headless --port 4173`. Os scripts aceitam
+`IR_BUILD_DIR` e o instalador aceita `IR_BUILD_JOBS` (predefinição: 2). A opção
+`--skip-system-deps` permite usar dependências já preparadas num prefixo local.
+
+### Ambiente cloud protegido
+
+A imagem cloud atual não permite instalar pacotes no sistema. Os helpers
+específicos preservados usam dependências dentro de `/workspace` e verificam o
+mesmo core/API:
 
 ```bash
 ./scripts/setup-cloud.sh
 ./scripts/start-cloud.sh
 ```
 
-Este helper destina-se à imagem Debian 13 x64 da nuvem. Node é usado apenas para
-verificar sintaxe JavaScript; não faz parte do runtime da aplicação.
+Estes helpers são específicos da imagem Debian da nuvem. Não são necessários
+para correr a aplicação no teu Windows. Node é usado apenas para verificar
+sintaxe JavaScript; não faz parte do runtime da aplicação.
 
 ## Android
 

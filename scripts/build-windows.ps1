@@ -52,4 +52,4 @@ Run-Checked { ctest --preset windows }
 Write-Host ''
 Write-Host 'Compilacao e testes concluidos.'
 Write-Host 'Build: build/windows/Release/investment-radar.exe'
-Write-Host 'Para abrir a aplicacao: .\iniciar.cmd'
+Write-Host 'Para abrir a aplicacao: .\run.bat'

@@ -2,16 +2,20 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Compilar Windows",
+      "label": "Instalar / compilar",
       "type": "process",
-      "command": "powershell.exe",
+      "command": "bash",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}\\scripts\\build-windows.ps1"
+        "${workspaceFolder}/install.sh"
       ],
+      "windows": {
+        "command": "cmd.exe",
+        "args": [
+          "/d",
+          "/c",
+          "install.bat"
+        ]
+      },
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -19,7 +23,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": "$msCompile",
+      "problemMatcher": [],
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
@@ -27,14 +31,20 @@
       }
     },
     {
-      "label": "Abrir aplicação Windows",
+      "label": "Executar",
       "type": "process",
-      "command": "cmd.exe",
+      "command": "bash",
       "args": [
-        "/d",
-        "/c",
-        "iniciar.cmd"
+        "${workspaceFolder}/run.sh"
       ],
+      "windows": {
+        "command": "cmd.exe",
+        "args": [
+          "/d",
+          "/c",
+          "run.bat"
+        ]
+      },
       "options": {
         "cwd": "${workspaceFolder}"
       },
