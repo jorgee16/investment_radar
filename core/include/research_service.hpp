@@ -4,7 +4,7 @@
 #include <nlohmann/json.hpp>
 namespace ir {
 struct ResearchConfig {
-    std::string eodhd_key, fmp_key, twelve_key;
+    std::string eodhd_key, fmp_key, twelve_key, alpha_key, finnhub_key;
     ProviderRouting routing;
     bool demo = true;
 };
