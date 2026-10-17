@@ -325,13 +325,13 @@ async function renderProviders() {
   const [ps,cfg]=await Promise.all([bridge('/api/providers'),bridge('/api/settings')]);
   providerCatalog=ps;renderProviderCards();
   $('#dataMode').value=cfg.demo?'demo':'live';
-  $('#providerKeyForm').innerHTML=[['EODHD','Eodhd','eodhd',cfg.eodhdConfigured],['Financial Modeling Prep','Fmp','fmp',cfg.fmpConfigured],['Twelve Data','Twelve','twelve',cfg.twelveConfigured]].map(([label,id,key,on])=>{
+  $('#providerKeyForm').innerHTML=[['EODHD','Eodhd','eodhd',cfg.eodhdConfigured],['Alpha Vantage','Alpha','alpha',cfg.alphaConfigured],['Finnhub','Finnhub','finnhub',cfg.finnhubConfigured],['Financial Modeling Prep','Fmp','fmp',cfg.fmpConfigured],['Twelve Data','Twelve','twelve',cfg.twelveConfigured]].map(([label,id,key,on])=>{
     const source=cfg.keySources?.[key],environment=source==='environment';
     return `<label>${label}<input id="key${id}" type="password" autocomplete="off" placeholder="${on?'Configurado; preencher para substituir':'Chave de API'}"><small>${environment?'Lida do ambiente cloud; não é guardada no ficheiro local.':source==='local'?'Chave guardada no dispositivo.':''}</small><span><input type="checkbox" id="clear${id}" ${environment?'disabled':''}> Remover chave guardada no dispositivo</span></label>`;
   }).join('');
   $('#routingForm').innerHTML=Object.keys(state.routing).map(k=>`<label>${esc(k)}<select data-route="${k}"><option value="auto">Automático</option>${ps.filter(p=>p.id!=='demo'&&p.capabilities.includes(k)).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>`).join('');
   $$('[data-route]').forEach(e=>{e.value=state.routing[e.dataset.route];e.onchange=()=>{state.routing[e.dataset.route]=e.value;};});
-  $('#saveProviderKeys').onclick=guarded(async()=>{const body={routing:state.routing,demo:$('#dataMode').value==='demo'};for(const [id,key] of [['Eodhd','eodhdKey'],['Fmp','fmpKey'],['Twelve','twelveKey']]){if($('#clear'+id).checked)body[key]='';else if($('#key'+id).value.trim())body[key]=$('#key'+id).value.trim();}$$('#providerKeyForm input[type=password]').forEach(e=>e.value='');await saveSettings(body);});
+  $('#saveProviderKeys').onclick=guarded(async()=>{const body={routing:state.routing,demo:$('#dataMode').value==='demo'};for(const [id,key] of [['Eodhd','eodhdKey'],['Alpha','alphaKey'],['Finnhub','finnhubKey'],['Fmp','fmpKey'],['Twelve','twelveKey']]){if($('#clear'+id).checked)body[key]='';else if($('#key'+id).value.trim())body[key]=$('#key'+id).value.trim();}$$('#providerKeyForm input[type=password]').forEach(e=>e.value='');await saveSettings(body);});
   $('#saveRouting').onclick=guarded(()=>saveSettings({routing:state.routing}));
   $$('#dataMode, #saveProviderKeys, #saveRouting').forEach(e=>e.disabled=false);
   $('#testAllProviders').onclick=guarded(()=>testProviders('all'));
@@ -342,7 +342,7 @@ async function refreshStatus() {
   setText('#providerStatus',s.mode==='demo'?'DEMO · dados sintéticos':s.configured?'Live configurado · consultar origem por ativo':'Live · faltam chaves de API');setText('#settingsMode',s.mode.toUpperCase());
   setText('#radarMode',s.mode==='demo'?'DEMO':'PROVIDERS REAIS');
   setText('#dataReadiness',s.mode==='demo'?'Modo de demonstração':s.configured?'Providers configurados':'Liga o teu primeiro provider');
-  setText('#dataReadinessDetail',s.mode==='demo'?'Dados sintéticos. Introduz uma chave em Providers e muda para Live para receber dados reais.':s.configured?'Abre Providers para testar cada chave. A origem e a hora fornecida acompanham cada cotação.':'Adiciona uma chave EODHD, FMP ou Twelve Data. Os campos sem dados ficam indisponíveis.');
+  setText('#dataReadinessDetail',s.mode==='demo'?'Dados sintéticos. Introduz uma chave em Providers e muda para Live para receber dados reais.':s.configured?'Abre Providers para testar cada chave. A origem e a hora fornecida acompanham cada cotação.':'Adiciona uma chave EODHD, Alpha Vantage, Finnhub, FMP ou Twelve Data. Os campos sem dados ficam indisponíveis.');
   events.emit('status:changed',s);
 }
 function runScreener() {const min=+$('#screenScore').value,zone=$('#screenZone').value;setText('#screenScoreLabel',min);return renderWatch('#screenerResults',s=>s.score!=null&&s.score>=min&&(zone==='all'||s.zone===zone));}

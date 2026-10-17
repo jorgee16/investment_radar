@@ -19,7 +19,7 @@ import com.investmentradar.desktop.model.*
   Text(F.price(value,currency),color=RadarColors.Text,fontSize=24.sp)
   Text("Invested ${F.price(invested,currency)}",color=RadarColors.TextMuted,fontSize=11.sp)
   Text("P/L ${F.price(gain,currency)} · ${F.percent(gain?.div(invested)?.times(100))}",
-   color=if((gain?:0.0)>=0)RadarColors.Positive else RadarColors.Negative,fontSize=14.sp)
+   color=if(gain==null)RadarColors.TextMuted else if(gain>=0)RadarColors.Positive else RadarColors.Negative,fontSize=14.sp)
   if(!known)Text("Incomplete quotes or currency mismatch · no FX conversion",color=RadarColors.TextMuted,fontSize=10.sp)
  }
 }
