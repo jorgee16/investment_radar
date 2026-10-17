@@ -45,6 +45,9 @@ struct Fundamentals {
     std::optional<double> fcf_margin_pct;
     std::optional<double> roe_pct;
     std::optional<double> debt_to_equity;
+    // Raw normalized input used by the C++ aggregation layer to derive P/E when
+    // the provider exposes statements/earnings but not a ready-made ratio.
+    std::optional<double> eps_ttm;
     std::string source;
     Provenance metrics;
 };
