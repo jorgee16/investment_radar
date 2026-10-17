@@ -21,6 +21,8 @@ interface MarketRepository {
         eodhdKey:String?,
         fmpKey:String?,
         twelveKey:String?,
+        alphaKey:String?,
+        finnhubKey:String?,
         routing:Map<String,String>
     ):ProviderSettingsDto
     suspend fun testProvider(provider:String,symbol:String):List<ProviderTestDto>
@@ -45,6 +47,8 @@ class NativeMarketRepository(
         eodhdKey:String?,
         fmpKey:String?,
         twelveKey:String?,
+        alphaKey:String?,
+        finnhubKey:String?,
         routing:Map<String,String>
     ):ProviderSettingsDto = withContext(Dispatchers.IO) {
         val payload=buildJsonObject {
@@ -52,6 +56,8 @@ class NativeMarketRepository(
             eodhdKey?.let{put("eodhdKey",it)}
             fmpKey?.let{put("fmpKey",it)}
             twelveKey?.let{put("twelveKey",it)}
+            alphaKey?.let{put("alphaKey",it)}
+            finnhubKey?.let{put("finnhubKey",it)}
             putJsonObject("routing"){
                 listOf("quotes","fundamentals","estimates","earnings","news","history").forEach { key ->
                     put(key,routing[key]?:"auto")
