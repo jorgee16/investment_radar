@@ -2,6 +2,7 @@ package com.investmentradar.app
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.webkit.JavascriptInterface
@@ -70,6 +71,10 @@ class MainActivity : AppCompatActivity() {
         web = WebView(this)
         // Keep WebView inside the system bars and display cutout on Android 15+.
         val container = FrameLayout(this)
+        // Android 15 draws transparent system bars over the window background.
+        val background = Color.rgb(11, 15, 20)
+        window.decorView.setBackgroundColor(background)
+        container.setBackgroundColor(background)
         container.addView(web, FrameLayout.LayoutParams(-1, -1))
         ViewCompat.setOnApplyWindowInsetsListener(container) { view, insets ->
             val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())

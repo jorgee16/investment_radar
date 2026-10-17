@@ -63,3 +63,13 @@ test('Android mobile shell preserves every destination and safe areas', () => {
   assert.match(css,/env\(safe-area-inset-top\)/);
   assert.match(css,/env\(safe-area-inset-bottom\)/);
 });
+
+test('Android edge-to-edge system bars use a dark background and explicit insets', () => {
+  const theme = fs.readFileSync(path.join(root,'android/app/src/main/res/values/styles.xml'),'utf8');
+  const activity = fs.readFileSync(path.join(root,'android/app/src/main/java/com/investmentradar/app/MainActivity.kt'),'utf8');
+  assert.match(theme,/android:windowBackground">#0b0f14/);
+  assert.match(theme,/android:windowLightStatusBar">false/);
+  assert.match(theme,/android:windowLightNavigationBar">false/);
+  assert.match(activity,/container\.setBackgroundColor\(background\)/);
+  assert.match(activity,/WindowInsetsCompat\.Type\.systemBars/);
+});
