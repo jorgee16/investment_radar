@@ -25,24 +25,49 @@
   <div class="connection"><i></i><div><strong id="providerStatus">A iniciar…</strong><small id="runtime">—</small></div></div>
 </aside>
 <main>
-<header class="topbar">
-  <div><p class="eyebrow">INVESTMENT INTELLIGENCE</p><h1 id="viewTitle">Dashboard</h1></div>
+<header class="topbar terminal-topbar">
+  <div class="topbar-title"><p class="eyebrow">INVESTMENT RADAR</p><h1 id="viewTitle">Dashboard</h1></div>
+  <div class="topbar-market">
+    <span>Portfolio <strong id="topPortfolio">—</strong></span>
+    <span>Watchlist <strong id="topWatchCount">6</strong></span>
+    <span>Next <strong id="topNextEvent">—</strong></span>
+  </div>
   <div class="search"><span>⌕</span><input id="symbolInput" value="AIR.PA" placeholder="Ticker / empresa"><kbd>Enter</kbd></div>
 </header>
 
 <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 <section id="dashboard" class="view active">
-  <div class="market-strip">
-    <div><small>Portfolio</small><strong id="portfolioValue">—</strong><span id="portfolioReturn">—</span></div>
-    <div><small>Watchlist</small><strong id="watchCount">6</strong><span>ativos</span></div>
-    <div><small>Opportunities</small><strong id="opportunityCount">—</strong><span>scores carregados ≥ 75</span></div>
-    <div><small>Next event</small><strong id="nextEvent">—</strong><span id="nextEventTicker">—</span></div>
-  </div>
+  <div class="dashboard-terminal">
+    <section class="workspace-panel hero-panel">
+      <div class="panel-toolbar">
+        <div><span class="panel-kicker">PORTFOLIO</span><h2>Overview</h2></div>
+        <button class="text-action" data-view-jump="portfolio">Open portfolio</button>
+      </div>
+      <div class="portfolio-hero">
+        <div><small>Current value</small><strong id="portfolioValue">—</strong><span id="portfolioReturn">—</span></div>
+        <div class="portfolio-chart-empty"><span>Portfolio history will appear here</span></div>
+      </div>
+    </section>
 
+    <section class="workspace-grid-2">
+      <article class="workspace-panel compact-panel">
+        <div class="panel-toolbar"><div><span class="panel-kicker">OPPORTUNITIES</span><h3>Highest conviction</h3></div><strong id="opportunityCount">—</strong></div>
+        <div class="empty-terminal">Scores ≥ 75 appear here when enough data is available.</div>
+      </article>
+      <article class="workspace-panel compact-panel">
+        <div class="panel-toolbar"><div><span class="panel-kicker">NEXT EVENT</span><h3 id="nextEventTicker">—</h3></div><strong id="nextEvent">—</strong></div>
+        <div class="empty-terminal">Upcoming earnings and catalysts.</div>
+      </article>
+    </section>
 
-  <div class="dashboard-grid">
-    <article class="card dashboard-watch"><div class="card-head"><div><p class="eyebrow">WATCHLIST</p><h3>Mercado acompanhado</h3></div><button class="text-action" data-action="open-watchlist">Ver tudo</button></div><div id="radarWatch" class="watch-list"></div><p class="note">Seleciona um ativo para abrir a análise detalhada.</p></article>
-    <article class="card dashboard-side"><div class="card-head"><div><p class="eyebrow">DATA HEALTH</p><h3>Estado dos dados</h3></div><span class="pill" id="radarMode">—</span></div><div class="health-row"><span>Modo</span><strong id="dashDataMode">—</strong></div><div class="health-row"><span>Provider</span><strong id="dashProvider">—</strong></div><div class="health-row"><span>Fundamentals</span><strong id="dashFundamentals">—</strong></div><button id="openProviders" class="secondary wide">Configurar providers</button></article>
+    <section class="workspace-panel activity-panel">
+      <div class="panel-toolbar"><div><span class="panel-kicker">ACTIVITY</span><h3>Market & portfolio activity</h3></div></div>
+      <div class="activity-columns">
+        <div><span class="activity-label">Watchlist</span><strong id="watchCount">6</strong><small>tracked assets</small></div>
+        <div><span class="activity-label">Data mode</span><strong id="dashDataMode">—</strong><small id="dashProvider">—</small></div>
+        <div><span class="activity-label">Fundamentals</span><strong id="dashFundamentals">—</strong><small>depends on provider plan</small></div>
+      </div>
+    </section>
   </div>
 </section>
 
@@ -86,6 +111,20 @@
 <section id="providers" class="view"><div class="page-head"><div><p class="eyebrow">DATA LAYER</p><h2>Providers & routing</h2></div></div><div class="grid g2"><div><article class="card"><h3>Testar ligação</h3><p class="note">Guarda primeiro as chaves. O teste pede uma cotação real a cada provider configurado, mesmo em modo Demo. Não valida as restantes permissões do plano.</p><label>Símbolo de teste<input id="testSymbol" value="AAPL" maxlength="32" autocomplete="off"></label><button id="testAllProviders" class="primary">Testar todos</button><p class="note">Começa por AAPL; testa depois AIR.PA e os teus ETFs para confirmar cobertura europeia.</p><div id="providerTestSummary" role="status" aria-live="polite"></div></article><div id="providerCards"></div><article class="card"><div class="card-head"><div><p class="eyebrow">API KEYS</p><h3>Live provider credentials</h3></div><span class="pill">native storage</span></div><label class="mode-select">Modo de dados <select id="dataMode"><option value="demo">Demo — dados sintéticos, sem APIs</option><option value="live">Live — apenas providers reais</option></select></label><div id="providerKeyForm" class="routing"></div><button id="saveProviderKeys" class="primary">Guardar configuração</button><p class="note">As chaves são guardadas pela camada nativa e não são devolvidas à interface. No Windows usa-se DPAPI; no Android, Keystore. Chaves do ambiente cloud são lidas sem as copiar para o ficheiro local.</p></article></div><article class="card"><div class="card-head"><div><p class="eyebrow">ROUTING</p><h3>Preferred source by data type</h3></div><span class="pill">routing</span></div><div id="routingForm" class="routing"></div><button id="saveRouting" class="primary">Apply routing</button><p class="note">Automático tenta os providers configurados com a capacidade pedida. Em Live, dados demo nunca são usados como fallback.</p></article></div><article class="card provider-help"><h3>Onde obter as chaves</h3><div class="grid g3"><div><h4>EODHD</h4><p>Abre <strong>eodhd.com/register</strong>, cria a conta e copia o API Token no dashboard da conta.</p><p class="note">Para ações europeias, confirma a bolsa e o acesso a cotações, histórico e fundamentais no plano.</p></div><div><h4>Financial Modeling Prep</h4><p>Abre <strong>site.financialmodelingprep.com</strong>, cria a conta e procura a API Key no Dashboard.</p><p class="note">Acesso internacional, demonstrações e endpoints Stable dependem do plano.</p></div><div><h4>Twelve Data</h4><p>Abre <strong>twelvedata.com</strong>, cria a conta e copia a chave em Dashboard → API Keys.</p><p class="note">Usado para cotações e histórico. Confirma bolsas europeias e os créditos do plano.</p></div></div><p class="note">Cola cada chave no campo correspondente, escolhe Live, guarda e testa. Basta um provider com os dados de que precisas para começar. Não é necessário subscrever os três.</p></article></section>
 <section id="settings" class="view"><div class="page-head"><div><p class="eyebrow">APPLICATION</p><h2>Settings</h2></div></div><article class="card settings-card"><div class="setting"><div><strong>Runtime</strong><span>Native shell</span></div><b id="settingsRuntime">—</b></div><div class="setting"><div><strong>Engine</strong><span>Scoring & valuation</span></div><b>C++</b></div><div class="setting"><div><strong>Theme</strong><span>Interface appearance</span></div><b>Dark</b></div><div class="setting"><div><strong>Data mode</strong><span>Current data source</span></div><b id="settingsMode">DEMO</b></div></article></section>
 </main>
+<aside class="right-rail">
+  <section class="rail-section rail-watch">
+    <div class="rail-head"><div><span class="panel-kicker">WATCHLIST</span><h3>Market</h3></div><button class="text-action" data-action="open-watchlist">Open</button></div>
+    <div class="rail-columns"><span>Symbol</span><span>Last</span><span>%</span></div>
+    <div id="radarWatch" class="watch-list terminal-watch"></div>
+  </section>
+  <section class="rail-section rail-health">
+    <div class="rail-head"><div><span class="panel-kicker">DATA</span><h3>Connection</h3></div><span class="status-dot"></span></div>
+    <div class="health-row"><span>Mode</span><strong id="radarMode">—</strong></div>
+    <div class="health-row"><span>Provider</span><strong id="railProvider">—</strong></div>
+    <div class="health-row"><span>Status</span><strong id="railStatus">—</strong></div>
+    <button id="openProviders" class="secondary wide">Providers</button>
+  </section>
+</aside>
 </div>
 <script src="app.js"></script>
 </body></html>
