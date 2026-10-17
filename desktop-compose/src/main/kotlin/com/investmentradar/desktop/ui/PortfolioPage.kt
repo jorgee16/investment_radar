@@ -26,18 +26,30 @@ fun PortfolioPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
         }
         Row(Modifier.height(220.dp).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)){
             Column(Modifier.weight(1f).fillMaxHeight().background(RadarColors.Panel)){
-                Text("ASSET ALLOCATION",color=RadarColors.TextMuted,fontSize=8.sp,modifier=Modifier.padding(12.dp))
+                Text("PORTFOLIO EXPOSURE",color=RadarColors.TextMuted,fontSize=8.sp,modifier=Modifier.padding(12.dp))
                 AllocationDonut(state.allocation,Modifier.fillMaxSize())
             }
             Column(Modifier.weight(2f).fillMaxHeight().background(RadarColors.Panel).padding(12.dp)){
                 Text("SUMMARY",color=RadarColors.TextMuted,fontSize=8.sp)
-                state.allocation.forEach{MetricRow(it.label,FinancialFormatter.price(it.value,it.label))}
+                state.portfolio.groupBy{it.currency}.forEach{(currency,positions)->
+                    val invested=positions.sumOf{it.qty*it.avg}
+                    val currentKnown=positions.all{p->
+                        val q=state.portfolioQuotes[p.symbol]
+                        q?.price!=null&&q.currency==p.currency
+                    }
+                    val current=if(currentKnown)positions.sumOf{p->
+                        p.qty*(state.portfolioQuotes[p.symbol]?.price?:0.0)
+                    } else null
+                    MetricRow("$currency invested",FinancialFormatter.price(invested,currency))
+                    MetricRow("$currency current",FinancialFormatter.price(current,currency))
+                    MetricRow("$currency P/L",FinancialFormatter.price(current?.minus(invested),currency))
+                }
             }
         }
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
             if(state.portfolio.isEmpty()) Text("No positions yet",color=RadarColors.TextMuted)
             state.portfolio.forEachIndexed{i,p->
-                val quote=state.watchlist.find{it.symbol==p.symbol}
+                val quote=state.portfolioQuotes[p.symbol]
                 val current=if(quote?.price!=null&&quote.currency==p.currency)p.qty*quote.price else null
                 val invested=p.qty*p.avg
                 val pl=current?.minus(invested)
