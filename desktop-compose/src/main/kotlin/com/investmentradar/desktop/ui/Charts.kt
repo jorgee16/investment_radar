@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.investmentradar.desktop.format.FinancialFormatter
 import com.investmentradar.desktop.model.AllocationSlice
 import com.investmentradar.desktop.model.HistoryPointDto
+import com.investmentradar.desktop.model.ChartStyle
 import kotlin.math.max
 import kotlin.math.min
 
@@ -47,10 +48,18 @@ fun Sparkline(values:List<Double>,positive:Boolean,modifier:Modifier=Modifier){
 }
 
 @Composable
-fun MarketChart(rows:List<HistoryPointDto>,currency:String,modifier:Modifier=Modifier){
+fun MarketChart(
+    rows:List<HistoryPointDto>,
+    currency:String,
+    style:ChartStyle,
+    modifier:Modifier=Modifier
+){
     val candles=remember(rows){rows.filter{it.open!=null&&it.high!=null&&it.low!=null&&it.close!=null}}
-    if(candles.size>=2) CandlestickChart(candles,currency,modifier)
-    else AreaLineChart(rows,currency,modifier)
+    when(style){
+        ChartStyle.CANDLES -> if(candles.size>=2) CandlestickChart(candles,currency,modifier)
+                              else AreaLineChart(rows,currency,modifier)
+        ChartStyle.LINE -> AreaLineChart(rows,currency,modifier)
+    }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
