@@ -36,7 +36,7 @@ fun DashboardPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
         }
 
         Row(Modifier.weight(1f).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)){
-            Column(Modifier.weight(2f).fillMaxHeight().background(RadarColors.Panel)){
+            PanelSurface(Modifier.weight(2f).fillMaxHeight()){ Column{
                 Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.SpaceBetween){
                     Column{
                         Text("WATCHLIST",color=RadarColors.TextMuted,fontSize=8.sp)
@@ -56,14 +56,13 @@ fun DashboardPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
                         )
                     }
                 }
-            }
-
+            }}
             Column(Modifier.weight(1f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(12.dp)){
-                Column(Modifier.weight(1f).fillMaxWidth().background(RadarColors.Panel).padding(12.dp)){
+                PanelSurface(Modifier.weight(1f).fillMaxWidth()){ Column(Modifier.fillMaxSize().padding(12.dp)){
                     Text("PORTFOLIO EXPOSURE",color=RadarColors.TextMuted,fontSize=8.sp)
                     AllocationDonut(state.allocation,Modifier.fillMaxSize())
-                }
-                Column(Modifier.weight(1f).fillMaxWidth().background(RadarColors.Panel).padding(12.dp)){
+                }}
+                PanelSurface(Modifier.weight(1f).fillMaxWidth()){ Column(Modifier.fillMaxSize().padding(12.dp)){
                     Text("DATA HEALTH",color=RadarColors.TextMuted,fontSize=8.sp)
                     Spacer(Modifier.height(10.dp))
                     MetricRow("Mode",state.status.mode.uppercase())
@@ -71,7 +70,7 @@ fun DashboardPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
                     MetricRow("Connection",if(state.status.live)"validated" else "not validated")
                     Spacer(Modifier.height(8.dp))
                     TextButton(onClick={onIntent(RadarIntent.Navigate(AppPage.PROVIDERS))}){Text("Configure providers",fontSize=9.sp)}
-                }
+                }}
             }
         }
     }
@@ -79,9 +78,9 @@ fun DashboardPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
 
 @Composable
 private fun SummaryCard(title:String,value:String,detail:String,modifier:Modifier=Modifier){
-    Column(modifier.background(RadarColors.Panel).padding(12.dp)){
+    PanelSurface(modifier){ Column(Modifier.fillMaxWidth().padding(12.dp)){
         Text(title.uppercase(),color=RadarColors.TextMuted,fontSize=8.sp)
         Text(value,color=RadarColors.Text,fontFamily=FontFamily.Monospace,fontSize=18.sp,fontWeight=FontWeight.Bold)
         Text(detail,color=RadarColors.TextMuted,fontSize=8.sp)
-    }
+    }}
 }
