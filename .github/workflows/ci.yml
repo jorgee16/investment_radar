@@ -1,5 +1,5 @@
 name: Build and test
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
@@ -18,13 +18,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build native Windows app and tests
-        shell: pwsh
-        run: ./scripts/build-windows.ps1
+        shell: cmd
+        env:
+          IR_BUILD_NONINTERACTIVE: '1'
+        run: compilar.cmd
       - name: Smoke test native API
         run: python scripts/smoke.py build/windows/Release/investment-radar.exe
       - uses: actions/upload-artifact@v4
         with:
           name: investment-radar-windows
+          if-no-files-found: error
           path: |
             build/windows/Release/investment-radar.exe
             build/windows/Release/*.dll

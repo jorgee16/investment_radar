@@ -28,7 +28,8 @@ local.properties
 # IDE / OS
 .idea/
 *.iml
-.vscode/
+.vscode/*
+!.vscode/tasks.json
 .DS_Store
 Thumbs.db
 

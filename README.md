@@ -8,38 +8,51 @@ A base é executável e testável. Os providers estão ligados à aplicação; a
 validação com contas próprias e as medições de performance Android ficam pendentes.
 O calendário demo e os preços demo são sintéticos. O screener filtra a watchlist local; não pesquisa todo o mercado.
 
-## Windows — sem WSL
+## Windows / VS Code
 
-Requisitos:
+Para **compilar**: instalar os [Build Tools 2022](https://aka.ms/vs/17/release/vs_BuildTools.exe)
+com **Desenvolvimento para desktop com C++**, Windows SDK e ferramentas CMake,
+e Git for Windows. O Visual Studio completo não é necessário. Para **abrir** a
+aplicação é necessário o [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 
-- Windows 10/11 x64;
-- Visual Studio 2022 com **Desktop development with C++**, Windows SDK e CMake
-  tools (CMake 3.25+ para os presets);
-- Git no PATH;
-- Microsoft Edge WebView2 Runtime Evergreen instalado.
+Na pasta do projeto, basta fazer duplo clique em **`iniciar.cmd`**. Na primeira
+utilização compila e executa os testes; depois abre a aplicação. Nas utilizações
+seguintes abre o binário existente. A primeira compilação descarrega dependências
+e pode demorar. Depois de alterar ou atualizar o código, volta a compilar.
 
-No Developer PowerShell do Visual Studio, a partir da raiz do repositório:
+No **VS Code**:
+
+- **Ctrl+Shift+B**: compilar e executar os testes C++.
+- **Terminal → Executar Tarefa → Abrir aplicação Windows**: abrir a aplicação.
+
+No terminal integrado, os mesmos atalhos são:
 
 ```powershell
-.\scripts\build-windows.ps1
-.\build\windows\Release\investment-radar.exe
+.\compilar.cmd
+.\iniciar.cmd
 ```
 
-O script prepara vcpkg numa pasta ignorada `.tools/` se `VCPKG_ROOT` não estiver
-definido, compila e executa os testes C++. OpenSSL e SQLite são declarados em
-`vcpkg.json`; restantes dependências CMake estão fixadas por commit/hash.
-O workflow CI inclui Windows e publica o executável, DLLs e assets como artifact
-quando o build correr no GitHub. **Esse workflow foi escrito, mas ainda não foi
-executado nesta máquina Linux. Não existe ainda um executável Windows validado.**
+O script encontra automaticamente os Build Tools e o CMake, prepara o ambiente
+C++ e o vcpkg. Não precisas de copiar comandos de inicialização nem de alterar
+permanentemente a política de execução do PowerShell. O wrapper aplica a exceção
+apenas ao processo de compilação. Se o build falhar, a janela apresenta o erro e
+não inicia um binário antigo nessa operação.
+
+Resultado: `build/windows/Release/investment-radar.exe`. Manter a pasta `assets`
+e as DLLs junto do executável.
+
+O [workflow do GitHub](https://github.com/jorgee16/investment_radar/actions/workflows/ci.yml)
+compila Windows e, **quando termina com sucesso**, disponibiliza o pacote
+`investment-radar-windows` em **Artifacts**. Extrair o ZIP completo e abrir
+`investment-radar.exe`; para usar esse binário não são necessários Build Tools.
+Ainda não foi possível confirmar o resultado do workflow pela API desta sessão,
+e não afirmamos que exista um binário Windows validado disponível para download.
 
 Para testar apenas a API nativa em Windows:
 
 ```powershell
 .\build\windows\Release\investment-radar.exe --headless --port 4173
 ```
-
-Não confundir WebView2 com Electron: a aplicação usa o runtime do sistema. É
-necessário distribuir a pasta `assets` e as DLLs junto do executável.
 
 ## Linux / desenvolvimento na nuvem
 

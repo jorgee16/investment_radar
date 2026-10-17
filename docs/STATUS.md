@@ -69,3 +69,13 @@ símbolo e guia de registo. Chaves do ambiente desktop não são persistidas no
 ficheiro local. Dashboard/watchlist/carteira usam cotações leves; a análise e
 o screener carregam os fundamentais. Todos os preços Live vêm do fluxo nativo,
 sem substituir ausências por fixtures. Ver PROVIDER_SETUP.md.
+
+## Compilacao Windows simplificada
+
+`compilar.cmd` prepara automaticamente o ambiente dos Build Tools 2022 e chama
+o build/testes; `iniciar.cmd` compila na primeira utilizacao e abre o executavel
+existente nas seguintes. O VS Code inclui tarefa predefinida Ctrl+Shift+B.
+O wrapper limita a excecao da execution policy ao processo filho.
+O CI Windows executa o proprio `compilar.cmd` e publica artifacts apenas depois
+de build, CTest e smoke bem-sucedidos. A API do GitHub recusou a consulta dos
+runs nesta sessao; resultado Windows/artifact continua por confirmar.
