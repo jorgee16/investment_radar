@@ -47,27 +47,20 @@ class RadarViewModel(
             _state.update{it.copy(loading=true,error=null)}
             runCatching{
                 val status=async{repository.status()}
-                val providers=async{repository.providers()}
-                val providerSettings=async{repository.providerSettings()}
-                val earnings=async{repository.earnings()}
-                val watch=loadWatchItems(_state.value.watchSymbols)
-                val portfolioQuotes=loadPortfolioQuotes(_state.value.portfolio)
-                val selected=repository.snapshot(_state.value.selectedSymbol)
-                Sext(status.await(),providers.await(),providerSettings.await(),earnings.await(),watch,portfolioQuotes) to selected
-            }.onSuccess{(meta,selected)->
+                val watch=async{loadWatchItems(_state.value.watchSymbols)}
+                val portfolioQuotes=async{loadPortfolioQuotes(_state.value.portfolio)}
+                val selected=async{repository.snapshot(_state.value.selectedSymbol)}
+                Quad(status.await(),watch.await(),portfolioQuotes.await(),selected.await())
+            }.onSuccess{meta->
                 _state.update{
                     it.copy(
                         loading=false,
                         status=meta.a,
-                        providers=meta.b,
-                        providerSettings=meta.c,
-                        earnings=meta.d,
-                        watchlist=meta.e,
-                        portfolioQuotes=meta.f,
-                        selected=selected
+                        watchlist=meta.b,
+                        portfolioQuotes=meta.c,
+                        selected=meta.d
                     )
                 }
-                loadAssetExtras(selected.symbol)
             }.onFailure{e->
                 _state.update{it.copy(loading=false,error=e.message?:"Unknown error")}
             }
@@ -265,5 +258,5 @@ class RadarViewModel(
 
     override fun close(){scope.cancel()}
 
-    private data class Sext<A,B,C,D,E,F>(val a:A,val b:B,val c:C,val d:D,val e:E,val f:F)
+    private data class Quad<A,B,C,D>(val a:A,val b:B,val c:C,val d:D)
 }
