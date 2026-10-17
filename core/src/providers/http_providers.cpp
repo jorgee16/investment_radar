@@ -229,6 +229,29 @@ std::optional<Quote> EodhdProvider::quote(const std::string &s) {
     }
     if (currency.empty())
         currency = listing_currency_hint(s);
+    if (name.empty() || name == s) {
+        auto search = optional_request(
+            get_, "https://eodhd.com/api/search/" + enc(s) +
+                      "?api_token=" + enc(key_) + "&fmt=json&limit=5");
+        if (search.is_array()) {
+            const auto wanted = eod_symbol(s);
+            for (const auto &row : search) {
+                auto code = str(row, "Code");
+                auto exchange = str(row, "Exchange");
+                auto candidate = code;
+                if (!exchange.empty())
+                    candidate += "." + exchange;
+                if (candidate == wanted || code == s || code == s.substr(0, s.find('.'))) {
+                    name = str(row, "Name", name);
+                    if (currency.empty())
+                        currency = str(row, "Currency", currency);
+                    break;
+                }
+            }
+            if ((name.empty() || name == s) && !search.empty())
+                name = str(search[0], "Name", name);
+        }
+    }
     Quote q{s,
             name,
             currency,
