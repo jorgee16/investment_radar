@@ -250,7 +250,10 @@ async function renderWatch(target='#watchGrid',filter=()=>true) {
     if(!filter(s))continue;
     const source=s.source||s.sources?.quote||'none';
     const age=s.timestamp?new Date(s.timestamp*1000).toLocaleString('pt-PT'):'hora da cotação não fornecida';
-    cards.push(`<div class="watch-card" data-w="${esc(sym)}" role="button" tabindex="0"><div class="watch-top"><div><strong>${esc(sym)}</strong><small>${esc(s.name)}</small></div><div class="watch-score">${s.score??'—'}</div></div><div class="watch-meta"><span>${esc(money(s.price,s.currency))} · ${esc(pct(s.changePct))}</span><span>${esc(s.zone||'Abrir análise')}</span></div><small class="provenance">${esc(source==='none'?'Sem cotação':source==='Demo'?'DEMO · dados sintéticos':`${source} · ${age}`)}</small>${target==='#watchGrid'?`<button class="remove" data-rw="${i}">remover</button>`:''}</div>`);
+    const terminal=target==='#radarWatch';
+    cards.push(terminal
+      ? `<div class="watch-card terminal-row" data-w="${esc(sym)}" role="button" tabindex="0"><strong class="terminal-symbol">${esc(sym)}</strong><span class="terminal-last">${esc(money(s.price,s.currency))}</span><span class="terminal-change ${s.changePct==null?'':s.changePct>=0?'positive':'negative'}">${esc(pct(s.changePct))}</span></div>`
+      : `<div class="watch-card" data-w="${esc(sym)}" role="button" tabindex="0"><div class="watch-top"><div><strong>${esc(sym)}</strong><small>${esc(s.name)}</small></div><div class="watch-score">${s.score??'—'}</div></div><div class="watch-meta"><span>${esc(money(s.price,s.currency))} · ${esc(pct(s.changePct))}</span><span>${esc(s.zone||'Abrir análise')}</span></div><small class="provenance">${esc(source==='none'?'Sem cotação':source==='Demo'?'DEMO · dados sintéticos':`${source} · ${age}`)}</small>${target==='#watchGrid'?`<button class="remove" data-rw="${i}">remover</button>`:''}</div>`);
   }
   if(epoch!==dataEpoch||request!==watchRequest)return;
   $(target).innerHTML=cards.join('')||'<p class="note">Sem resultados. Adiciona ativos à watchlist ou configura os providers.</p>';
