@@ -1,6 +1,9 @@
 package com.investmentradar.desktop.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
@@ -102,20 +105,26 @@ fun AllocationDonut(slices:List<AllocationSlice>, modifier:Modifier=Modifier){
     }
     val total=slices.sumOf{it.value}.takeIf{it>0.0}?:1.0
     val colors=listOf(RadarColors.Accent,RadarColors.Positive,Color(0xFFE8BD66),Color(0xFFB389FF))
+    var selected by remember{mutableStateOf<Int?>(null)}
+    val progress by animateFloatAsState(1f,animationSpec=tween(450),label="allocation")
     Row(modifier.padding(16.dp),horizontalArrangement=Arrangement.spacedBy(22.dp)){
         Canvas(Modifier.size(160.dp)){
             var start=-90f
             slices.forEachIndexed{i,s->
-                val sweep=(s.value/total*360.0).toFloat()
-                drawArc(colors[i%colors.size],start,sweep,false,style=Stroke(width=20.dp.toPx()),size=Size(size.width,size.height))
+                val sweep=(s.value/total*360.0).toFloat()*progress
+                val width=if(selected==null||selected==i)22.dp.toPx() else 14.dp.toPx()
+                drawArc(colors[i%colors.size],start,sweep,false,style=Stroke(width=width),size=Size(size.width,size.height))
                 start+=sweep
             }
         }
         Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
             slices.forEachIndexed{i,s->
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                Row(
+                    Modifier.clickable{selected=if(selected==i)null else i},
+                    horizontalArrangement=Arrangement.spacedBy(8.dp)
+                ){
                     Box(Modifier.size(8.dp).background(colors[i%colors.size]))
-                    Text("${s.label}  ${"%.1f".format(s.value/total*100)}%",color=RadarColors.Text,fontSize=11.sp)
+                    Text("${s.label}  ${"%.1f".format(s.value/total*100)}%",color=if(selected==null||selected==i)RadarColors.Text else RadarColors.TextMuted,fontSize=11.sp)
                 }
             }
         }
