@@ -6,6 +6,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.investmentradar.desktop.data.LoopbackNativeBridge
+import com.investmentradar.desktop.data.LocalStateStore
 import com.investmentradar.desktop.data.NativeMarketRepository
 import com.investmentradar.desktop.ui.RadarScreen
 import com.investmentradar.desktop.ui.RadarTheme
@@ -14,7 +15,8 @@ import com.investmentradar.desktop.viewmodel.RadarViewModel
 fun main()=application{
     val bridge=remember{LoopbackNativeBridge()}
     val repository=remember{NativeMarketRepository(bridge)}
-    val viewModel=remember{RadarViewModel(repository)}
+    val localStore=remember{LocalStateStore()}
+    val viewModel=remember{RadarViewModel(repository,localStore)}
     val state by viewModel.state.collectAsState()
 
     Window(
