@@ -265,7 +265,8 @@ class RadarViewModel(
             _state.update{it.copy(savingProviders=true,error=null)}
             runCatching{
                 repository.saveProviderSettings(
-                    intent.demo,intent.eodhdKey,intent.fmpKey,intent.twelveKey,intent.routing
+                    intent.demo,intent.eodhdKey,intent.fmpKey,intent.twelveKey,
+                    intent.alphaKey,intent.finnhubKey,intent.routing
                 )
             }.onSuccess{
                 val status=repository.status()
