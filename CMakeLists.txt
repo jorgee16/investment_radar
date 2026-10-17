@@ -31,12 +31,18 @@ endif()
 target_link_libraries(investment_platform PUBLIC investment_core httplib::httplib OpenSSL::SSL OpenSSL::Crypto SQLite::SQLite3)
 add_executable(investment-radar desktop/src/main.cpp)
 target_link_libraries(investment-radar PRIVATE investment_platform Threads::Threads)
+
+# Headless native host used by the Compose desktop UI. It owns provider routing,
+# secure config/cache and the C++ investment engine; Compose remains a pure UI client.
+add_executable(investment-radar-core-host desktop/src/main.cpp)
+target_link_libraries(investment-radar-core-host PRIVATE investment_platform Threads::Threads)
 if(MSVC)
   # Ship the desktop app as a GUI-subsystem executable so Windows does not
   # allocate a console window when the user launches investment-radar.exe.
   # Keep main() as the entry point because the same binary also supports
   # --headless for CI/smoke tests.
   target_link_options(investment-radar PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+  target_link_options(investment-radar-core-host PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
 endif()
 if(IR_BUILD_DESKTOP)
   FetchContent_Declare(webview GIT_REPOSITORY https://github.com/webview/webview GIT_TAG 3ab4b5d722438fc8a13e6ca830c5e2372d19a01d)
@@ -46,9 +52,10 @@ if(IR_BUILD_DESKTOP)
 endif()
 add_custom_target(investment_assets ALL COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/shared/web $<TARGET_FILE_DIR:investment-radar>/assets)
 add_dependencies(investment-radar investment_assets)
+add_dependencies(investment-radar-core-host investment_assets)
 # Runtime packages contain only the app, its assets, libraries and notices.
 # FetchContent dependencies may also define install rules; use --component Runtime.
-install(TARGETS investment-radar RUNTIME DESTINATION . COMPONENT Runtime)
+install(TARGETS investment-radar investment-radar-core-host RUNTIME DESTINATION . COMPONENT Runtime)
 install(DIRECTORY shared/web/ DESTINATION assets COMPONENT Runtime)
 install(FILES docs/RUNNING.md DESTINATION . COMPONENT Runtime RENAME README.md)
 install(FILES "${httplib_SOURCE_DIR}/LICENSE" DESTINATION licenses COMPONENT Runtime RENAME cpp-httplib.txt)
