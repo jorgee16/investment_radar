@@ -76,16 +76,14 @@ class RadarViewModel(
         symbols.map{symbol->
             async(Dispatchers.IO){
                 val quote=runCatching{repository.quote(symbol)}.getOrNull()
-                val snapshot=runCatching{repository.snapshot(symbol)}.getOrNull()
+                val history=runCatching{repository.history(symbol,60)}.getOrDefault(emptyList())
                 WatchItem(
                     symbol=symbol,
-                    name=quote?.name?.ifBlank{symbol} ?: snapshot?.name?.ifBlank{symbol} ?: symbol,
-                    price=quote?.price ?: snapshot?.price,
-                    currency=quote?.currency ?: snapshot?.currency.orEmpty(),
-                    changePct=quote?.changePct ?: snapshot?.changePct,
-                    sparkline=snapshot?.history?.mapNotNull{it.price}.orEmpty(),
-                    score=snapshot?.score,
-                    zone=snapshot?.zone ?: "N/A"
+                    name=quote?.name?.ifBlank{symbol} ?: symbol,
+                    price=quote?.price,
+                    currency=quote?.currency.orEmpty(),
+                    changePct=quote?.changePct,
+                    sparkline=history.mapNotNull{it.price}
                 )
             }
         }.awaitAll()
@@ -120,6 +118,7 @@ class RadarViewModel(
         _state.update{it.copy(page=page,error=null)}
         if(page==AppPage.PROVIDERS) loadProviders()
         if(page==AppPage.EVENTS) loadEvents()
+        if(page==AppPage.SCREENER) loadWatchAnalysis()
     }
 
     private fun selectTab(tab:AssetTab){
@@ -159,6 +158,19 @@ class RadarViewModel(
         rows.removeAt(index)
         localStore.savePortfolio(rows)
         _state.update{it.copy(portfolio=rows)}
+    }
+
+    private fun loadWatchAnalysis(){
+        scope.launch{
+            val current=_state.value.watchlist
+            val enriched=current.map{item->
+                async(Dispatchers.IO){
+                    val snap=runCatching{repository.snapshot(item.symbol)}.getOrNull()
+                    if(snap==null)item else item.copy(score=snap.score,zone=snap.zone)
+                }
+            }.awaitAll()
+            _state.update{it.copy(watchlist=enriched)}
+        }
     }
 
     private fun loadEvents(){
