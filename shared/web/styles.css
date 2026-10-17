@@ -179,3 +179,16 @@ main{max-width:none;margin:0;padding:0 22px 40px;min-width:0}
   .portfolio-chart-empty{min-height:180px}.workspace-grid-2{grid-template-columns:1fr}.activity-columns{grid-template-columns:1fr}
   .activity-columns>div{border-right:0;border-bottom:1px solid #162531}
 }
+
+
+/* terminal watch row contract */
+.terminal-watch .terminal-row{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 104px 52px!important;
+  align-items:center;
+  gap:8px!important;
+  padding:9px 6px!important;
+}
+.terminal-symbol{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.terminal-last,.terminal-change{font-size:10px;text-align:right;font-variant-numeric:tabular-nums}
+.terminal-last{color:#dbe4eb}.terminal-change{color:var(--muted)}
