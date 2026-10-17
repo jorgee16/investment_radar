@@ -17,9 +17,7 @@ data class RadarUiState(
     val watchlist:List<WatchItem> = emptyList(),
     val selectedSymbol:String="AIR.PA",
     val selected:SnapshotDto?=null,
-    val allocation:List<AllocationSlice> = listOf(
-        AllocationSlice("Stocks",55.0), AllocationSlice("ETF",35.0), AllocationSlice("Cash",10.0)
-    ),
+    val allocation:List<AllocationSlice> = emptyList(),
     val error:String?=null
 )
 
