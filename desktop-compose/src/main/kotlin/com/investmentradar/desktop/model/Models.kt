@@ -63,7 +63,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class ProviderSettingsDto(
     val eodhdConfigured:Boolean=false, val fmpConfigured:Boolean=false,
-    val twelveConfigured:Boolean=false, val keySources:Map<String,String> = emptyMap(),
+    val twelveConfigured:Boolean=false, val alphaConfigured:Boolean=false,
+    val finnhubConfigured:Boolean=false, val keySources:Map<String,String> = emptyMap(),
     val demo:Boolean=true
 )
 
@@ -141,6 +142,8 @@ sealed interface RadarIntent {
         val eodhdKey:String?,
         val fmpKey:String?,
         val twelveKey:String?,
+        val alphaKey:String?,
+        val finnhubKey:String?,
         val routing:Map<String,String>
     ):RadarIntent
     data class TestProvider(val provider:String,val symbol:String):RadarIntent
