@@ -18,9 +18,13 @@ fun ProvidersPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
     var eodhd by remember{mutableStateOf("")}
     var fmp by remember{mutableStateOf("")}
     var twelve by remember{mutableStateOf("")}
+    var alpha by remember{mutableStateOf("")}
+    var finnhub by remember{mutableStateOf("")}
     var clearEodhd by remember{mutableStateOf(false)}
     var clearFmp by remember{mutableStateOf(false)}
     var clearTwelve by remember{mutableStateOf(false)}
+    var clearAlpha by remember{mutableStateOf(false)}
+    var clearFinnhub by remember{mutableStateOf(false)}
     var testSymbol by remember{mutableStateOf("AAPL")}
     val routing=remember(state.status.routing){mutableStateMapOf<String,String>().apply{
         putAll(listOf("quotes","fundamentals","estimates","earnings","news","history").associateWith{state.status.routing[it]?:"auto"})
@@ -66,6 +70,24 @@ fun ProvidersPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
             clear=clearTwelve,
             onClear={clearTwelve=it}
         )
+        ProviderKeyCard(
+            title="Alpha Vantage",
+            configured=state.providerSettings.alphaConfigured,
+            source=state.providerSettings.keySources["alpha"].orEmpty(),
+            value=alpha,
+            onValue={alpha=it},
+            clear=clearAlpha,
+            onClear={clearAlpha=it}
+        )
+        ProviderKeyCard(
+            title="Finnhub",
+            configured=state.providerSettings.finnhubConfigured,
+            source=state.providerSettings.keySources["finnhub"].orEmpty(),
+            value=finnhub,
+            onValue={finnhub=it},
+            clear=clearFinnhub,
+            onClear={clearFinnhub=it}
+        )
 
         Text("ROUTING",color=RadarColors.TextMuted,fontSize=8.sp)
         listOf("quotes","fundamentals","estimates","earnings","news","history").forEach{cap->
@@ -82,11 +104,14 @@ fun ProvidersPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
                             eodhdKey=if(clearEodhd)"" else eodhd.trim().ifEmpty{null},
                             fmpKey=if(clearFmp)"" else fmp.trim().ifEmpty{null},
                             twelveKey=if(clearTwelve)"" else twelve.trim().ifEmpty{null},
+                            alphaKey=if(clearAlpha)"" else alpha.trim().ifEmpty{null},
+                            finnhubKey=if(clearFinnhub)"" else finnhub.trim().ifEmpty{null},
                             routing=routing.toMap()
                         )
                     )
-                    eodhd="";fmp="";twelve=""
+                    eodhd="";fmp="";twelve="";alpha="";finnhub=""
                     clearEodhd=false;clearFmp=false;clearTwelve=false
+                    clearAlpha=false;clearFinnhub=false
                 },
                 enabled=!state.savingProviders
             ){Text(if(state.savingProviders)"Saving…" else "Save configuration")}
