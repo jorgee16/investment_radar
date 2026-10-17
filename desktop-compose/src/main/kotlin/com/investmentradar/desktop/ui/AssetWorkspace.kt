@@ -16,6 +16,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.investmentradar.desktop.format.FinancialFormatter
 import com.investmentradar.desktop.model.*
+import kotlin.math.ln
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 @Composable
 fun AssetWorkspace(state:RadarUiState,onIntent:(RadarIntent)->Unit,modifier:Modifier=Modifier){
@@ -96,6 +99,7 @@ private fun OverviewTab(state:RadarUiState,onIntent:(RadarIntent)->Unit,modifier
     Row(modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)){
         Column(Modifier.weight(1f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(10.dp)){
             ChartPanel(state,onIntent,Modifier.weight(1f).fillMaxWidth())
+            MarketMetricsStrip(a,state.chartRange)
             if(a.warnings.isNotEmpty()){
                 PanelSurface{
                     Text(a.warnings.joinToString(" · "),color=RadarColors.TextMuted,fontSize=9.sp,modifier=Modifier.padding(horizontal=12.dp,vertical=9.dp))
@@ -103,6 +107,7 @@ private fun OverviewTab(state:RadarUiState,onIntent:(RadarIntent)->Unit,modifier
             }
         }
         Column(Modifier.width(286.dp).fillMaxHeight().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+            MarketStatsPanel(a,state.chartRange)
             SignalPanel(a)
             ValuationMiniPanel(a)
             PositionPanel(state,a)
@@ -201,24 +206,33 @@ private fun SignalPanel(a:SnapshotDto){
     PanelSurface{
         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
             Text("INVESTMENT RADAR",color=RadarColors.TextMuted,fontSize=8.sp)
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.Bottom){
-                Column{
-                    Text(a.score?.let{"${"%.0f".format(it)}"}?:"—",color=RadarColors.Text,fontFamily=FontFamily.Monospace,fontSize=30.sp,fontWeight=FontWeight.Bold)
-                    Text("score / 100",color=RadarColors.TextMuted,fontSize=8.sp)
-                }
-                Surface(color=zoneColor(a.zone).copy(alpha=.14f),shape=MaterialTheme.shapes.small){
-                    Text(a.zone,color=zoneColor(a.zone),fontSize=9.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(horizontal=8.dp,vertical=5.dp))
-                }
-            }
-            HorizontalDivider(color=RadarColors.Border)
-            MetricRow("Coverage","${"%.0f".format(a.coverage)}%")
-            a.breakdown.forEach{(k,v)->MetricRow(k.replaceFirstChar{it.uppercase()},v?.let{"%.0f".format(it)}?:"—")}
-            if(a.reasons.isNotEmpty()){
-                HorizontalDivider(color=RadarColors.Border)
-                a.reasons.take(3).forEach{reason->
+            if(a.score==null){
+                Text("Fundamentals unavailable",color=RadarColors.Text,fontSize=12.sp,fontWeight=FontWeight.SemiBold)
+                Text(
+                    "Radar score needs fundamentals/estimates. Market metrics and price history remain available.",
+                    color=RadarColors.TextMuted,fontSize=8.sp
+                )
+                MetricRow("Coverage","${"%.0f".format(a.coverage)}%")
+            }else{
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.Bottom){
                     Column{
-                        Text(reason.label,color=RadarColors.Text,fontSize=9.sp,fontWeight=FontWeight.SemiBold)
-                        Text(reason.detail,color=RadarColors.TextMuted,fontSize=8.sp,maxLines=2)
+                        Text("${"%.0f".format(a.score)}",color=RadarColors.Text,fontFamily=FontFamily.Monospace,fontSize=30.sp,fontWeight=FontWeight.Bold)
+                        Text("score / 100",color=RadarColors.TextMuted,fontSize=8.sp)
+                    }
+                    Surface(color=zoneColor(a.zone).copy(alpha=.14f),shape=MaterialTheme.shapes.small){
+                        Text(a.zone,color=zoneColor(a.zone),fontSize=9.sp,fontWeight=FontWeight.Bold,modifier=Modifier.padding(horizontal=8.dp,vertical=5.dp))
+                    }
+                }
+                HorizontalDivider(color=RadarColors.Border)
+                MetricRow("Coverage","${"%.0f".format(a.coverage)}%")
+                a.breakdown.forEach{(k,v)->MetricRow(k.replaceFirstChar{it.uppercase()},v?.let{"%.0f".format(it)}?:"—")}
+                if(a.reasons.isNotEmpty()){
+                    HorizontalDivider(color=RadarColors.Border)
+                    a.reasons.take(3).forEach{reason->
+                        Column{
+                            Text(reason.label,color=RadarColors.Text,fontSize=9.sp,fontWeight=FontWeight.SemiBold)
+                            Text(reason.detail,color=RadarColors.TextMuted,fontSize=8.sp,maxLines=2)
+                        }
                     }
                 }
             }
@@ -231,10 +245,15 @@ private fun ValuationMiniPanel(a:SnapshotDto){
     PanelSurface{
         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
             Text("VALUATION",color=RadarColors.TextMuted,fontSize=8.sp)
-            MetricRow("Buy below",FinancialFormatter.price(a.buyBelow,a.currency))
-            MetricRow("Fair low",FinancialFormatter.price(a.fairLow,a.currency))
-            MetricRow("Fair high",FinancialFormatter.price(a.fairHigh,a.currency))
-            MetricRow("Expensive",FinancialFormatter.price(a.expensiveAbove,a.currency))
+            if(a.buyBelow==null && a.fairLow==null && a.fairHigh==null && a.expensiveAbove==null){
+                Text("Unavailable with current data",color=RadarColors.Text,fontSize=10.sp,fontWeight=FontWeight.SemiBold)
+                Text("Needs fundamentals and valuation inputs from a provider that exposes them.",color=RadarColors.TextMuted,fontSize=8.sp)
+            }else{
+                MetricRow("Buy below",FinancialFormatter.price(a.buyBelow,a.currency))
+                MetricRow("Fair low",FinancialFormatter.price(a.fairLow,a.currency))
+                MetricRow("Fair high",FinancialFormatter.price(a.fairHigh,a.currency))
+                MetricRow("Expensive",FinancialFormatter.price(a.expensiveAbove,a.currency))
+            }
         }
     }
 }
@@ -253,6 +272,116 @@ private fun PositionPanel(state:RadarUiState,a:SnapshotDto){
                 MetricRow("Value",FinancialFormatter.price(current,p.currency))
                 MetricRow("P/L",FinancialFormatter.price(current?.minus(p.qty*p.avg),p.currency))
             }
+        }
+    }
+}
+
+private data class MarketStats(
+    val periodReturn:Double?,
+    val high:Double?,
+    val low:Double?,
+    val distanceFromHigh:Double?,
+    val volatility:Double?,
+    val maxDrawdown:Double?,
+    val sma20:Double?,
+    val sma50:Double?,
+    val rsi14:Double?,
+    val trend:String
+)
+
+private fun marketStats(a:SnapshotDto):MarketStats{
+    val closes=a.history.mapNotNull{it.close?:it.price}.filter{it.isFinite()&&it>0.0}
+    if(closes.isEmpty()) return MarketStats(null,null,null,null,null,null,null,null,null,"—")
+    val highs=a.history.mapNotNull{it.high?:it.close?:it.price}.filter{it.isFinite()}
+    val lows=a.history.mapNotNull{it.low?:it.close?:it.price}.filter{it.isFinite()}
+    val first=closes.first()
+    val last=closes.last()
+    val periodReturn=if(closes.size>=2) (last/first-1.0)*100.0 else null
+    val high=highs.maxOrNull()
+    val low=lows.minOrNull()
+    val distance=high?.takeIf{it!=0.0}?.let{(last/it-1.0)*100.0}
+    val returns=closes.zipWithNext().mapNotNull{(p,n)->if(p>0&&n>0) ln(n/p) else null}
+    val volatility=if(returns.size>=2){
+        val mean=returns.average()
+        val variance=returns.sumOf{(it-mean).pow(2)}/(returns.size-1)
+        sqrt(variance)*sqrt(252.0)*100.0
+    }else null
+    var peak=closes.first()
+    var maxDd=0.0
+    closes.forEach{v->
+        if(v>peak) peak=v
+        if(peak>0){
+            val dd=(v/peak-1.0)*100.0
+            if(dd<maxDd) maxDd=dd
+        }
+    }
+    fun sma(n:Int)=if(closes.size>=n) closes.takeLast(n).average() else null
+    val s20=sma(20)
+    val s50=sma(50)
+    val rsi=if(closes.size>=15){
+        val deltas=closes.takeLast(15).zipWithNext().map{(p,n)->n-p}
+        val gains=deltas.filter{it>0}.sum()/14.0
+        val losses=-deltas.filter{it<0}.sum()/14.0
+        when{
+            losses==0.0 && gains>0.0 -> 100.0
+            losses==0.0 -> 50.0
+            else -> 100.0-(100.0/(1.0+gains/losses))
+        }
+    }else null
+    val trend=when{
+        s20!=null&&s50!=null&&last>s20&&s20>s50 -> "Bullish"
+        s20!=null&&s50!=null&&last<s20&&s20<s50 -> "Bearish"
+        s20!=null&&last>s20 -> "Positive"
+        s20!=null&&last<s20 -> "Negative"
+        else -> "Neutral"
+    }
+    return MarketStats(periodReturn,high,low,distance,volatility,maxDd,s20,s50,rsi,trend)
+}
+
+@Composable
+private fun MarketMetricsStrip(a:SnapshotDto,range:ChartRange){
+    val s=marketStats(a)
+    Row(Modifier.fillMaxWidth().height(78.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+        MetricTile(range.label+" return",FinancialFormatter.percent(s.periodReturn),s.periodReturn,Modifier.weight(1f))
+        MetricTile("Period high",FinancialFormatter.price(s.high,a.currency),null,Modifier.weight(1f))
+        MetricTile("Period low",FinancialFormatter.price(s.low,a.currency),null,Modifier.weight(1f))
+        MetricTile("From high",FinancialFormatter.percent(s.distanceFromHigh),s.distanceFromHigh,Modifier.weight(1f))
+        MetricTile("Volatility",FinancialFormatter.percent(s.volatility),null,Modifier.weight(1f))
+        MetricTile("Max drawdown",FinancialFormatter.percent(s.maxDrawdown),s.maxDrawdown,Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MetricTile(label:String,value:String,signed:Double?,modifier:Modifier=Modifier){
+    PanelSurface(modifier){
+        Column(Modifier.fillMaxSize().padding(horizontal=10.dp,vertical=9.dp),verticalArrangement=Arrangement.SpaceBetween){
+            Text(label.uppercase(),color=RadarColors.TextMuted,fontSize=7.sp)
+            Text(
+                value,
+                color=when{
+                    signed==null->RadarColors.Text
+                    signed>0->RadarColors.Positive
+                    signed<0->RadarColors.Negative
+                    else->RadarColors.Text
+                },
+                fontFamily=FontFamily.Monospace,fontSize=11.sp,fontWeight=FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun MarketStatsPanel(a:SnapshotDto,range:ChartRange){
+    val s=marketStats(a)
+    PanelSurface{
+        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
+            Text("MARKET METRICS · ${range.label}",color=RadarColors.TextMuted,fontSize=8.sp)
+            MetricRow("Trend",s.trend)
+            MetricRow("RSI 14",s.rsi14?.let{"%.1f".format(it)}?:"—")
+            MetricRow("SMA 20",FinancialFormatter.price(s.sma20,a.currency))
+            MetricRow("SMA 50",FinancialFormatter.price(s.sma50,a.currency))
+            MetricRow("Volatility",FinancialFormatter.percent(s.volatility))
+            MetricRow("Max drawdown",FinancialFormatter.percent(s.maxDrawdown))
         }
     }
 }
