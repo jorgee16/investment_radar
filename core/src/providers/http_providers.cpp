@@ -621,12 +621,15 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
     f.name = s;
     f.source = "Alpha Vantage";
 
-    auto qInc = income.value("quarterlyReports", json::array());
-    auto qBal = balance.value("quarterlyReports", json::array());
-    auto qCash = cash.value("quarterlyReports", json::array());
-    auto aInc = income.value("annualReports", json::array());
-    auto aEarn = earnings.value("annualEarnings", json::array());
-    auto qEarn = earnings.value("quarterlyEarnings", json::array());
+    auto rows = [](const json &j, const char *key) {
+        return j.is_object() && j.contains(key) && j[key].is_array() ? j[key] : json::array();
+    };
+    auto qInc = rows(income, "quarterlyReports");
+    auto qBal = rows(balance, "quarterlyReports");
+    auto qCash = rows(cash, "quarterlyReports");
+    auto aInc = rows(income, "annualReports");
+    auto aEarn = rows(earnings, "annualEarnings");
+    auto qEarn = rows(earnings, "quarterlyEarnings");
 
     if (!qInc.empty())
         f.currency = str(qInc[0], "reportedCurrency");
@@ -689,7 +692,10 @@ std::optional<EstimateSnapshot> AlphaVantageProvider::estimates(const std::strin
                   "&apikey=" + enc(key_));
     EstimateSnapshot e;
     e.source = "Alpha Vantage";
-    auto rows = earnings.value("quarterlyEarnings", json::array());
+    auto rows = earnings.is_object() && earnings.contains("quarterlyEarnings") &&
+                        earnings["quarterlyEarnings"].is_array()
+                    ? earnings["quarterlyEarnings"]
+                    : json::array();
     for (const auto &row : rows) {
         auto actual = num(row, "reportedEPS");
         auto estimated = num(row, "estimatedEPS");
