@@ -1,0 +1,18 @@
+Investment Radar — propostas UI/UX
+
+Abre index.html no browser para a galeria.
+Abre desktop.html para a proposta Windows.
+Abre android.html para a proposta Android (no PC aparece centrada em largura móvel).
+Não precisas de Node, WSL, API keys ou de instalar a aplicação.
+
+Tudo usa dados sintéticos. Navegação, tabs, gráficos e vários estados são simulados.
+Botões de fluxos futuros indicam que a funcionalidade ainda é proposta.
+Os ficheiros não alteram a configuração real da aplicação nem guardam credenciais.
+
+No ZIP, o relatório e a avaliação de frontend estão na pasta superior a design/.
+
+Versão 2: dashboards desktop e Android refinados.
+O HTML único investment-radar-layouts-v2.html, na raiz do ZIP, inclui os estilos e
+scripts. Abre-o diretamente no Edge/Chrome. No desktop, Radar é agora a página
+inicial; Análise abre a ficha AIR.PA. O seletor de cenário permite comparar
+carteira de exemplo, carteira vazia, dados ausentes e cache desatualizada.
