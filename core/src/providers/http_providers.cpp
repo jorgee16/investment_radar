@@ -116,6 +116,13 @@ std::string eod_symbol(std::string s) {
         s += ".US";
     return s;
 }
+std::string listing_currency_hint(const std::string &s) {
+    if (s.ends_with(".PA") || s.ends_with(".DE") || s.ends_with(".XETRA"))
+        return "EUR";
+    if (s.find('.') == s.npos || s.ends_with(".US"))
+        return "USD";
+    return {};
+}
 std::string twelve_symbol(std::string s) {
     for (auto [a, b] : {std::pair{".PA", ":EPA"}, {".DE", ":XETR"}, {".L", ":LSE"}, {".US", ""}})
         if (s.ends_with(a))
@@ -190,9 +197,19 @@ std::optional<Quote> EodhdProvider::quote(const std::string &s) {
         currency = str(general, "CurrencyCode");
         name = str(general, "Name", name);
     }
-    return Quote{
-        s,       name, currency, *p, num(j, "change_p"), (long long)num(j, "timestamp").value_or(0),
-        "EODHD", {}};
+    if (currency.empty())
+        currency = listing_currency_hint(s);
+    Quote q{s,
+            name,
+            currency,
+            *p,
+            num(j, "change_p"),
+            (long long)num(j, "timestamp").value_or(0),
+            "EODHD",
+            {}};
+    if (!currency.empty())
+        q.metrics["currency"] = {"EODHD", "", "listing currency"};
+    return q;
 }
 std::optional<Fundamentals> EodhdProvider::fundamentals(const std::string &s) {
     if (key_.empty())
