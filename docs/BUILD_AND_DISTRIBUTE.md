@@ -84,3 +84,16 @@ exemplo, numa máquina Linux com o bundle de confiança do sistema:
 ```bash
 docker build --target build --secret id=build_ca,src=/etc/ssl/certs/ca-certificates.crt -t investment-radar-build .
 ```
+
+## Primeira compilação Windows
+
+O preset novo usa `x64-windows-release`, com bibliotecas dinâmicas e apenas
+Release. Evita o build Debug das dependências que a aplicação não utiliza.
+O cache CI inclui o triplet na sua identidade. O helper preserva o triplet
+`x64-windows` de um build anterior para reutilizar as bibliotecas já preparadas,
+em vez de obrigar a uma recompilação só por mudar a identidade do cache.
+
+Novos checkouts vcpkg ficam em `%LOCALAPPDATA%/InvestmentRadar/build-tools`,
+fora de diretórios sincronizados pelo OneDrive. Um checkout existente em
+`.tools/vcpkg` ou fornecido em `VCPKG_ROOT` mantém-se. A configuração do build
+nativo Windows ainda precisa de confirmação num runner/PC Windows.

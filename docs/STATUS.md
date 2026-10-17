@@ -104,3 +104,10 @@ Também passaram: execução via Compose num container novo, exportação do tar
 `artifacts` para `dist/linux` e smoke sobre esse binário exportado. Confirmada a
 ausência do mount da CA, `.git` e configuração local na imagem resultante.
 A imagem fica local; o repositório contém os ficheiros para a reproduzir.
+
+## Custo da primeira compilação Windows
+
+Novos builds usam o triplet `x64-windows-release` para evitar dependências Debug.
+O helper mantém caches antigos `x64-windows` e checkouts existentes; novos
+checkouts são criados fora de OneDrive, em LOCALAPPDATA. Alteração validada por
+sintaxe/configuração nesta máquina Linux; não há medição Windows do ganho.

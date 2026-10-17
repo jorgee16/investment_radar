@@ -8,7 +8,12 @@
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build/windows",
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-      "cacheVariables": {"IR_BUILD_DESKTOP": "ON", "BUILD_TESTING": "ON", "VCPKG_TARGET_TRIPLET": "x64-windows"},
+      "cacheVariables": {
+        "IR_BUILD_DESKTOP": "ON",
+        "BUILD_TESTING": "ON",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-release",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets"
+      },
       "condition": {"type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows"}
     },
     {

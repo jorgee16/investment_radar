@@ -37,7 +37,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: windows-vcpkg-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}
+          key: windows-vcpkg-${{ hashFiles('vcpkg.json', 'CMakePresets.json', 'cmake/triplets/**') }}
       - name: Build native Windows app and tests
         shell: cmd
         env:

@@ -53,7 +53,10 @@ aplicação é necessário o [WebView2 Runtime](https://developer.microsoft.com/
 
 Fazer duplo clique em **`install.bat`** para preparar as ferramentas, descarregar
 dependências, compilar e executar testes. Quando terminar, fazer duplo clique em
-**`run.bat`**. A primeira compilação pode demorar.
+**`run.bat`**. A primeira compilação pode demorar. Novas instalações compilam as
+bibliotecas apenas em Release. Os checkouts vcpkg novos ficam em
+`%LOCALAPPDATA%/InvestmentRadar/build-tools`, fora de pastas OneDrive. Instalações
+anteriores são reutilizadas para evitar repetir uma compilação já feita.
 
 No terminal integrado do VS Code:
 
