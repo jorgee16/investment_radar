@@ -1,0 +1,6 @@
+{
+  "name": "investment-radar",
+  "version-string": "0.4.0",
+  "builtin-baseline": "a5f736224e85b32e25a8ffc52562333180396642",
+  "dependencies": ["openssl", "sqlite3"]
+}

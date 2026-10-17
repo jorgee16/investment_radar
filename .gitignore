@@ -1,0 +1,65 @@
+# CMake / native builds
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Android / Gradle
+android/.gradle/
+android/app/build/
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Secrets / local configuration
+.env
+.env.*
+!.env.example
+config.json
+secrets.properties
+*.pem
+*.key
+
+# Runtime caches / databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Logs / temp
+*.log
+*.tmp
+*.swp
+
+# Generated test artifacts
+core/test-output.json
+
+# Local development tools / vcpkg
+.tools/
+vcpkg_installed/
+CMakeUserPresets.json
+
+# Python helper bytecode
+__pycache__/
+*.py[cod]

@@ -1,0 +1,31 @@
+name: Build and test
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libssl-dev libsqlite3-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+      - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DIR_BUILD_DESKTOP=ON
+      - run: cmake --build build -j 2
+      - run: ctest --test-dir build --output-on-failure
+      - run: node --check shared/web/app.js
+      - run: python3 scripts/smoke.py build/investment-radar
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native Windows app and tests
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - name: Smoke test native API
+        run: python scripts/smoke.py build/windows/Release/investment-radar.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-radar-windows
+          path: |
+            build/windows/Release/investment-radar.exe
+            build/windows/Release/*.dll
+            build/windows/Release/assets/
