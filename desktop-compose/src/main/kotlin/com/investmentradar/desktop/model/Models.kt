@@ -79,7 +79,8 @@ import kotlinx.serialization.Serializable
 
 data class WatchItem(
     val symbol:String, val name:String, val price:Double?, val currency:String,
-    val changePct:Double?, val sparkline:List<Double>
+    val changePct:Double?, val sparkline:List<Double>,
+    val score:Double?=null, val zone:String="N/A"
 )
 
 data class AllocationSlice(val label:String, val value:Double)
