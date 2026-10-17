@@ -190,12 +190,18 @@ void HttpCache::put(const std::string &u, const std::string &b) {
         throw std::runtime_error("Cache write failed");
 }
 int CachedHttpsClient::ttl_for(const std::string &u) {
-    if (u.find("real-time") != u.npos || u.find("/quote") != u.npos)
-        return 60;
+    if (u.find("real-time") != u.npos || u.find("/quote") != u.npos ||
+        u.find("GLOBAL_QUOTE") != u.npos)
+        return 900;
+    if (u.find("/api/search/") != u.npos || u.find("SYMBOL_SEARCH") != u.npos ||
+        u.find("profile2") != u.npos)
+        return 604800;
     if (u.find("fundamentals") != u.npos || u.find("statement") != u.npos ||
         u.find("ratios") != u.npos || u.find("key-metrics") != u.npos ||
-        u.find("analyst-estimates") != u.npos)
-        return 21600;
+        u.find("analyst-estimates") != u.npos || u.find("INCOME_STATEMENT") != u.npos ||
+        u.find("BALANCE_SHEET") != u.npos || u.find("CASH_FLOW") != u.npos ||
+        u.find("stock/metric") != u.npos)
+        return 43200;
     if (u.find("news") != u.npos)
         return 900;
     if (u.find("calendar") != u.npos || u.find("earnings") != u.npos)
@@ -209,7 +215,9 @@ std::string CachedHttpsClient::get(const std::string &u, bool bypass_cache) {
     if (slash == u.npos)
         throw std::invalid_argument("Invalid URL");
     auto host = u.substr(8, slash - 8);
-    if (host != "eodhd.com" && host != "financialmodelingprep.com" && host != "api.twelvedata.com")
+    if (host != "eodhd.com" && host != "financialmodelingprep.com" &&
+        host != "api.twelvedata.com" && host != "www.alphavantage.co" &&
+        host != "finnhub.io")
         throw std::invalid_argument("Unsupported provider host");
     if (!bypass_cache)
         if (auto cached = cache_.get(u, ttl_for(u)); !cached.empty())
@@ -251,5 +259,7 @@ AppConfig runtime_config(AppConfig local) {
     fill(local.eodhd_key, "EODHD_API_KEY");
     fill(local.fmp_key, "FMP_API_KEY");
     fill(local.twelve_key, "TWELVE_DATA_API_KEY");
+    fill(local.alpha_key, "ALPHA_VANTAGE_API_KEY");
+    fill(local.finnhub_key, "FINNHUB_API_KEY");
     return local;
 }
