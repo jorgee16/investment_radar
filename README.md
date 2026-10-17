@@ -1,12 +1,34 @@
 # Investment Radar
 
-Aplicação de pesquisa de investimentos para Windows e Android, com core C++20 e
-interface WebView partilhada. Base importada do ZIP fornecido e corrigida para
-funcionar sem chaves em **modo demo explícito**.
+Aplicação de pesquisa de investimentos para Windows e Android, com core C++20.
+O **desktop principal está a migrar para Kotlin + Compose Multiplatform Desktop**
+com MVVM/UDF e Canvas nativo; o Android mantém a WebView partilhada por agora.
+A WebView desktop anterior permanece apenas como fallback temporário.
 
 A base é executável e testável. Os providers estão ligados à aplicação; a
 validação com contas próprias e as medições de performance Android ficam pendentes.
 O calendário demo e os preços demo são sintéticos. O screener filtra a watchlist local; não pesquisa todo o mercado.
+
+## Desktop Compose
+
+O novo desktop vive em `desktop-compose/` e usa três painéis coordenados:
+watchlist densa com sparklines, gráfico principal Canvas e painel de portfolio/data.
+O estado vem de `RadarViewModel` através de `StateFlow`; eventos da UI são
+`RadarIntent`. Quotes são atualizadas fora da UI thread.
+
+O Compose fala com `investment-radar-core-host`, um host C++ headless que reutiliza
+o mesmo `ResearchService`, providers, cache e configuração segura.
+
+No Windows, para desenvolvimento:
+
+```powershell
+.\install.bat
+.\run-compose.bat
+```
+
+O CI também compila `desktop-compose`, cria o distributable Windows e junta o
+host C++ ao pacote. Os artifacts novos chamam-se
+`investment-radar-compose-windows` e `investment-radar-compose-windows-zip`.
 
 ## Usar noutro PC Windows
 
