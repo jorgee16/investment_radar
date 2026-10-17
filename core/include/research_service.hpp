@@ -15,6 +15,7 @@ class ResearchService {
     nlohmann::json quote(const std::string &);
     nlohmann::json test_providers(const std::string &, const std::string &provider = "all");
     nlohmann::json snapshot(const std::string &);
+    nlohmann::json history(const std::string &, int days = 120);
     nlohmann::json earnings(const std::string &, const std::string &, const std::string &);
     nlohmann::json news(const std::string &);
     nlohmann::json providers() const;
