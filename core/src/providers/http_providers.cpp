@@ -19,6 +19,7 @@ json checked_provider_payload(const std::string &body) {
     if (!j.is_object() && !j.is_array())
         throw ProviderError("invalid_response");
     if (j.is_object() && (j.contains("Error Message") || j.contains("error") ||
+                          j.contains("Note") || j.contains("Information") ||
                           (j.contains("status") && j["status"] == "error"))) {
         int status = j.contains("code") && j["code"].is_number_integer() ? j["code"].get<int>() : 0;
         auto code = status ? provider_error_code(status) : "http_error";
@@ -27,7 +28,8 @@ json checked_provider_payload(const std::string &body) {
         std::transform(message.begin(), message.end(), message.begin(),
                        [](unsigned char c) { return std::tolower(c); });
         if (!status) {
-            if (message.find("limit") != message.npos || message.find("credits") != message.npos)
+            if (message.find("limit") != message.npos || message.find("credits") != message.npos ||
+                message.find("frequency") != message.npos)
                 code = "rate_limit";
             else if (message.find("invalid api") != message.npos ||
                      message.find("invalid key") != message.npos ||
