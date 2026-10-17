@@ -5,7 +5,8 @@ android {
     ndkVersion = "27.0.12077973"
     defaultConfig {
         applicationId = "com.investmentradar.app"
-        minSdk = 26; targetSdk = 35; versionCode = 4; versionName = "0.4.0"
+        minSdk = 26; targetSdk = 35; versionCode = 5; versionName = "0.5.0"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild { cmake { cppFlags += "-std=c++20" } }
     }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }

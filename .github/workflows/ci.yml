@@ -126,3 +126,30 @@ jobs:
           path: |
             dist/windows/*.zip
             dist/windows/*.sha256
+
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK components
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+      - name: Build installable Android APK with JNI core
+        run: ./android/gradlew -p android :app:assembleDebug --no-daemon
+      - name: Verify APK contains native C++ core and bundled UI
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libinvestment_radar.so'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libinvestment_radar.so'
+          unzip -l "$APK" | grep -q 'assets/index.html'
+          unzip -l "$APK" | grep -q 'assets/app.js'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-radar-android-debug-apk
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/debug/app-debug.apk

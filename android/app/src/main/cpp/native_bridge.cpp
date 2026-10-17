@@ -73,11 +73,15 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_investmentradar_app_MainActivity_n
             data = {{"eodhdConfigured", !config.eodhd_key.empty()},
                     {"fmpConfigured", !config.fmp_key.empty()},
                     {"twelveConfigured", !config.twelve_key.empty()},
+                    {"alphaConfigured", !config.alpha_key.empty()},
+                    {"finnhubConfigured", !config.finnhub_key.empty()},
                     {"demo", config.demo}};
         else if (op == "/api/quote")
             data = service.quote(sym.empty() ? "AIR.PA" : sym);
         else if (op == "/api/snapshot")
             data = service.snapshot(sym.empty() ? "AIR.PA" : sym);
+        else if (op == "/api/history")
+            data = service.history(sym.empty() ? "AIR.PA" : sym);
         else if (op == "/api/earnings")
             data = service.earnings(sym, date_offset(-7), date_offset(90));
         else if (op == "/api/news")

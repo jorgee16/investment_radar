@@ -1,6 +1,7 @@
 package com.investmentradar.app
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.webkit.JavascriptInterface
@@ -39,7 +40,7 @@ class MainActivity : AppCompatActivity() {
                     val uri = Uri.parse(path)
                     val current = settings.load()
                     val operation = uri.path ?: ""
-                    require(operation in setOf("/api/status", "/api/providers", "/api/settings", "/api/quote", "/api/snapshot", "/api/earnings", "/api/news", "/api/providers/test"))
+                    require(operation in setOf("/api/status", "/api/providers", "/api/settings", "/api/quote", "/api/snapshot", "/api/history", "/api/earnings", "/api/news", "/api/providers/test"))
                     var symbol = uri.getQueryParameter("symbol") ?: ""
                     if (operation == "/api/settings" && method == "POST") {
                         val update = JSONObject(body)
@@ -66,7 +67,17 @@ class MainActivity : AppCompatActivity() {
         val loader = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this)).build()
         web.settings.apply { javaScriptEnabled = true; domStorageEnabled = true; allowFileAccess = false; allowContentAccess = false; setSupportMultipleWindows(false) }
         web.webViewClient = object : WebViewClientCompat() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val uri = request.url
+                if (uri.scheme == "https" && uri.host == "appassets.androidplatform.net" &&
+                    uri.path?.startsWith("/assets/") == true) return false
+                // External article links open in the system browser, never in this privileged WebView.
+                if (request.isForMainFrame && request.hasGesture() &&
+                    uri.scheme in setOf("https", "http") && !uri.host.isNullOrBlank()) {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                }
+                return true
+            }
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse =
                 loader.shouldInterceptRequest(request.url) ?: WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", emptyMap(), ByteArrayInputStream(byteArrayOf()))
         }
