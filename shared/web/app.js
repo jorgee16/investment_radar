@@ -74,12 +74,15 @@ class AssetTabsWidget extends Widget {
 }
 class DashboardWidget extends Widget {
   mount(){
-    this.root.querySelector('[data-action="open-watchlist"]')?.addEventListener('click',()=>this.ctx.router.navigate('watchlist'));
-    this.root.querySelector('#openProviders')?.addEventListener('click',()=>this.ctx.router.navigate('providers'));
+    document.querySelector('[data-action="open-watchlist"]')?.addEventListener('click',()=>this.ctx.router.navigate('watchlist'));
+    document.querySelector('#openProviders')?.addEventListener('click',()=>this.ctx.router.navigate('providers'));
+    document.querySelectorAll('[data-view-jump]').forEach(button=>button.addEventListener('click',()=>this.ctx.router.navigate(button.dataset.viewJump)));
     this.listen('status:changed',status=>{
       setText('#dashDataMode',status.mode==='demo'?'Demo':'Live');
-      setText('#dashProvider',status.configured?'Configurado':'Sem provider');
-      setText('#dashFundamentals',status.mode==='demo'?'Demo':status.configured?'Dependente do plano':'Indisponível');
+      setText('#dashProvider',status.configured?'Configured':'No provider');
+      setText('#dashFundamentals',status.mode==='demo'?'Demo':status.configured?'Plan dependent':'Unavailable');
+      setText('#railProvider',status.configured?'Configured':'No provider');
+      setText('#railStatus',status.live?'Connected':status.configured?'Ready':'Setup required');
     });
   }
 }
@@ -222,7 +225,7 @@ async function renderPortfolioSummary() {
   for(const {p,known,value} of await positions()) {const g=groups.get(p.currency)||{invested:0,value:0,complete:true};g.invested+=p.qty*p.avg;g.complete&&=known;if(known)g.value+=value;groups.set(p.currency,g);}
   const list=[...groups.entries()],fmt=fn=>list.length?list.map(([c,g])=>fn(c,g)).join(' · '):'—';
   setText('#pfInvested',fmt((c,g)=>money(g.invested,c)));setText('#pfCurrent',fmt((c,g)=>g.complete?money(g.value,c):`${c}: indisponível`));
-  setText('#pfPL',fmt((c,g)=>g.complete?money(g.value-g.invested,c):'—'));setText('#portfolioValue',fmt((c,g)=>g.complete?money(g.value,c):`${c}: indisponível`));
+  setText('#pfPL',fmt((c,g)=>g.complete?money(g.value-g.invested,c):'—'));setText('#portfolioValue',fmt((c,g)=>g.complete?money(g.value,c):`${c}: indisponível`));setText('#topPortfolio',fmt((c,g)=>g.complete?money(g.value,c):'—'));
   setText('#portfolioReturn',list.length===1&&list[0][1].complete?pct((list[0][1].value/list[0][1].invested-1)*100):list.length>1?'Por moeda; sem conversão FX':'—');
 }
 async function renderPortfolio() {
@@ -251,14 +254,14 @@ async function renderWatch(target='#watchGrid',filter=()=>true) {
   }
   if(epoch!==dataEpoch||request!==watchRequest)return;
   $(target).innerHTML=cards.join('')||'<p class="note">Sem resultados. Adiciona ativos à watchlist ou configura os providers.</p>';
-  setText('#opportunityCount',knownScores?opportunities:'—');setText('#watchCount',state.watch.length);
-  $$(target+' [data-w]').forEach(e=>{e.onclick=ev=>{if(ev.target.matches('[data-rw]'))return;showView('dashboard');loadSnapshot(e.dataset.w);};e.onkeydown=ev=>{if(ev.key==='Enter')e.click();};});
+  setText('#opportunityCount',knownScores?opportunities:'—');setText('#watchCount',state.watch.length);setText('#topWatchCount',state.watch.length);
+  $(target+' [data-w]').forEach(e=>{e.onclick=ev=>{if(ev.target.matches('[data-rw]'))return;events.emit('asset:selected',{symbol:e.dataset.w});};e.onkeydown=ev=>{if(ev.key==='Enter')e.click();};});
   if(target==='#watchGrid')$$('[data-rw]').forEach(b=>b.onclick=e=>{e.stopPropagation();state.watch.splice(+b.dataset.rw,1);localStorage.setItem('ir_watch',JSON.stringify(state.watch));guarded(()=>renderWatch())();});
 }
 const eventRow=r=>`<div class="event"><div class="date">${esc(r.date)}</div><strong>${esc(r.symbol)}</strong><div class="kind">${esc(r.kind)}</div><span>${esc(r.note)} · ${esc(r.source)}</span></div>`;
 async function renderCalendar() {
   const rows=await bridge('/api/earnings');$('#calendarList').innerHTML=rows.map(eventRow).join('')||'<p class="note">Sem eventos disponíveis.</p>';
-  const next=rows.find(r=>r.date>=new Date().toISOString().slice(0,10));setText('#nextEvent',next?.date.slice(5));setText('#nextEventTicker',next?.symbol);
+  const next=rows.find(r=>r.date>=new Date().toISOString().slice(0,10));setText('#nextEvent',next?.date.slice(5));setText('#nextEventTicker',next?.symbol);setText('#topNextEvent',next?(`${next.symbol} · ${next.date.slice(5)}`):'—');
   const asset=await bridge(`/api/earnings?symbol=${encodeURIComponent(state.current)}`);$('#assetEarnings').innerHTML=asset.map(eventRow).join('')||'<p class="note">Sem eventos para este ativo.</p>';
 }
 async function renderNews() {
