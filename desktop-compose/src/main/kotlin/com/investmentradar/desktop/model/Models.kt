@@ -85,7 +85,7 @@ data class WatchItem(
 
 data class AllocationSlice(val label:String, val value:Double)
 
-enum class AppPage { RADAR, PORTFOLIO, WATCHLIST, SCREENER, EVENTS, PROVIDERS, SETTINGS }
+enum class AppPage { DASHBOARD, RADAR, PORTFOLIO, WATCHLIST, SCREENER, EVENTS, PROVIDERS, SETTINGS }
 enum class AssetTab { OVERVIEW, FINANCIALS, VALUATION, EARNINGS, NEWS }
 
 data class RadarUiState(
@@ -104,7 +104,7 @@ data class RadarUiState(
     val providers:List<ProviderDto> = emptyList(),
     val providerSettings:ProviderSettingsDto=ProviderSettingsDto(),
     val providerTests:Map<String,ProviderTestDto> = emptyMap(),
-    val page:AppPage=AppPage.RADAR,
+    val page:AppPage=AppPage.DASHBOARD,
     val savingProviders:Boolean=false,
     val error:String?=null
 ) {
