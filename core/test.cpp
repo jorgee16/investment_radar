@@ -176,6 +176,68 @@ int main() {
         CHECK(std::abs(*e->earnings_surprise_pct - 10) < .001);
         CHECK(!e->estimate_revision_pct);
     });
+    test("Alpha Vantage derives fundamentals from free statements", [] {
+        ir::AlphaVantageProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("INCOME_STATEMENT") != url.npos)
+                return R"({"quarterlyReports":[
+                    {"fiscalDateEnding":"2025-12-31","reportedCurrency":"EUR","totalRevenue":"120","netIncome":"12"},
+                    {"fiscalDateEnding":"2025-09-30","reportedCurrency":"EUR","totalRevenue":"110","netIncome":"11"},
+                    {"fiscalDateEnding":"2025-06-30","reportedCurrency":"EUR","totalRevenue":"100","netIncome":"10"},
+                    {"fiscalDateEnding":"2025-03-31","reportedCurrency":"EUR","totalRevenue":"90","netIncome":"9"}],
+                    "annualReports":[
+                    {"fiscalDateEnding":"2025-12-31","reportedCurrency":"EUR","totalRevenue":"420"},
+                    {"fiscalDateEnding":"2024-12-31","reportedCurrency":"EUR","totalRevenue":"350"}]})";
+            if (url.find("BALANCE_SHEET") != url.npos)
+                return R"({"quarterlyReports":[{"fiscalDateEnding":"2025-12-31","totalShareholderEquity":"200","shortLongTermDebtTotal":"100"}]})";
+            if (url.find("CASH_FLOW") != url.npos)
+                return R"({"quarterlyReports":[
+                    {"fiscalDateEnding":"2025-12-31","operatingCashflow":"20","capitalExpenditures":"5"},
+                    {"fiscalDateEnding":"2025-09-30","operatingCashflow":"20","capitalExpenditures":"5"},
+                    {"fiscalDateEnding":"2025-06-30","operatingCashflow":"20","capitalExpenditures":"5"},
+                    {"fiscalDateEnding":"2025-03-31","operatingCashflow":"20","capitalExpenditures":"5"}]})";
+            if (url.find("EARNINGS") != url.npos)
+                return R"({"quarterlyEarnings":[
+                    {"fiscalDateEnding":"2025-12-31","reportedEPS":"2.0","estimatedEPS":"1.8"},
+                    {"fiscalDateEnding":"2025-09-30","reportedEPS":"1.5"},
+                    {"fiscalDateEnding":"2025-06-30","reportedEPS":"1.2"},
+                    {"fiscalDateEnding":"2025-03-31","reportedEPS":"1.3"}],
+                    "annualEarnings":[
+                    {"fiscalDateEnding":"2025-12-31","reportedEPS":"6.0"},
+                    {"fiscalDateEnding":"2024-12-31","reportedEPS":"5.0"}]})";
+            return "{}";
+        });
+        auto f = p.fundamentals("AIR.PA");
+        CHECK(f);
+        CHECK(f->currency == "EUR");
+        CHECK(std::abs(*f->revenue_growth_pct - 20.0) < .001);
+        CHECK(std::abs(*f->eps_growth_pct - 20.0) < .001);
+        CHECK(std::abs(*f->fcf_margin_pct - (60.0 / 420.0 * 100.0)) < .001);
+        CHECK(std::abs(*f->roe_pct - 21.0) < .001);
+        CHECK(std::abs(*f->debt_to_equity - .5) < .001);
+        CHECK(std::abs(*f->eps_ttm - 6.0) < .001);
+    });
+    test("Finnhub normalizes profile and key metrics", [] {
+        ir::FinnhubProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("profile2") != url.npos)
+                return R"({"name":"Airbus SE","currency":"EUR","finnhubIndustry":"Aerospace & Defense"})";
+            if (url.find("/stock/metric") != url.npos)
+                return R"({"metric":{"peBasicExclExtraTTM":22.5,"revenueGrowthTTMYoy":8.2,"epsGrowthTTMYoy":10.3,"roeTTM":17.5,"debtEquityAnnual":0.7}})";
+            if (url.find("/quote") != url.npos)
+                return R"({"c":200,"dp":1.2,"t":1})";
+            return "[]";
+        });
+        auto f = p.fundamentals("AIR.PA");
+        CHECK(f && f->name == "Airbus SE");
+        CHECK(f->sector == "Aerospace & Defense");
+        CHECK(f->currency == "EUR");
+        CHECK(f->pe == 22.5);
+        CHECK(f->revenue_growth_pct == 8.2);
+        CHECK(f->eps_growth_pct == 10.3);
+        CHECK(f->roe_pct == 17.5);
+        CHECK(f->debt_to_equity == .7);
+        auto q = p.quote("AIR.PA");
+        CHECK(q && q->price == 200);
+    });
     test("Twelve normalizes symbol and rejects malformed numbers", [] {
         std::string url;
         ir::TwelveDataProvider p("fixture", [&](auto &u) {
