@@ -334,9 +334,15 @@ std::vector<PriceBar> EodhdProvider::history(const std::string &s, int days) {
     std::vector<PriceBar> out;
     if (j.is_array())
         for (auto &x : j) {
-            auto p = first(x, "adjusted_close", "close");
-            if (p && *p > 0)
-                out.push_back({str(x, "date"), *p, "EODHD", {}});
+            auto close = first(x, "adjusted_close", "close");
+            if (close && *close > 0) {
+                PriceBar bar{str(x, "date"), *close, "EODHD", {}};
+                bar.open = num(x, "open");
+                bar.high = num(x, "high");
+                bar.low = num(x, "low");
+                bar.close = num(x, "close");
+                out.push_back(std::move(bar));
+            }
         }
     sort_bars(out);
     return out;
@@ -490,9 +496,15 @@ std::vector<PriceBar> FmpProvider::history(const std::string &s, int days) {
     std::vector<PriceBar> out;
     if (a.is_array())
         for (auto &x : a) {
-            auto p = first(x, "adjClose", "close");
-            if (p && *p > 0)
-                out.push_back({str(x, "date"), *p, "FMP", {}});
+            auto close = first(x, "adjClose", "close");
+            if (close && *close > 0) {
+                PriceBar bar{str(x, "date"), *close, "FMP", {}};
+                bar.open = num(x, "open");
+                bar.high = num(x, "high");
+                bar.low = num(x, "low");
+                bar.close = num(x, "close");
+                out.push_back(std::move(bar));
+            }
         }
     sort_bars(out);
     return out;
@@ -532,9 +544,15 @@ std::vector<PriceBar> TwelveDataProvider::history(const std::string &s, int days
     std::vector<PriceBar> out;
     if (j.is_object() && j.contains("values") && j["values"].is_array())
         for (auto &x : j["values"]) {
-            auto p = num(x, "close");
-            if (p && *p > 0)
-                out.push_back({str(x, "datetime"), *p, "Twelve Data", {}});
+            auto close = num(x, "close");
+            if (close && *close > 0) {
+                PriceBar bar{str(x, "datetime"), *close, "Twelve Data", {}};
+                bar.open = num(x, "open");
+                bar.high = num(x, "high");
+                bar.low = num(x, "low");
+                bar.close = close;
+                out.push_back(std::move(bar));
+            }
         }
     sort_bars(out);
     return out;
