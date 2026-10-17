@@ -91,7 +91,10 @@ function renderSnapshot(s) {
   const row=([label,key,value])=>{const origin=s.metricSources?.[key];return `<div class="financial-row"><span>${esc(label)}${origin?`<small class="provenance">${esc(origin.source)} · ${esc(origin.basis)} · ${esc(origin.period||'período não fornecido')}</small>`:''}</span><b>${esc(value)}</b></div>`;};
   $('#financialTable').innerHTML=metrics.map(row).join('');$('#valuationMetrics').innerHTML=metrics.slice(0,2).map(row).join('');
   renderPosition(s);drawChart(s.history,s.currency);
-  notify((s.warnings||[]).join(' '),!s.available);
+  const warnings=(s.warnings||[]);
+  const nonBlocking=warnings.filter(w=>s.price!=null&&(/Fundamentais indisponíveis/i.test(w)||/plano ou as permissões/i.test(w)));
+  const blocking=warnings.filter(w=>!nonBlocking.includes(w));
+  notify(blocking.join(' '),!s.available);
 }
 async function loadSnapshot(symbol) {
   symbol=symbol.trim().toUpperCase(); if(!validSymbol(symbol)){notify('Ticker inválido.',true);return;}
