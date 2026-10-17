@@ -238,23 +238,27 @@ int main() {
         CHECK(!ir::valid_symbol("<script>"));
         CHECK(ir::valid_symbol("AIR.PA"));
     });
-    test("unknown quote currency is never inferred from reporting currency", [] {
+    test("listing suffix supplies quote currency without using reporting currency", [] {
         ir::ResearchConfig c;
         c.demo = false;
         c.eodhd_key = "fixture";
         ir::ResearchService service(c, [](const std::string &url) -> std::string {
             if (url.find("real-time") != url.npos)
                 return R"({"close":188})";
+            // Simulate the free plan: listing metadata/fundamentals are unavailable.
             if (url.find("filter=") != url.npos)
                 return "{}";
             if (url.find("fundamentals") != url.npos)
-                return R"({"General":{"CurrencyCode":"EUR"},"Highlights":{"PERatio":20,"QuarterlyRevenueGrowthYOY":0.1,"QuarterlyEarningsGrowthYOY":0.1,"ReturnOnEquityTTM":0.1}})";
+                return R"({"General":{"CurrencyCode":"USD"},"Financials":{"Income_Statement":{"currency_symbol":"USD"}},"Highlights":{"PERatio":20}})";
             return "[]";
         });
         auto j = service.snapshot("AIR.PA");
-        CHECK(j["currency"] == "");
-        CHECK(j["reportingCurrency"] == "");
+        // AIR.PA is a Paris listing, so the quote currency can safely fall back to EUR.
+        // The USD reporting/fundamental payload must not override the listing currency.
+        CHECK(j["currency"] == "EUR");
+        CHECK(j["reportingCurrency"] == "USD");
         CHECK(j["price"] == 188);
+        // Currency mismatch keeps monetary valuation disabled.
         CHECK(j["fairLow"].is_null());
     });
     test("connection tests skip missing keys and never probe demo", [] {
