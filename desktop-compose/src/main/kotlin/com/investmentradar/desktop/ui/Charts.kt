@@ -14,16 +14,15 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.awaitPointerEvent
-import androidx.compose.ui.input.pointer.awaitPointerEventScope
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.investmentradar.desktop.format.FinancialFormatter
 import com.investmentradar.desktop.model.AllocationSlice
 import com.investmentradar.desktop.model.HistoryPointDto
-import kotlinx.coroutines.isActive
-import kotlin.math.max
 
 @Composable
 fun Sparkline(values:List<Double>, positive:Boolean, modifier:Modifier=Modifier){
@@ -52,17 +51,19 @@ fun AreaLineChart(
 ){
     val points=remember(rows){rows.filter{it.price!=null}.map{it.label to it.price!!}}
     var hover by remember{mutableStateOf<Int?>(null)}
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     Box(modifier.background(RadarColors.Panel)){
         Canvas(
-            Modifier.fillMaxSize().pointerInput(points){
-                awaitPointerEventScope{
-                    while(isActive){
-                        val event=awaitPointerEvent()
-                        val pos=event.changes.firstOrNull()?.position ?: continue
-                        hover=if(points.isEmpty())null else ((pos.x/size.width)*(points.size-1)).toInt().coerceIn(points.indices)
-                    }
+            Modifier
+                .fillMaxSize()
+                .onSizeChanged { canvasSize = it }
+                .onPointerEvent(PointerEventType.Move) { event ->
+                    val width = canvasSize.width.toFloat()
+                    val x = event.changes.firstOrNull()?.position?.x
+                    hover = if (points.isEmpty() || width <= 0f || x == null) null
+                    else ((x / width) * (points.size - 1)).toInt().coerceIn(points.indices)
                 }
-            }
+                .onPointerEvent(PointerEventType.Exit) { hover = null }
         ){
             repeat(5){i->
                 val y=size.height*i/4f
