@@ -10,13 +10,17 @@
 <aside class="sidebar">
   <div class="brand"><span class="logo">IR</span><div><strong>Investment Radar</strong><small>Native intelligence</small></div></div>
   <nav>
-    <button class="nav active" data-view="dashboard"><span>◫</span>Dashboard</button>
-    <button class="nav" data-view="portfolio"><span>◈</span>Portfolio</button>
-    <button class="nav" data-view="watchlist"><span>★</span>Watchlist</button>
-    <button class="nav" data-view="screener"><span>⌁</span>Screener</button>
-    <button class="nav" data-view="calendar"><span>□</span>Events</button>
-    <button class="nav" data-view="providers"><span>⇄</span>Providers</button>
-    <button class="nav" data-view="settings"><span>⚙</span>Settings</button>
+    <span class="nav-group">MAIN</span>
+    <button class="nav active" data-view="dashboard"><span class="nav-icon">⌂</span><b>Dashboard</b></button>
+    <button class="nav" data-view="asset"><span class="nav-icon">◉</span><b>Asset</b></button>
+    <button class="nav" data-view="portfolio"><span class="nav-icon">◆</span><b>Portfolio</b></button>
+    <button class="nav" data-view="watchlist"><span class="nav-icon">★</span><b>Watchlist</b></button>
+    <button class="nav" data-view="screener"><span class="nav-icon">⌕</span><b>Screener</b></button>
+    <span class="nav-group">MARKETS</span>
+    <button class="nav" data-view="calendar"><span class="nav-icon">▣</span><b>Events</b></button>
+    <span class="nav-group">SYSTEM</span>
+    <button class="nav" data-view="providers"><span class="nav-icon">⇄</span><b>Providers</b></button>
+    <button class="nav" data-view="settings"><span class="nav-icon">⚙</span><b>Settings</b></button>
   </nav>
   <div class="connection"><i></i><div><strong id="providerStatus">A iniciar…</strong><small id="runtime">—</small></div></div>
 </aside>
@@ -35,9 +39,15 @@
     <div><small>Next event</small><strong id="nextEvent">—</strong><span id="nextEventTicker">—</span></div>
   </div>
 
-  <article class="card live-setup"><div><p class="eyebrow">LIGAÇÃO AOS MERCADOS</p><h3 id="dataReadiness">A verificar providers…</h3><p id="dataReadinessDetail" class="note"></p></div><div class="live-actions"><button id="openProviders" class="primary">Configurar providers</button><button id="refreshMarket">Atualizar dados</button></div></article>
-  <article class="card"><div class="card-head"><div><p class="eyebrow">RADAR DE MERCADO</p><h3>A tua watchlist</h3></div><span class="pill" id="radarMode">—</span></div><div id="radarWatch" class="watch-grid"></div><p class="note">Abre um ativo para carregar fundamentais e score. Cotações e histórico podem ser diferidos, consoante o plano.</p></article>
 
+  <div class="dashboard-grid">
+    <article class="card dashboard-watch"><div class="card-head"><div><p class="eyebrow">WATCHLIST</p><h3>Mercado acompanhado</h3></div><button class="text-action" data-action="open-watchlist">Ver tudo</button></div><div id="radarWatch" class="watch-list"></div><p class="note">Seleciona um ativo para abrir a análise detalhada.</p></article>
+    <article class="card dashboard-side"><div class="card-head"><div><p class="eyebrow">DATA HEALTH</p><h3>Estado dos dados</h3></div><span class="pill" id="radarMode">—</span></div><div class="health-row"><span>Modo</span><strong id="dashDataMode">—</strong></div><div class="health-row"><span>Provider</span><strong id="dashProvider">—</strong></div><div class="health-row"><span>Fundamentals</span><strong id="dashFundamentals">—</strong></div><button id="openProviders" class="secondary wide">Configurar providers</button></article>
+  </div>
+</section>
+
+<section id="asset" class="view">
+  <div class="page-head asset-page-head"><div><p class="eyebrow">ASSET ANALYSIS</p><h2>Análise do ativo</h2></div><button id="refreshMarket" class="secondary">Atualizar</button></div>
   <article class="asset-head card">
     <div class="asset-id"><div class="avatar" id="assetAvatar">A</div><div><div class="line"><h2 id="assetName">Airbus SE</h2><span class="sector" id="assetSector">Aerospace & Defence</span></div><p><span id="assetTicker">AIR.PA</span> · <span id="assetCurrency">EUR</span></p></div></div>
     <div class="asset-quote"><strong id="assetPrice">—</strong><span id="assetChange">—</span></div>
@@ -65,6 +75,7 @@
   <div id="tab-valuation" class="asset-panel"><div class="grid g2"><article class="card valuation-card"><div class="card-head"><div><p class="eyebrow">PRICE ZONES</p><h3>Valuation range</h3></div><span id="valuationPill" class="zone-pill">—</span></div><div class="valuation-scale"><div class="buy">BUY</div><div class="fair">FAIR</div><div class="exp">EXPENSIVE</div><i id="valuationMarker"></i></div><div class="zone-labels"><span id="buyBelow">—</span><span id="fairBand">—</span><span id="expensiveAbove">—</span></div><p class="note">Modelo heurístico transparente. Não é ainda DCF nem substitui análise do negócio.</p></article><article class="card"><div class="card-head"><div><p class="eyebrow">MULTIPLES</p><h3>Current valuation</h3></div></div><div id="valuationMetrics"></div></article></div></div>
   <div id="tab-news" class="asset-panel"><article class="card"><h3>Notícias</h3><div id="assetNews"></div></article></div>
   <div id="tab-earnings" class="asset-panel"><article class="card"><div class="card-head"><div><p class="eyebrow">CATALYSTS</p><h3>Upcoming earnings</h3></div></div><div id="assetEarnings"></div></article></div>
+
 </section>
 
 <section id="portfolio" class="view"><div class="page-head"><div><p class="eyebrow">YOUR MONEY</p><h2>Portfolio</h2></div><button id="addPosition" class="primary">+ Position</button></div><div class="grid g3 summary-cards"><div class="card stat"><small>Invested</small><strong id="pfInvested">—</strong></div><div class="card stat"><small>Current value</small><strong id="pfCurrent">—</strong></div><div class="card stat"><small>P/L</small><strong id="pfPL">—</strong></div></div><article class="card"><div id="portfolioTable"></div></article></section>
