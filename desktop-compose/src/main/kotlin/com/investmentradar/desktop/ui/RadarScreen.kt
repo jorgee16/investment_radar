@@ -1,126 +1,148 @@
 package com.investmentradar.desktop.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.investmentradar.desktop.format.FinancialFormatter
-import com.investmentradar.desktop.model.RadarIntent
-import com.investmentradar.desktop.model.RadarUiState
+import com.investmentradar.desktop.model.*
 
 @Composable
 fun RadarScreen(state:RadarUiState,onIntent:(RadarIntent)->Unit){
     Row(Modifier.fillMaxSize().background(RadarColors.Background)){
-        WatchlistPanel(state.watchlist,state.selectedSymbol,{onIntent(RadarIntent.SelectTicker(it))},Modifier.width(292.dp).fillMaxHeight())
+        AppNavigation(state.page,onIntent)
         Box(Modifier.width(1.dp).fillMaxHeight().background(RadarColors.Border))
         Column(Modifier.weight(1f).fillMaxHeight()){
-            TopBar(state,{onIntent(RadarIntent.Refresh)})
-            state.error?.let{
-                Text(it,color=RadarColors.Negative,fontSize=10.sp,modifier=Modifier.padding(horizontal=16.dp,vertical=6.dp))
+            AppTopBar(state,onIntent)
+            state.error?.takeIf{it.isNotBlank()}?.let{
+                Text(
+                    it,
+                    color=RadarColors.Negative,
+                    fontSize=10.sp,
+                    modifier=Modifier.fillMaxWidth().background(RadarColors.Panel).padding(horizontal=14.dp,vertical=7.dp)
+                )
             }
-            val asset=state.selected
-            if(asset==null){
-                Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
-                    Text(if(state.loading)"Loading market data…" else "Select an asset",color=RadarColors.TextMuted)
+            when(state.page){
+                AppPage.RADAR -> Row(Modifier.fillMaxSize()){
+                    WatchlistPanel(
+                        state.watchlist,
+                        state.selectedSymbol,
+                        {onIntent(RadarIntent.SelectTicker(it))},
+                        Modifier.width(292.dp).fillMaxHeight()
+                    )
+                    Box(Modifier.width(1.dp).fillMaxHeight().background(RadarColors.Border))
+                    AssetWorkspace(state,onIntent,Modifier.weight(1f).fillMaxHeight())
                 }
-            }else{
-                AssetHeader(state)
-                AreaLineChart(asset.history,asset.currency,Modifier.weight(1f).fillMaxWidth().padding(12.dp))
+                AppPage.PORTFOLIO -> PortfolioPage(state,onIntent)
+                AppPage.WATCHLIST -> WatchlistPage(state,onIntent)
+                AppPage.SCREENER -> ScreenerPage(state,onIntent)
+                AppPage.EVENTS -> EventsPage(state)
+                AppPage.PROVIDERS -> ProvidersPage(state,onIntent)
+                AppPage.SETTINGS -> SettingsPage(state)
             }
         }
-        Box(Modifier.width(1.dp).fillMaxHeight().background(RadarColors.Border))
-        Column(Modifier.width(310.dp).fillMaxHeight().background(RadarColors.Panel)){
-            AllocationPanel(state,Modifier.weight(1f).fillMaxWidth())
-            Box(Modifier.fillMaxWidth().height(1.dp).background(RadarColors.Border))
-            DataPanel(state,Modifier.weight(1f).fillMaxWidth())
-        }
     }
 }
 
 @Composable
-private fun TopBar(state:RadarUiState,onRefresh:()->Unit){
+private fun AppNavigation(page:AppPage,onIntent:(RadarIntent)->Unit){
+    val items=listOf(
+        AppPage.RADAR to "Radar",
+        AppPage.PORTFOLIO to "Portfolio",
+        AppPage.WATCHLIST to "Watchlist",
+        AppPage.SCREENER to "Screener",
+        AppPage.EVENTS to "Events",
+        AppPage.PROVIDERS to "Providers",
+        AppPage.SETTINGS to "Settings"
+    )
+    Column(
+        Modifier.width(106.dp).fillMaxHeight().background(RadarColors.Panel).padding(vertical=12.dp),
+        horizontalAlignment=Alignment.CenterHorizontally
+    ){
+        Box(
+            Modifier.size(42.dp).background(RadarColors.Accent),
+            contentAlignment=Alignment.Center
+        ){
+            Text("IR",color=RadarColors.Background,fontWeight=FontWeight.Black,fontSize=12.sp)
+        }
+        Spacer(Modifier.height(18.dp))
+        items.forEach{(target,label)->
+            val selected=target==page
+            Box(
+                Modifier.fillMaxWidth().height(48.dp)
+                    .background(if(selected)RadarColors.Selected else RadarColors.Panel)
+                    .clickable{onIntent(RadarIntent.Navigate(target))}
+                    .padding(horizontal=10.dp),
+                contentAlignment=Alignment.CenterStart
+            ){
+                Text(
+                    label,
+                    color=if(selected)RadarColors.Text else RadarColors.TextMuted,
+                    fontSize=9.sp,
+                    fontWeight=if(selected)FontWeight.SemiBold else FontWeight.Normal
+                )
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Text("C++",color=RadarColors.TextMuted,fontSize=8.sp)
+    }
+}
+
+@Composable
+private fun AppTopBar(state:RadarUiState,onIntent:(RadarIntent)->Unit){
+    var search by remember(state.selectedSymbol){mutableStateOf(state.selectedSymbol)}
     Row(
-        Modifier.fillMaxWidth().height(54.dp).background(RadarColors.Panel).padding(horizontal=16.dp),
+        Modifier.fillMaxWidth().height(58.dp).background(RadarColors.Panel).padding(horizontal=14.dp),
         verticalAlignment=Alignment.CenterVertically
     ){
-        Text("Investment Radar",color=RadarColors.Text,fontWeight=FontWeight.Bold,fontSize=13.sp)
+        Text(
+            when(state.page){
+                AppPage.RADAR -> "Investment Radar"
+                AppPage.PORTFOLIO -> "Portfolio"
+                AppPage.WATCHLIST -> "Watchlist"
+                AppPage.SCREENER -> "Screener"
+                AppPage.EVENTS -> "Events"
+                AppPage.PROVIDERS -> "Providers & routing"
+                AppPage.SETTINGS -> "Settings"
+            },
+            color=RadarColors.Text,
+            fontWeight=FontWeight.Bold,
+            fontSize=13.sp
+        )
         Spacer(Modifier.weight(1f))
-        Text(state.status.mode.uppercase(),color=if(state.status.live)RadarColors.Positive else RadarColors.TextMuted,fontSize=9.sp)
+        if(state.page==AppPage.RADAR){
+            OutlinedTextField(
+                value=search,
+                onValueChange={search=it.uppercase()},
+                modifier=Modifier.width(240.dp),
+                singleLine=true,
+                textStyle=LocalTextStyle.current.copy(fontSize=10.sp),
+                placeholder={Text("Ticker / company",fontSize=9.sp)},
+                keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),
+                keyboardActions=KeyboardActions(onSearch={
+                    onIntent(RadarIntent.SelectTicker(search))
+                })
+            )
+            Spacer(Modifier.width(12.dp))
+        }
+        Text(
+            if(state.status.mode=="demo")"DEMO" else if(state.status.live)"LIVE" else "LIVE · NOT VALIDATED",
+            color=when{
+                state.status.mode=="demo"->RadarColors.TextMuted
+                state.status.live->RadarColors.Positive
+                else->RadarColors.Negative
+            },
+            fontSize=8.sp
+        )
         Spacer(Modifier.width(12.dp))
-        TextButton(onClick=onRefresh){Text("Refresh",fontSize=10.sp)}
-    }
-}
-
-@Composable
-private fun AssetHeader(state:RadarUiState){
-    val a=state.selected?:return
-    val changeColor=when{
-        a.changePct==null->RadarColors.TextMuted
-        a.changePct>=0->RadarColors.Positive
-        else->RadarColors.Negative
-    }
-    Row(
-        Modifier.fillMaxWidth().height(82.dp).background(RadarColors.Panel).padding(horizontal=16.dp),
-        verticalAlignment=Alignment.CenterVertically
-    ){
-        Column{
-            Text(a.name.ifBlank{a.symbol},color=RadarColors.Text,fontSize=18.sp,fontWeight=FontWeight.Bold)
-            Text("${a.symbol}  ·  ${a.sector?:"—"}",color=RadarColors.TextMuted,fontSize=10.sp)
-        }
-        Spacer(Modifier.weight(1f))
-        Column(horizontalAlignment=Alignment.End){
-            Text(FinancialFormatter.price(a.price,a.currency),color=RadarColors.Text,fontFamily=FontFamily.Monospace,fontSize=22.sp,fontWeight=FontWeight.Bold)
-            Text(FinancialFormatter.percent(a.changePct),color=changeColor,fontFamily=FontFamily.Monospace,fontSize=10.sp)
-        }
-        Spacer(Modifier.width(24.dp))
-        Column(horizontalAlignment=Alignment.End){
-            Text(a.score?.let{"${"%.0f".format(it)}/100"}?:"N/A",color=RadarColors.Accent,fontFamily=FontFamily.Monospace,fontSize=14.sp)
-            Text(a.zone,color=RadarColors.TextMuted,fontSize=9.sp)
-        }
-    }
-}
-
-@Composable
-private fun AllocationPanel(state:RadarUiState,modifier:Modifier){
-    Column(modifier.background(RadarColors.Panel)){
-        PanelTitle("PORTFOLIO","Asset allocation")
-        AllocationDonut(state.allocation,Modifier.fillMaxSize())
-    }
-}
-
-@Composable
-private fun DataPanel(state:RadarUiState,modifier:Modifier){
-    val a=state.selected
-    Column(modifier.background(RadarColors.Panel)){
-        PanelTitle("ANALYSIS","Data coverage")
-        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-            KeyValue("Coverage",a?.let{"${"%.0f".format(it.coverage)}%"}?:"—")
-            KeyValue("Score",a?.score?.let{"%.0f".format(it)}?:"—")
-            KeyValue("Zone",a?.zone?:"—")
-            KeyValue("Provider mode",state.status.mode)
-            if(!state.status.live) Text("Live fundamentals depend on the configured provider plan.",color=RadarColors.TextMuted,fontSize=9.sp)
-        }
-    }
-}
-
-@Composable
-private fun PanelTitle(kicker:String,title:String){
-    Column(Modifier.fillMaxWidth().padding(14.dp)){
-        Text(kicker,color=RadarColors.TextMuted,fontSize=8.sp)
-        Text(title,color=RadarColors.Text,fontWeight=FontWeight.SemiBold,fontSize=12.sp)
-    }
-}
-
-@Composable
-private fun KeyValue(label:String,value:String){
-    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){
-        Text(label,color=RadarColors.TextMuted,fontSize=10.sp)
-        Text(value,color=RadarColors.Text,fontFamily=FontFamily.Monospace,fontSize=10.sp)
+        TextButton(onClick={onIntent(RadarIntent.Refresh)}){Text("Refresh",fontSize=9.sp)}
     }
 }
