@@ -15,7 +15,7 @@ class RadarViewModel(
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
     private val _state=MutableStateFlow(RadarUiState())
     val state:StateFlow<RadarUiState> = _state.asStateFlow()
-    init{refresh()}
+    init{refresh();startPriceLoop()}
 
     fun dispatch(intent:RadarIntent)=when(intent){
         is RadarIntent.SelectTicker -> select(intent.symbol)
@@ -44,6 +44,25 @@ class RadarViewModel(
             runCatching{repository.snapshot(symbol)}
                 .onSuccess{snapshot->_state.update{it.copy(selected=snapshot,loading=false)}}
                 .onFailure{e->_state.update{it.copy(loading=false,error=e.message)}}
+        }
+    }
+
+
+    private fun startPriceLoop(){
+        scope.launch{
+            while(isActive){
+                delay(5000)
+                val current=_state.value
+                if(current.watchlist.isEmpty()) continue
+                val updated=current.watchlist.map{item->
+                    async(Dispatchers.IO){
+                        runCatching{repository.quote(item.symbol)}.getOrNull()?.let{q->
+                            item.copy(price=q.price,currency=q.currency,changePct=q.changePct,name=q.name.ifBlank{item.name})
+                        } ?: item
+                    }
+                }.awaitAll()
+                _state.update{it.copy(watchlist=updated)}
+            }
         }
     }
 
