@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -43,6 +44,7 @@ fun Sparkline(values:List<Double>, positive:Boolean, modifier:Modifier=Modifier)
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun AreaLineChart(
     rows:List<HistoryPointDto>,
