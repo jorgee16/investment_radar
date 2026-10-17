@@ -31,6 +31,7 @@ fun RadarScreen(state:RadarUiState,onIntent:(RadarIntent)->Unit){
                 )
             }
             when(state.page){
+                AppPage.DASHBOARD -> DashboardPage(state,onIntent)
                 AppPage.RADAR -> Row(Modifier.fillMaxSize()){
                     WatchlistPanel(
                         state.watchlist,
@@ -55,7 +56,8 @@ fun RadarScreen(state:RadarUiState,onIntent:(RadarIntent)->Unit){
 @Composable
 private fun AppNavigation(page:AppPage,onIntent:(RadarIntent)->Unit){
     val items=listOf(
-        AppPage.RADAR to "Radar",
+        AppPage.DASHBOARD to "Dashboard",
+        AppPage.RADAR to "Asset",
         AppPage.PORTFOLIO to "Portfolio",
         AppPage.WATCHLIST to "Watchlist",
         AppPage.SCREENER to "Screener",
@@ -105,7 +107,8 @@ private fun AppTopBar(state:RadarUiState,onIntent:(RadarIntent)->Unit){
     ){
         Text(
             when(state.page){
-                AppPage.RADAR -> "Investment Radar"
+                AppPage.DASHBOARD -> "Dashboard"
+                AppPage.RADAR -> "Asset analysis"
                 AppPage.PORTFOLIO -> "Portfolio"
                 AppPage.WATCHLIST -> "Watchlist"
                 AppPage.SCREENER -> "Screener"
@@ -118,7 +121,7 @@ private fun AppTopBar(state:RadarUiState,onIntent:(RadarIntent)->Unit){
             fontSize=13.sp
         )
         Spacer(Modifier.weight(1f))
-        if(state.page==AppPage.RADAR){
+        if(state.page==AppPage.RADAR || state.page==AppPage.DASHBOARD){
             OutlinedTextField(
                 value=search,
                 onValueChange={search=it.uppercase()},
