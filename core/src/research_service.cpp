@@ -271,7 +271,13 @@ json ResearchService::snapshot(const std::string &s) {
     auto ev = json::parse(evaluation_json(evaluate(m)));
     json hist = json::array();
     for (auto &x : h)
-        hist.push_back({{"label", x.label}, {"price", x.price}, {"source", x.source}});
+        hist.push_back({{"label", x.label},
+                        {"price", x.price},
+                        {"open", nullable(x.open)},
+                        {"high", nullable(x.high)},
+                        {"low", nullable(x.low)},
+                        {"close", nullable(x.close)},
+                        {"source", x.source}});
     json metadata = json::object();
     auto append = [&](const Provenance &p) {
         for (auto &[k, v] : p)
