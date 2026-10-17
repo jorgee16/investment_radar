@@ -32,12 +32,13 @@ fun RadarScreen(state:RadarUiState,onIntent:(RadarIntent)->Unit){
             }else{
                 AssetHeader(state)
                 AreaLineChart(asset.history,asset.currency,Modifier.weight(1f).fillMaxWidth().padding(12.dp))
-                Row(Modifier.height(235.dp).fillMaxWidth().padding(horizontal=12.dp,vertical=0.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){
-                    AllocationPanel(state,Modifier.weight(1f).fillMaxHeight())
-                    DataPanel(state,Modifier.weight(1f).fillMaxHeight())
-                }
-                Spacer(Modifier.height(12.dp))
             }
+        }
+        Box(Modifier.width(1.dp).fillMaxHeight().background(RadarColors.Border))
+        Column(Modifier.width(310.dp).fillMaxHeight().background(RadarColors.Panel)){
+            AllocationPanel(state,Modifier.weight(1f).fillMaxWidth())
+            Box(Modifier.fillMaxWidth().height(1.dp).background(RadarColors.Border))
+            DataPanel(state,Modifier.weight(1f).fillMaxWidth())
         }
     }
 }
