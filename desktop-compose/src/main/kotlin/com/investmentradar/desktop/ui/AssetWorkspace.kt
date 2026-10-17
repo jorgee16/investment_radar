@@ -151,13 +151,30 @@ private fun ChartPanel(state:RadarUiState,onIntent:(RadarIntent)->Unit,modifier:
                     CircularProgressIndicator(Modifier.size(13.dp),strokeWidth=1.5.dp,color=RadarColors.Accent)
                 }
             }
-            Box(Modifier.weight(1f).fillMaxWidth().padding(8.dp)){
+            Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal=8.dp,vertical=6.dp)){
                 if(history.isEmpty()){
                     Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
                         Text("No historical data for this period",color=RadarColors.TextMuted,fontSize=10.sp)
                     }
                 }else{
-                    MarketChart(history,a.currency,state.chartStyle,Modifier.fillMaxSize())
+                    MarketChart(history,a.currency,state.chartStyle,Modifier.fillMaxSize().padding(end=52.dp,bottom=22.dp))
+                    Text(
+                        FinancialFormatter.price(periodHigh,a.currency),
+                        color=RadarColors.TextMuted,fontSize=7.sp,fontFamily=FontFamily.Monospace,
+                        modifier=Modifier.align(Alignment.TopEnd).padding(top=2.dp)
+                    )
+                    Text(
+                        FinancialFormatter.price(periodLow,a.currency),
+                        color=RadarColors.TextMuted,fontSize=7.sp,fontFamily=FontFamily.Monospace,
+                        modifier=Modifier.align(Alignment.BottomEnd).padding(bottom=24.dp)
+                    )
+                    Row(
+                        Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(right=56.dp),
+                        horizontalArrangement=Arrangement.SpaceBetween
+                    ){
+                        Text(history.firstOrNull()?.label.orEmpty(),color=RadarColors.TextMuted,fontSize=7.sp,fontFamily=FontFamily.Monospace)
+                        Text(history.lastOrNull()?.label.orEmpty(),color=RadarColors.TextMuted,fontSize=7.sp,fontFamily=FontFamily.Monospace)
+                    }
                 }
             }
         }
