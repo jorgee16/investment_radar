@@ -9,6 +9,10 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.widget.FrameLayout
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
@@ -63,7 +67,16 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settings = SecureSettings(this); cache = ApiCache(this); http = HttpClient(cache)
-        web = WebView(this); setContentView(web)
+        web = WebView(this)
+        // Keep WebView inside the system bars and display cutout on Android 15+.
+        val container = FrameLayout(this)
+        container.addView(web, FrameLayout.LayoutParams(-1, -1))
+        ViewCompat.setOnApplyWindowInsetsListener(container) { view, insets ->
+            val safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            view.updatePadding(left = safe.left, top = safe.top, right = safe.right, bottom = safe.bottom)
+            insets
+        }
+        setContentView(container)
         val loader = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this)).build()
         web.settings.apply { javaScriptEnabled = true; domStorageEnabled = true; allowFileAccess = false; allowContentAccess = false; setSupportMultipleWindows(false) }
         web.webViewClient = object : WebViewClientCompat() {

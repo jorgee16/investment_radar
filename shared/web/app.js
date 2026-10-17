@@ -37,8 +37,8 @@ class RouterWidget extends Widget {
   navigate(view,payload={}){
     if(!document.getElementById(view)) return;
     this.current=view;
-    $('.view').forEach(v=>v.classList.toggle('active',v.id===view));
-    $('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
+    $$('.view').forEach(v=>v.classList.toggle('active',v.id===view));
+    $$('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
     setText('#viewTitle',view==='asset'?(state.snap?.name||state.current):view[0].toUpperCase()+view.slice(1));
     this.ctx.events.emit('route:changed',{view,...payload});
   }
@@ -267,7 +267,7 @@ async function renderWatch(target='#watchGrid',filter=()=>true) {
   if(epoch!==dataEpoch||request!==watchRequest)return;
   $(target).innerHTML=cards.join('')||'<p class="note">Sem resultados. Adiciona ativos à watchlist ou configura os providers.</p>';
   setText('#opportunityCount',knownScores?opportunities:'—');setText('#watchCount',state.watch.length);setText('#topWatchCount',state.watch.length);
-  $(target+' [data-w]').forEach(e=>{e.onclick=ev=>{if(ev.target.matches('[data-rw]'))return;events.emit('asset:selected',{symbol:e.dataset.w});};e.onkeydown=ev=>{if(ev.key==='Enter')e.click();};});
+  $$(target+' [data-w]').forEach(e=>{e.onclick=ev=>{if(ev.target.matches('[data-rw]'))return;events.emit('asset:selected',{symbol:e.dataset.w});};e.onkeydown=ev=>{if(ev.key==='Enter')e.click();};});
   if(target==='#watchGrid')$$('[data-rw]').forEach(b=>b.onclick=e=>{e.stopPropagation();state.watch.splice(+b.dataset.rw,1);localStorage.setItem('ir_watch',JSON.stringify(state.watch));guarded(()=>renderWatch())();});
 }
 const eventRow=r=>`<div class="event"><div class="date">${esc(r.date)}</div><strong>${esc(r.symbol)}</strong><div class="kind">${esc(r.kind)}</div><span>${esc(r.note)} · ${esc(r.source)}</span></div>`;
