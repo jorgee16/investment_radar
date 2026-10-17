@@ -67,7 +67,10 @@ jobs:
           if (-not $launcher) { throw 'Compose launcher not found' }
           $appDir = $launcher.Directory.FullName
           Copy-Item build/windows/Release/investment-radar-core-host.exe $appDir/investment-radar-core-host.exe
+          Get-ChildItem build/windows/Release -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName $appDir }
           Copy-Item -Recurse build/windows/Release/assets $appDir/assets
+          if (-not (Test-Path "$appDir/investment-radar-core-host.exe")) { throw 'Native core host missing from Compose package' }
+          if (-not (Test-Path "$appDir/assets/index.html")) { throw 'Native host assets missing from Compose package' }
           $composeOut = 'dist/windows/investment-radar-compose-windows-x64'
           Remove-Item -Recurse -Force $composeOut -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $composeOut | Out-Null
