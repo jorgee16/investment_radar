@@ -243,6 +243,23 @@ json ResearchService::providers() const {
     }
     return out;
 }
+json ResearchService::history(const std::string &s, int days) {
+    if (!valid_symbol(s))
+        throw std::invalid_argument("Invalid symbol");
+    active().clear_diagnostics();
+    auto h = active().history(s, days);
+    json out = json::array();
+    for (auto &x : h)
+        out.push_back({{"label", x.label},
+                       {"price", x.price},
+                       {"open", nullable(x.open)},
+                       {"high", nullable(x.high)},
+                       {"low", nullable(x.low)},
+                       {"close", nullable(x.close)},
+                       {"source", x.source}});
+    return out;
+}
+
 json ResearchService::snapshot(const std::string &s) {
     if (!valid_symbol(s))
         throw std::invalid_argument("Invalid symbol");
