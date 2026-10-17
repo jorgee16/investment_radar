@@ -32,6 +32,8 @@ class RadarViewModel(
             is RadarIntent.SelectTicker -> select(intent.symbol)
             is RadarIntent.Navigate -> navigate(intent.page)
             is RadarIntent.SelectAssetTab -> selectTab(intent.tab)
+            is RadarIntent.SelectChartRange -> selectChartRange(intent.range)
+            is RadarIntent.SelectChartStyle -> _state.update{it.copy(chartStyle=intent.style)}
             is RadarIntent.AddWatch -> addWatch(intent.symbol)
             is RadarIntent.RemoveWatch -> removeWatch(intent.symbol)
             is RadarIntent.AddPosition -> addPosition(intent.position)
@@ -102,7 +104,7 @@ class RadarViewModel(
         _state.update{it.copy(selectedSymbol=symbol,page=AppPage.RADAR,loading=true,error=null)}
         scope.launch{
             val quoteDeferred=async(Dispatchers.IO){runCatching{repository.quote(symbol)}.getOrNull()}
-            val historyDeferred=async(Dispatchers.IO){runCatching{repository.history(symbol,180)}.getOrDefault(emptyList())}
+            val historyDeferred=async(Dispatchers.IO){runCatching{repository.history(symbol,daysFor(_state.value.chartRange))}.getOrDefault(emptyList())}
             val quote=quoteDeferred.await()
             val history=historyDeferred.await()
 
@@ -153,6 +155,35 @@ class RadarViewModel(
         if(page==AppPage.EVENTS || page==AppPage.DASHBOARD) loadEvents()
         if(page==AppPage.SCREENER) loadWatchAnalysis()
         if(page==AppPage.RADAR && _state.value.selected==null) select(_state.value.selectedSymbol)
+    }
+
+    private fun selectChartRange(range:ChartRange){
+        if(range==_state.value.chartRange) return
+        _state.update{it.copy(chartRange=range,chartLoading=true)}
+        val symbol=_state.value.selectedSymbol
+        scope.launch(Dispatchers.IO){
+            val rows=runCatching{repository.history(symbol,daysFor(range))}.getOrDefault(emptyList())
+            _state.update{state->
+                if(state.selectedSymbol!=symbol) state
+                else state.copy(
+                    chartLoading=false,
+                    selected=state.selected?.copy(history=rows) ?: state.selected
+                )
+            }
+        }
+    }
+
+    private fun daysFor(range:ChartRange):Int = when(range){
+        ChartRange.ONE_MONTH -> 31
+        ChartRange.THREE_MONTHS -> 93
+        ChartRange.SIX_MONTHS -> 186
+        ChartRange.YTD -> {
+            val now=java.time.LocalDate.now()
+            java.time.temporal.ChronoUnit.DAYS.between(now.withDayOfYear(1),now).toInt().coerceAtLeast(1)+1
+        }
+        ChartRange.ONE_YEAR -> 366
+        ChartRange.FIVE_YEARS -> 1826
+        ChartRange.MAX -> 5000
     }
 
     private fun selectTab(tab:AssetTab){
