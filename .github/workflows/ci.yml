@@ -48,6 +48,31 @@ jobs:
       - name: Package app and runtime libraries
         shell: pwsh
         run: ./scripts/package-windows.ps1
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile Compose desktop
+        shell: pwsh
+        run: .\android\gradlew.bat -p desktop-compose --no-daemon compileKotlin
+      - name: Create Compose desktop distributable
+        shell: pwsh
+        run: .\android\gradlew.bat -p desktop-compose --no-daemon createDistributable
+      - name: Bundle native C++ host with Compose desktop
+        shell: pwsh
+        run: |
+          $launcher = Get-ChildItem -Path desktop-compose/build/compose/binaries/main/app -Filter '*.exe' -Recurse |
+            Where-Object { $_.Name -like 'Investment Radar*' } |
+            Select-Object -First 1
+          if (-not $launcher) { throw 'Compose launcher not found' }
+          $appDir = $launcher.Directory.FullName
+          Copy-Item build/windows/Release/investment-radar-core-host.exe $appDir/investment-radar-core-host.exe
+          Copy-Item -Recurse build/windows/Release/assets $appDir/assets
+          $composeOut = 'dist/windows/investment-radar-compose-windows-x64'
+          Remove-Item -Recurse -Force $composeOut -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $composeOut | Out-Null
+          Copy-Item -Recurse (Split-Path $launcher.FullName -Parent)/* $composeOut/
+          Compress-Archive -Path "$composeOut/*" -DestinationPath dist/windows/investment-radar-compose-windows-x64.zip -Force
       - name: Test extracted package independently of the build folder
         shell: pwsh
         run: |
@@ -55,6 +80,16 @@ jobs:
           Expand-Archive -LiteralPath dist/windows/investment-radar-windows-x64.zip -DestinationPath $packageTest
           python scripts/smoke.py "$packageTest/investment-radar-windows-x64/investment-radar.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-radar-compose-windows
+          if-no-files-found: error
+          path: dist/windows/investment-radar-compose-windows-x64/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-radar-compose-windows-zip
+          if-no-files-found: error
+          path: dist/windows/investment-radar-compose-windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: investment-radar-windows
