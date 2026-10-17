@@ -94,6 +94,7 @@ data class RadarUiState(
     val watchSymbols:List<String> = listOf("AIR.PA","VUAA.DE","6AQQ.DE","JPM","GS","TSM"),
     val watchlist:List<WatchItem> = emptyList(),
     val portfolio:List<PortfolioPosition> = emptyList(),
+    val portfolioQuotes:Map<String,QuoteDto> = emptyMap(),
     val selectedSymbol:String="AIR.PA",
     val selected:SnapshotDto?=null,
     val selectedTab:AssetTab=AssetTab.OVERVIEW,
@@ -108,8 +109,12 @@ data class RadarUiState(
     val error:String?=null
 ) {
     val allocation:List<AllocationSlice>
-        get() = portfolio.groupBy { it.currency }.map { (currency, rows) ->
-            AllocationSlice(currency, rows.sumOf { it.qty * it.avg })
+        get() = portfolio.map { position ->
+            val quote=portfolioQuotes[position.symbol]
+            val value=if(quote?.price!=null&&quote.currency==position.currency)
+                position.qty*quote.price
+            else position.qty*position.avg
+            AllocationSlice(position.symbol,value)
         }
 }
 
