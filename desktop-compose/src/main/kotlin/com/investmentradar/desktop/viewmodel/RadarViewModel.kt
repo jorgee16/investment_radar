@@ -49,8 +49,10 @@ class RadarViewModel(
                 val status=async{repository.status()}
                 val watch=async{loadWatchItems(_state.value.watchSymbols)}
                 val portfolioQuotes=async{loadPortfolioQuotes(_state.value.portfolio)}
-                val selected=async{repository.snapshot(_state.value.selectedSymbol)}
-                Quad(status.await(),watch.await(),portfolioQuotes.await(),selected.await())
+                val selected=if(_state.value.page==AppPage.RADAR)
+                    repository.snapshot(_state.value.selectedSymbol)
+                else _state.value.selected
+                Quad(status.await(),watch.await(),portfolioQuotes.await(),selected)
             }.onSuccess{meta->
                 _state.update{
                     it.copy(
@@ -61,6 +63,7 @@ class RadarViewModel(
                         selected=meta.d
                     )
                 }
+                if(_state.value.page==AppPage.DASHBOARD) loadEvents()
             }.onFailure{e->
                 _state.update{it.copy(loading=false,error=e.message?:"Unknown error")}
             }
@@ -120,6 +123,7 @@ class RadarViewModel(
         if(page==AppPage.PROVIDERS) loadProviders()
         if(page==AppPage.EVENTS || page==AppPage.DASHBOARD) loadEvents()
         if(page==AppPage.SCREENER) loadWatchAnalysis()
+        if(page==AppPage.RADAR && _state.value.selected==null) select(_state.value.selectedSymbol)
     }
 
     private fun selectTab(tab:AssetTab){
