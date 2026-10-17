@@ -169,7 +169,7 @@ private fun ChartPanel(state:RadarUiState,onIntent:(RadarIntent)->Unit,modifier:
                         modifier=Modifier.align(Alignment.BottomEnd).padding(bottom=24.dp)
                     )
                     Row(
-                        Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(right=56.dp),
+                        Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(end=56.dp),
                         horizontalArrangement=Arrangement.SpaceBetween
                     ){
                         Text(history.firstOrNull()?.label.orEmpty(),color=RadarColors.TextMuted,fontSize=7.sp,fontFamily=FontFamily.Monospace)
