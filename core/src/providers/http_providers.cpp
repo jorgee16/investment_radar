@@ -562,6 +562,276 @@ std::vector<PriceBar> FmpProvider::history(const std::string &s, int days) {
     sort_bars(out);
     return out;
 }
+ProviderDescriptor AlphaVantageProvider::descriptor() const {
+    return {"alpha",
+            "Alpha Vantage",
+            !key_.empty(),
+            false,
+            key_.empty() ? "API key required" : "Configured; connection unverified",
+            {DataCapability::Quotes, DataCapability::Fundamentals, DataCapability::Estimates,
+             DataCapability::Earnings}};
+}
+std::optional<Quote> AlphaVantageProvider::quote(const std::string &s) {
+    if (key_.empty())
+        return {};
+    const auto symbol = alpha_symbol(s);
+    auto j = request(get_, "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=" +
+                               enc(symbol) + "&apikey=" + enc(key_));
+    auto qj = object(j, "Global Quote");
+    auto p = first(qj, "05. price", "price");
+    if (!p || *p <= 0)
+        return {};
+    auto change = first(qj, "10. change percent", "change_percent");
+    std::optional<double> change_pct;
+    if (qj.contains("10. change percent") && qj["10. change percent"].is_string()) {
+        auto raw = qj["10. change percent"].get<std::string>();
+        if (!raw.empty() && raw.back() == '%')
+            raw.pop_back();
+        try {
+            change_pct = std::stod(raw);
+        } catch (...) {
+        }
+    } else if (change) {
+        change_pct = *change;
+    }
+    std::string name = s;
+    auto search = optional_request(
+        get_, "https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=" + enc(symbol) +
+                  "&apikey=" + enc(key_));
+    if (search.contains("bestMatches") && search["bestMatches"].is_array() &&
+        !search["bestMatches"].empty())
+        name = str(search["bestMatches"][0], "2. name", name);
+    return Quote{s, name, listing_currency_hint(s), *p, change_pct, 0, "Alpha Vantage", {}};
+}
+std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string &s) {
+    if (key_.empty())
+        return {};
+    const auto symbol = alpha_symbol(s);
+    auto fetch = [&](const char *fn) {
+        return optional_request(get_, "https://www.alphavantage.co/query?function=" +
+                                          std::string(fn) + "&symbol=" + enc(symbol) +
+                                          "&apikey=" + enc(key_));
+    };
+    auto income = fetch("INCOME_STATEMENT");
+    auto balance = fetch("BALANCE_SHEET");
+    auto cash = fetch("CASH_FLOW");
+    auto earnings = fetch("EARNINGS");
+    Fundamentals f;
+    f.symbol = s;
+    f.name = s;
+    f.source = "Alpha Vantage";
+
+    auto qInc = income.value("quarterlyReports", json::array());
+    auto qBal = balance.value("quarterlyReports", json::array());
+    auto qCash = cash.value("quarterlyReports", json::array());
+    auto aInc = income.value("annualReports", json::array());
+    auto aEarn = earnings.value("annualEarnings", json::array());
+    auto qEarn = earnings.value("quarterlyEarnings", json::array());
+
+    if (!qInc.empty())
+        f.currency = str(qInc[0], "reportedCurrency");
+    else if (!aInc.empty())
+        f.currency = str(aInc[0], "reportedCurrency");
+
+    auto revenue_ttm = sum_field(qInc, "totalRevenue", 4);
+    auto net_income_ttm = sum_field(qInc, "netIncome", 4);
+    auto ocf_ttm = sum_field(qCash, "operatingCashflow", 4);
+    auto capex_ttm = sum_field(qCash, "capitalExpenditures", 4);
+    auto eps_ttm = sum_field(qEarn, "reportedEPS", 4);
+    if (eps_ttm) {
+        f.eps_ttm = eps_ttm;
+        f.metrics["epsTTM"] = {f.source, str(qEarn.empty() ? json::object() : qEarn[0], "fiscalDateEnding"),
+                                "sum of latest four reported quarters"};
+    }
+
+    if (revenue_ttm && ocf_ttm && capex_ttm && *revenue_ttm != 0) {
+        f.fcf_margin_pct = (*ocf_ttm - std::abs(*capex_ttm)) / *revenue_ttm * 100.0;
+        tag(f, "fcfMargin", f.fcf_margin_pct,
+            str(qCash.empty() ? json::object() : qCash[0], "fiscalDateEnding"),
+            "TTM from operating cash flow less capex");
+    }
+    if (!qBal.empty()) {
+        auto equity = first(qBal[0], "totalShareholderEquity", "totalStockholdersEquity");
+        auto debt = first(qBal[0], "shortLongTermDebtTotal", "totalDebt");
+        if (!debt) {
+            auto short_debt = first(qBal[0], "shortTermDebt", "shortTermBorrowings");
+            auto long_debt = first(qBal[0], "longTermDebt", "longTermDebtNoncurrent");
+            if (short_debt || long_debt)
+                debt = short_debt.value_or(0) + long_debt.value_or(0);
+        }
+        if (equity && *equity != 0) {
+            if (debt)
+                f.debt_to_equity = *debt / *equity;
+            if (net_income_ttm)
+                f.roe_pct = *net_income_ttm / *equity * 100.0;
+        }
+        auto period = str(qBal[0], "fiscalDateEnding");
+        tag(f, "debtToEquity", f.debt_to_equity, period, "latest balance sheet");
+        tag(f, "roe", f.roe_pct, period, "TTM net income / latest equity");
+    }
+    if (aInc.size() >= 2) {
+        f.revenue_growth_pct = growth(num(aInc[0], "totalRevenue"), num(aInc[1], "totalRevenue"));
+        tag(f, "revenueGrowth", f.revenue_growth_pct, str(aInc[0], "fiscalDateEnding"),
+            "annual YoY");
+    }
+    if (aEarn.size() >= 2) {
+        f.eps_growth_pct = growth(num(aEarn[0], "reportedEPS"), num(aEarn[1], "reportedEPS"));
+        tag(f, "epsGrowth", f.eps_growth_pct, str(aEarn[0], "fiscalDateEnding"), "annual YoY");
+    }
+    return useful(f) || f.eps_ttm ? std::optional<Fundamentals>(f) : std::nullopt;
+}
+std::optional<EstimateSnapshot> AlphaVantageProvider::estimates(const std::string &s) {
+    if (key_.empty())
+        return {};
+    const auto symbol = alpha_symbol(s);
+    auto earnings = optional_request(
+        get_, "https://www.alphavantage.co/query?function=EARNINGS&symbol=" + enc(symbol) +
+                  "&apikey=" + enc(key_));
+    EstimateSnapshot e;
+    e.source = "Alpha Vantage";
+    auto rows = earnings.value("quarterlyEarnings", json::array());
+    for (const auto &row : rows) {
+        auto actual = num(row, "reportedEPS");
+        auto estimated = num(row, "estimatedEPS");
+        if (actual && estimated && *estimated != 0) {
+            e.earnings_surprise_pct = growth(actual, estimated);
+            e.metrics["earningsSurprise"] = {e.source, str(row, "fiscalDateEnding"),
+                                              "reported vs estimated EPS"};
+            break;
+        }
+    }
+    auto estimates = optional_request(
+        get_, "https://www.alphavantage.co/query?function=EARNINGS_ESTIMATES&symbol=" +
+                  enc(symbol) + "&apikey=" + enc(key_));
+    auto annual = estimates.value("annualEarnings", json::array());
+    auto quarterly = estimates.value("quarterlyEarnings", json::array());
+    const auto &candidate = !quarterly.empty() ? quarterly : annual;
+    if (!candidate.empty()) {
+        e.estimated_eps = first(candidate[0], "estimatedEPS", "epsEstimate");
+        if (e.estimated_eps)
+            e.metrics["estimatedEPS"] = {e.source, str(candidate[0], "fiscalDateEnding"), "forward"};
+    }
+    return (e.earnings_surprise_pct || e.estimated_eps) ? std::optional<EstimateSnapshot>(e)
+                                                        : std::nullopt;
+}
+std::vector<EarningsEvent> AlphaVantageProvider::earnings(const std::string &s,
+                                                          const std::string &from,
+                                                          const std::string &to) {
+    if (key_.empty() || s.empty())
+        return {};
+    auto j = request(get_, "https://www.alphavantage.co/query?function=EARNINGS&symbol=" +
+                               enc(alpha_symbol(s)) + "&apikey=" + enc(key_));
+    std::vector<EarningsEvent> out;
+    auto rows = j.value("quarterlyEarnings", json::array());
+    for (const auto &row : rows) {
+        auto date = str(row, "reportedDate", str(row, "fiscalDateEnding"));
+        if (date < from || date > to)
+            continue;
+        out.push_back({date, s, "Earnings", "Reported EPS vs estimate", num(row, "reportedEPS"),
+                       num(row, "estimatedEPS"), "Alpha Vantage", {}});
+    }
+    return out;
+}
+
+ProviderDescriptor FinnhubProvider::descriptor() const {
+    return {"finnhub",
+            "Finnhub",
+            !key_.empty(),
+            false,
+            key_.empty() ? "API key required" : "Configured; connection unverified",
+            {DataCapability::Quotes, DataCapability::Fundamentals, DataCapability::Estimates,
+             DataCapability::Earnings}};
+}
+std::optional<Quote> FinnhubProvider::quote(const std::string &s) {
+    if (key_.empty())
+        return {};
+    auto j = request(get_, "https://finnhub.io/api/v1/quote?symbol=" + enc(s) +
+                               "&token=" + enc(key_));
+    auto p = num(j, "c");
+    if (!p || *p <= 0)
+        return {};
+    return Quote{s, s, listing_currency_hint(s), *p, num(j, "dp"),
+                 (long long)num(j, "t").value_or(0), "Finnhub", {}};
+}
+std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) {
+    if (key_.empty())
+        return {};
+    auto profile = optional_request(
+        get_, "https://finnhub.io/api/v1/stock/profile2?symbol=" + enc(s) +
+                  "&token=" + enc(key_));
+    auto metrics = optional_request(
+        get_, "https://finnhub.io/api/v1/stock/metric?symbol=" + enc(s) +
+                  "&metric=all&token=" + enc(key_));
+    auto m = object(metrics, "metric");
+    Fundamentals f;
+    f.symbol = s;
+    f.source = "Finnhub";
+    f.name = str(profile, "name", s);
+    f.sector = str(profile, "finnhubIndustry");
+    f.currency = str(profile, "currency", listing_currency_hint(s));
+    f.pe = metric_num(m, {"peBasicExclExtraTTM", "peExclExtraTTM", "peTTM", "peAnnual"});
+    f.forward_pe = metric_num(m, {"forwardPE", "forwardPe"});
+    f.revenue_growth_pct =
+        metric_num(m, {"revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy", "revenueGrowth3Y"});
+    f.eps_growth_pct =
+        metric_num(m, {"epsGrowthTTMYoy", "epsGrowthQuarterlyYoy", "epsGrowth3Y"});
+    f.roe_pct = metric_num(m, {"roeTTM", "roeRfy", "roeAnnual"});
+    f.debt_to_equity = metric_num(m, {"totalDebt/totalEquityAnnual", "totalDebtToEquity",
+                                      "debtEquityAnnual", "debtEquityTTM"});
+    auto period = date_ago(0);
+    tag(f, "pe", f.pe, period, "provider metric");
+    tag(f, "forwardPE", f.forward_pe, period, "provider metric");
+    tag(f, "revenueGrowth", f.revenue_growth_pct, period, "provider metric");
+    tag(f, "epsGrowth", f.eps_growth_pct, period, "provider metric");
+    tag(f, "roe", f.roe_pct, period, "provider metric");
+    tag(f, "debtToEquity", f.debt_to_equity, period, "provider metric");
+    return useful(f) || f.name != s || !f.sector.empty() ? std::optional<Fundamentals>(f)
+                                                         : std::nullopt;
+}
+std::optional<EstimateSnapshot> FinnhubProvider::estimates(const std::string &s) {
+    if (key_.empty())
+        return {};
+    auto rows = optional_request(
+        get_, "https://finnhub.io/api/v1/stock/earnings?symbol=" + enc(s) +
+                  "&limit=4&token=" + enc(key_));
+    EstimateSnapshot e;
+    e.source = "Finnhub";
+    if (rows.is_array())
+        for (const auto &row : rows) {
+            auto actual = num(row, "actual"), estimate = num(row, "estimate");
+            if (actual && estimate && *estimate != 0) {
+                e.earnings_surprise_pct =
+                    num(row, "surprisePercent").value_or((*actual - *estimate) / std::abs(*estimate) * 100.0);
+                e.metrics["earningsSurprise"] = {e.source, str(row, "period"),
+                                                  "reported vs consensus"};
+                break;
+            }
+        }
+    return e.earnings_surprise_pct ? std::optional<EstimateSnapshot>(e) : std::nullopt;
+}
+std::vector<EarningsEvent> FinnhubProvider::earnings(const std::string &s,
+                                                     const std::string &from,
+                                                     const std::string &to) {
+    if (key_.empty())
+        return {};
+    auto u = "https://finnhub.io/api/v1/calendar/earnings?from=" + enc(from) + "&to=" + enc(to) +
+             "&token=" + enc(key_);
+    if (!s.empty())
+        u += "&symbol=" + enc(s);
+    auto j = request(get_, u);
+    auto rows = j.value("earningsCalendar", json::array());
+    std::vector<EarningsEvent> out;
+    for (const auto &row : rows) {
+        auto symbol = str(row, "symbol");
+        auto date = str(row, "date");
+        if ((!s.empty() && symbol != s) || date < from || date > to)
+            continue;
+        out.push_back({date, symbol, "Earnings", "EPS actual vs estimate", num(row, "epsActual"),
+                       num(row, "epsEstimate"), "Finnhub", {}});
+    }
+    return out;
+}
+
 ProviderDescriptor TwelveDataProvider::descriptor() const {
     return {"twelve",
             "Twelve Data",
