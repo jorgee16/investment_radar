@@ -34,8 +34,8 @@ fun ProvidersPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
         Text("Providers & routing",color=RadarColors.Text,fontSize=18.sp)
 
         Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){
-            AssistChip(onClick={demo=true},label={Text("Demo")},enabled=!state.savingProviders)
-            AssistChip(onClick={demo=false},label={Text("Live")},enabled=!state.savingProviders)
+            FilterChip(selected=demo,onClick={demo=true},label={Text("Demo")},enabled=!state.savingProviders)
+            FilterChip(selected=!demo,onClick={demo=false},label={Text("Live")},enabled=!state.savingProviders)
             Text("Current: ${if(demo)"DEMO" else "LIVE"}",color=RadarColors.TextMuted,fontSize=10.sp)
         }
 
@@ -69,7 +69,8 @@ fun ProvidersPage(state:RadarUiState,onIntent:(RadarIntent)->Unit){
 
         Text("ROUTING",color=RadarColors.TextMuted,fontSize=8.sp)
         listOf("quotes","fundamentals","estimates","earnings","news","history").forEach{cap->
-            RoutingRow(cap,routing[cap]?:"auto"){routing[cap]=it}
+            val allowed=listOf("auto")+state.providers.filter{it.id!="demo"&&cap in it.capabilities}.map{it.id}
+            RoutingRow(cap,routing[cap]?:"auto",allowed){routing[cap]=it}
         }
 
         Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){
@@ -159,14 +160,14 @@ private fun ProviderKeyCard(
 }
 
 @Composable
-private fun RoutingRow(capability:String,value:String,onValue:(String)->Unit){
+private fun RoutingRow(capability:String,value:String,options:List<String>,onValue:(String)->Unit){
     var open by remember{mutableStateOf(false)}
     Row(Modifier.fillMaxWidth().background(RadarColors.Panel).padding(10.dp),horizontalArrangement=Arrangement.SpaceBetween){
         Text(capability,color=RadarColors.Text,fontSize=10.sp)
         Box{
             TextButton(onClick={open=true}){Text(value,fontSize=10.sp)}
             DropdownMenu(expanded=open,onDismissRequest={open=false}){
-                listOf("auto","eodhd","fmp","twelve").forEach{candidate->
+                options.distinct().forEach{candidate->
                     DropdownMenuItem(text={Text(candidate)},onClick={onValue(candidate);open=false})
                 }
             }
