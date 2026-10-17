@@ -31,6 +31,23 @@ class Stub : public ir::IMarketDataProvider {
         return result;
     }
 };
+
+class FundStub : public ir::IMarketDataProvider {
+  public:
+    std::string id;
+    ir::Fundamentals value;
+    bool enabled = true;
+    explicit FundStub(std::string name) : id(std::move(name)) {
+        value.symbol = "AIR.PA";
+        value.source = id;
+    }
+    ir::ProviderDescriptor descriptor() const override {
+        return {id, id, enabled, false, "test", {ir::DataCapability::Fundamentals}};
+    }
+    std::optional<ir::Fundamentals> fundamentals(const std::string &) override {
+        return value;
+    }
+};
 } // namespace
 int main() {
     int passed = 0;
@@ -176,6 +193,46 @@ int main() {
         CHECK(h.size() == 2);
         CHECK(h[0].price == 11);
     });
+    test("fundamentals aggregate complementary provider fields", [] {
+        ir::ProviderManager m;
+        auto a = std::make_shared<FundStub>("a");
+        auto b = std::make_shared<FundStub>("b");
+        a->value.name = "Airbus SE";
+        a->value.currency = "EUR";
+        a->value.revenue_growth_pct = 12;
+        a->value.metrics["revenueGrowth"] = {"a", "2025", "annual YoY"};
+        b->value.sector = "Aerospace";
+        b->value.roe_pct = 18;
+        b->value.eps_ttm = 8;
+        b->value.metrics["roe"] = {"b", "2025Q4", "TTM"};
+        m.add(a);
+        m.add(b);
+        auto f = m.fundamentals("AIR.PA");
+        CHECK(f);
+        CHECK(f->name == "Airbus SE");
+        CHECK(f->sector == "Aerospace");
+        CHECK(f->currency == "EUR");
+        CHECK(f->revenue_growth_pct == 12);
+        CHECK(f->roe_pct == 18);
+        CHECK(f->eps_ttm == 8);
+        CHECK(f->source == "Aggregated");
+        CHECK(f->metrics.at("revenueGrowth").source == "a");
+        CHECK(f->metrics.at("roe").source == "b");
+    });
+    test("config supports Alpha Vantage and Finnhub routing", [] {
+        auto c = ir::parse_config({{"alphaKey", "a"},
+                                   {"finnhubKey", "f"},
+                                   {"demo", false},
+                                   {"routing", {{"fundamentals", "alpha"},
+                                                {"estimates", "finnhub"}}}});
+        CHECK(c.alpha_key == "a");
+        CHECK(c.finnhub_key == "f");
+        CHECK(c.routing.fundamentals == "alpha");
+        CHECK(c.routing.estimates == "finnhub");
+        auto j = ir::config_json(c);
+        CHECK(j["alphaKey"] == "a");
+        CHECK(j["finnhubKey"] == "f");
+    });
     test("explicit demo does not call network", [] {
         ir::ResearchConfig c;
         int calls = 0;
@@ -268,7 +325,7 @@ int main() {
             return "{}";
         });
         auto rows = service.test_providers("AAPL");
-        CHECK(rows.size() == 3);
+        CHECK(rows.size() == 5);
         for (const auto &r : rows) {
             CHECK(r["code"] == "missing_key");
             CHECK(!r["connected"].get<bool>());
@@ -310,7 +367,7 @@ int main() {
         CHECK(report[0]["code"] == "authentication");
         CHECK(report[0]["httpStatus"] == 401);
         CHECK(report.dump().find("sensitive-fixture") == std::string::npos);
-        CHECK(service.providers()[2]["connected"] == false);
+        CHECK(service.providers()[4]["connected"] == false);
         CHECK(service.status()["live"] == false);
     });
     test("HTTP 200 quota errors and malformed payloads are safely classified", [] {
