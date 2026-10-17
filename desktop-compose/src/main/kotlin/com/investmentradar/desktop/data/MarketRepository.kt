@@ -11,6 +11,7 @@ interface MarketRepository {
     suspend fun status():StatusDto
     suspend fun quote(symbol:String):QuoteDto
     suspend fun snapshot(symbol:String):SnapshotDto
+    suspend fun history(symbol:String,days:Int=120):List<HistoryPointDto>
     suspend fun earnings(symbol:String?=null):List<EarningsDto>
     suspend fun news(symbol:String):List<NewsDto>
     suspend fun providers():List<ProviderDto>
@@ -32,6 +33,7 @@ class NativeMarketRepository(
     override suspend fun status():StatusDto = decode("/api/status")
     override suspend fun quote(symbol:String):QuoteDto = decode("/api/quote?symbol=${enc(symbol)}")
     override suspend fun snapshot(symbol:String):SnapshotDto = decode("/api/snapshot?symbol=${enc(symbol)}")
+    override suspend fun history(symbol:String,days:Int):List<HistoryPointDto> = decode("/api/history?symbol=${enc(symbol)}&days=${days.coerceIn(1,5000)}")
     override suspend fun earnings(symbol:String?):List<EarningsDto> =
         decode(if(symbol.isNullOrBlank()) "/api/earnings" else "/api/earnings?symbol=${enc(symbol)}")
     override suspend fun news(symbol:String):List<NewsDto> = decode("/api/news?symbol=${enc(symbol)}")
