@@ -87,6 +87,11 @@ data class AllocationSlice(val label:String, val value:Double)
 
 enum class AppPage { DASHBOARD, RADAR, PORTFOLIO, WATCHLIST, SCREENER, EVENTS, PROVIDERS, SETTINGS }
 enum class AssetTab { OVERVIEW, FINANCIALS, VALUATION, EARNINGS, NEWS }
+enum class ChartRange(val label:String) {
+    ONE_MONTH("1M"), THREE_MONTHS("3M"), SIX_MONTHS("6M"), YTD("YTD"),
+    ONE_YEAR("1Y"), FIVE_YEARS("5Y"), MAX("MAX")
+}
+enum class ChartStyle { CANDLES, LINE }
 
 data class RadarUiState(
     val loading:Boolean=true,
@@ -98,6 +103,9 @@ data class RadarUiState(
     val selectedSymbol:String="AIR.PA",
     val selected:SnapshotDto?=null,
     val selectedTab:AssetTab=AssetTab.OVERVIEW,
+    val chartRange:ChartRange=ChartRange.SIX_MONTHS,
+    val chartStyle:ChartStyle=ChartStyle.CANDLES,
+    val chartLoading:Boolean=false,
     val earnings:List<EarningsDto> = emptyList(),
     val assetEarnings:List<EarningsDto> = emptyList(),
     val news:List<NewsDto> = emptyList(),
@@ -122,6 +130,8 @@ sealed interface RadarIntent {
     data class SelectTicker(val symbol:String):RadarIntent
     data class Navigate(val page:AppPage):RadarIntent
     data class SelectAssetTab(val tab:AssetTab):RadarIntent
+    data class SelectChartRange(val range:ChartRange):RadarIntent
+    data class SelectChartStyle(val style:ChartStyle):RadarIntent
     data class AddWatch(val symbol:String):RadarIntent
     data class RemoveWatch(val symbol:String):RadarIntent
     data class AddPosition(val position:PortfolioPosition):RadarIntent
