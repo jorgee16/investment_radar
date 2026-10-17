@@ -51,8 +51,9 @@ class RadarViewModel(
                 val providerSettings=async{repository.providerSettings()}
                 val earnings=async{repository.earnings()}
                 val watch=loadWatchItems(_state.value.watchSymbols)
+                val portfolioQuotes=loadPortfolioQuotes(_state.value.portfolio)
                 val selected=repository.snapshot(_state.value.selectedSymbol)
-                Quint(status.await(),providers.await(),providerSettings.await(),earnings.await(),watch) to selected
+                Sext(status.await(),providers.await(),providerSettings.await(),earnings.await(),watch,portfolioQuotes) to selected
             }.onSuccess{(meta,selected)->
                 _state.update{
                     it.copy(
@@ -62,6 +63,7 @@ class RadarViewModel(
                         providerSettings=meta.c,
                         earnings=meta.d,
                         watchlist=meta.e,
+                        portfolioQuotes=meta.f,
                         selected=selected
                     )
                 }
@@ -70,6 +72,12 @@ class RadarViewModel(
                 _state.update{it.copy(loading=false,error=e.message?:"Unknown error")}
             }
         }
+    }
+
+    private suspend fun loadPortfolioQuotes(rows:List<PortfolioPosition>):Map<String,QuoteDto> = coroutineScope {
+        rows.map{it.symbol}.distinct().map{symbol->
+            async(Dispatchers.IO){symbol to runCatching{repository.quote(symbol)}.getOrNull()}
+        }.awaitAll().mapNotNull{(symbol,quote)->quote?.let{symbol to it}}.toMap()
     }
 
     private suspend fun loadWatchItems(symbols:List<String>):List<WatchItem> = coroutineScope {
@@ -150,6 +158,10 @@ class RadarViewModel(
         val next=_state.value.portfolio+position.copy(symbol=position.symbol.trim().uppercase(),currency=position.currency.uppercase())
         localStore.savePortfolio(next)
         _state.update{it.copy(portfolio=next)}
+        scope.launch{
+            val quotes=loadPortfolioQuotes(next)
+            _state.update{it.copy(portfolioQuotes=quotes)}
+        }
     }
 
     private fun removePosition(index:Int){
@@ -157,7 +169,7 @@ class RadarViewModel(
         if(index !in rows.indices) return
         rows.removeAt(index)
         localStore.savePortfolio(rows)
-        _state.update{it.copy(portfolio=rows)}
+        _state.update{it.copy(portfolio=rows,portfolioQuotes=it.portfolioQuotes.filterKeys{key->rows.any{p->p.symbol==key}})}
     }
 
     private fun loadWatchAnalysis(){
@@ -253,5 +265,5 @@ class RadarViewModel(
 
     override fun close(){scope.cancel()}
 
-    private data class Quint<A,B,C,D,E>(val a:A,val b:B,val c:C,val d:D,val e:E)
+    private data class Sext<A,B,C,D,E,F>(val a:A,val b:B,val c:C,val d:D,val e:E,val f:F)
 }
