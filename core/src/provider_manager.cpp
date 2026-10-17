@@ -127,28 +127,114 @@ std::optional<Quote> ProviderManager::quote(const std::string &s) {
     return {};
 }
 std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) {
+    std::optional<Fundamentals> merged;
+    auto merge = [&](const Fundamentals &v) {
+        if (!merged) {
+            merged = Fundamentals{};
+            merged->symbol = s;
+        }
+        auto &m = *merged;
+        bool contributed = false;
+        auto copy_metric = [&](std::optional<double> &dst, const std::optional<double> &src,
+                               const char *key) {
+            if (!dst && src) {
+                dst = src;
+                contributed = true;
+                if (auto it = v.metrics.find(key); it != v.metrics.end())
+                    m.metrics[key] = it->second;
+                else
+                    m.metrics[key] = {v.source, "", "provider normalized"};
+            }
+        };
+        if ((m.name.empty() || m.name == s) && !v.name.empty() && v.name != s) {
+            m.name = v.name;
+            contributed = true;
+        }
+        if (m.sector.empty() && !v.sector.empty()) {
+            m.sector = v.sector;
+            contributed = true;
+        }
+        if (m.currency.empty() && !v.currency.empty()) {
+            m.currency = v.currency;
+            contributed = true;
+        }
+        copy_metric(m.pe, v.pe, "pe");
+        copy_metric(m.forward_pe, v.forward_pe, "forwardPE");
+        copy_metric(m.revenue_growth_pct, v.revenue_growth_pct, "revenueGrowth");
+        copy_metric(m.eps_growth_pct, v.eps_growth_pct, "epsGrowth");
+        copy_metric(m.fcf_margin_pct, v.fcf_margin_pct, "fcfMargin");
+        copy_metric(m.roe_pct, v.roe_pct, "roe");
+        copy_metric(m.debt_to_equity, v.debt_to_equity, "debtToEquity");
+        if (!m.eps_ttm && v.eps_ttm) {
+            m.eps_ttm = v.eps_ttm;
+            contributed = true;
+            if (auto it = v.metrics.find("epsTTM"); it != v.metrics.end())
+                m.metrics["epsTTM"] = it->second;
+        }
+        if (contributed) {
+            if (m.source.empty())
+                m.source = v.source;
+            else if (m.source != v.source && m.source != "Aggregated")
+                m.source = "Aggregated";
+        }
+    };
+
     for (auto &p : ordered(routing_.fundamentals, DataCapability::Fundamentals))
         try {
             if (auto v = p->fundamentals(s))
-                return v;
+                merge(*v);
         } catch (const ProviderError &e) {
             record_failure(p, DataCapability::Fundamentals, e);
         } catch (...) {
             diagnostics_.push_back(p->descriptor().name + ": request failed; fallback attempted");
         }
-    return {};
+    if (!merged)
+        return {};
+    const auto &m = *merged;
+    if (m.name.empty() && m.sector.empty() && m.currency.empty() && !m.pe && !m.forward_pe &&
+        !m.revenue_growth_pct && !m.eps_growth_pct && !m.fcf_margin_pct && !m.roe_pct &&
+        !m.debt_to_equity && !m.eps_ttm)
+        return {};
+    return merged;
 }
 std::optional<EstimateSnapshot> ProviderManager::estimates(const std::string &s) {
+    std::optional<EstimateSnapshot> merged;
     for (auto &p : ordered(routing_.estimates, DataCapability::Estimates))
         try {
-            if (auto v = p->estimates(s))
-                return v;
+            if (auto v = p->estimates(s)) {
+                if (!merged)
+                    merged = EstimateSnapshot{};
+                bool contributed = false;
+                auto copy = [&](std::optional<double> &dst, const std::optional<double> &src,
+                                const char *key) {
+                    if (!dst && src) {
+                        dst = src;
+                        contributed = true;
+                        if (auto it = v->metrics.find(key); it != v->metrics.end())
+                            merged->metrics[key] = it->second;
+                        else
+                            merged->metrics[key] = {v->source, "", "provider normalized"};
+                    }
+                };
+                copy(merged->earnings_surprise_pct, v->earnings_surprise_pct, "earningsSurprise");
+                copy(merged->estimate_revision_pct, v->estimate_revision_pct, "estimateRevision");
+                copy(merged->estimated_eps, v->estimated_eps, "estimatedEPS");
+                if (contributed) {
+                    if (merged->source.empty())
+                        merged->source = v->source;
+                    else if (merged->source != v->source && merged->source != "Aggregated")
+                        merged->source = "Aggregated";
+                }
+            }
         } catch (const ProviderError &e) {
             record_failure(p, DataCapability::Estimates, e);
         } catch (...) {
             diagnostics_.push_back(p->descriptor().name + ": request failed; fallback attempted");
         }
-    return {};
+    if (!merged || (!merged->earnings_surprise_pct && !merged->estimate_revision_pct &&
+                    !merged->estimated_eps))
+        return {};
+    return merged;
 }
 std::vector<EarningsEvent> ProviderManager::earnings(const std::string &s, const std::string &f,
                                                      const std::string &t) {
