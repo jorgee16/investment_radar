@@ -402,7 +402,7 @@ int main() {
         ir::ResearchService service(config, [&](const auto &url) {
             ++calls;
             CHECK(url.find("eodhd.com/") != url.npos);
-            return R"({"close":205,"currency":"USD","timestamp":1770000000})";
+            return R"({"close":205,"currency":"USD","name":"Apple Inc.","timestamp":1770000000})";
         });
         auto test = service.test_providers("AAPL", "eodhd");
         CHECK(calls == 1 && test.size() == 1);
