@@ -193,6 +193,11 @@ int main(int argc, char **argv) {
                 reply(r, {{"error", "Invalid settings JSON"}});
             }
         });
+        server.Get("/api/history", [&](const auto &q, auto &r) {
+            auto sym = q.has_param("symbol") ? q.get_param_value("symbol") : "AIR.PA";
+            auto days = q.has_param("days") ? std::stoi(q.get_param_value("days")) : 120;
+            reply(r, rt.read([&](auto &s) { return s.history(sym, days); }));
+        });
         server.Get("/api/snapshot", [&](const auto &q, auto &r) {
             auto sym = q.has_param("symbol") ? q.get_param_value("symbol") : "AIR.PA";
             reply(r, rt.read([&](auto &s) { return s.snapshot(sym); }));
