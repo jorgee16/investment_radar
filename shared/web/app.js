@@ -12,6 +12,115 @@ const state = {
   portfolio: stored('ir_portfolio', [], v => Array.isArray(v) && v.every(p => p && validSymbol(p.symbol) && Number.isFinite(p.qty) && p.qty > 0 && Number.isFinite(p.avg) && p.avg > 0 && /^[A-Z]{3}$/.test(p.currency))),
   routing: {quotes:'auto', fundamentals:'auto', estimates:'auto', earnings:'auto', news:'auto', history:'auto'}
 };
+
+class EventBus {
+  constructor(){ this.listeners=new Map(); }
+  on(event,handler){ if(!this.listeners.has(event)) this.listeners.set(event,new Set()); this.listeners.get(event).add(handler); return ()=>this.off(event,handler); }
+  off(event,handler){ this.listeners.get(event)?.delete(handler); }
+  emit(event,payload){ this.listeners.get(event)?.forEach(handler=>handler(payload)); }
+}
+class Store {
+  constructor(initial){ this.value=initial; this.listeners=new Set(); }
+  get(){ return this.value; }
+  patch(next){ this.value={...this.value,...next}; this.listeners.forEach(fn=>fn(this.value)); }
+  subscribe(fn){ this.listeners.add(fn); return ()=>this.listeners.delete(fn); }
+}
+class Widget {
+  constructor(root,ctx){ this.root=root; this.ctx=ctx; this.children=[]; this.disposers=[]; }
+  add(child){ this.children.push(child); return child; }
+  listen(event,handler){ this.disposers.push(this.ctx.events.on(event,handler)); }
+  mount(){ this.children.forEach(c=>c.mount()); }
+  destroy(){ this.children.forEach(c=>c.destroy()); this.disposers.splice(0).forEach(dispose=>dispose()); }
+}
+class RouterWidget extends Widget {
+  constructor(root,ctx){ super(root,ctx); this.current='dashboard'; }
+  navigate(view,payload={}){
+    if(!document.getElementById(view)) return;
+    this.current=view;
+    $('.view').forEach(v=>v.classList.toggle('active',v.id===view));
+    $('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
+    setText('#viewTitle',view==='asset'?(state.snap?.name||state.current):view[0].toUpperCase()+view.slice(1));
+    this.ctx.events.emit('route:changed',{view,...payload});
+  }
+}
+class SidebarWidget extends Widget {
+  mount(){
+    this.root.querySelectorAll('[data-view]').forEach(button=>{
+      button.addEventListener('click',()=>this.ctx.router.navigate(button.dataset.view));
+    });
+  }
+}
+class SearchWidget extends Widget {
+  mount(){
+    const input=this.root.querySelector('#symbolInput');
+    input.addEventListener('keydown',event=>{
+      if(event.key!=='Enter') return;
+      const symbol=input.value.trim().toUpperCase();
+      if(!validSymbol(symbol)){ notify('Ticker inválido.',true); return; }
+      this.ctx.events.emit('asset:selected',{symbol});
+    });
+  }
+}
+class AssetTabsWidget extends Widget {
+  mount(){
+    this.root.querySelectorAll('.asset-tab').forEach(tab=>{
+      tab.addEventListener('click',()=>{
+        this.root.querySelectorAll('.asset-tab').forEach(x=>x.classList.toggle('active',x===tab));
+        this.root.querySelectorAll('.asset-panel').forEach(panel=>panel.classList.toggle('active',panel.id===`tab-${tab.dataset.tab}`));
+        this.ctx.events.emit('asset:tab',{tab:tab.dataset.tab});
+      });
+    });
+  }
+}
+class DashboardWidget extends Widget {
+  mount(){
+    this.root.querySelector('[data-action="open-watchlist"]')?.addEventListener('click',()=>this.ctx.router.navigate('watchlist'));
+    this.root.querySelector('#openProviders')?.addEventListener('click',()=>this.ctx.router.navigate('providers'));
+    this.listen('status:changed',status=>{
+      setText('#dashDataMode',status.mode==='demo'?'Demo':'Live');
+      setText('#dashProvider',status.configured?'Configurado':'Sem provider');
+      setText('#dashFundamentals',status.mode==='demo'?'Demo':status.configured?'Dependente do plano':'Indisponível');
+    });
+  }
+}
+class AssetPageWidget extends Widget {
+  mount(){
+    this.root.querySelector('#refreshMarket')?.addEventListener('click',()=>this.ctx.events.emit('asset:refresh',{symbol:state.current}));
+    this.add(new AssetTabsWidget(this.root,this.ctx)).mount();
+    this.listen('asset:selected',async({symbol})=>{
+      this.ctx.router.navigate('asset',{symbol});
+      await loadSnapshot(symbol);
+    });
+    this.listen('asset:refresh',async({symbol})=>{
+      cache.clear();
+      await loadSnapshot(symbol);
+    });
+    this.listen('asset:tab',({tab})=>{
+      if(tab==='earnings') guarded(renderCalendar)();
+      if(tab==='news') guarded(renderNews)();
+    });
+  }
+}
+class AppWidget extends Widget {
+  constructor(root,ctx){ super(root,ctx); }
+  mount(){
+    this.ctx.router=this.add(new RouterWidget(document.body,this.ctx));
+    this.add(new SidebarWidget($('.sidebar'),this.ctx)).mount();
+    this.add(new SearchWidget($('.topbar'),this.ctx)).mount();
+    this.add(new DashboardWidget($('#dashboard'),this.ctx)).mount();
+    this.add(new AssetPageWidget($('#asset'),this.ctx)).mount();
+    this.listen('route:changed',({view})=>{
+      const fn={portfolio:renderPortfolio,watchlist:()=>renderWatch('#watchGrid'),calendar:renderCalendar,providers:renderProviders,screener:runScreener}[view];
+      if(fn) guarded(()=>fn())();
+    });
+    this.listen('asset:selected',({symbol})=>{ $('#symbolInput').value=symbol; });
+    this.ctx.router.navigate('dashboard');
+  }
+}
+const events=new EventBus();
+const uiStore=new Store({route:'dashboard',selectedAsset:state.current});
+const uiContext={events,store:uiStore,router:null};
+
 const cache = new Map(), inFlight = new Map(), callbacks = new Map();
 let callId = 0, dataEpoch = 0;
 const isAndroid = () => !!window.AndroidBridge;
@@ -98,10 +207,10 @@ function renderSnapshot(s) {
 }
 async function loadSnapshot(symbol) {
   symbol=symbol.trim().toUpperCase(); if(!validSymbol(symbol)){notify('Ticker inválido.',true);return;}
-  const request=++state.request;notify('A carregar dados…');$('#dashboard').setAttribute('aria-busy','true');
+  const request=++state.request;notify('A carregar dados…');$('#asset').setAttribute('aria-busy','true');
   try { const s=await snapshot(symbol);if(request!==state.request)return;renderSnapshot(s);await renderPortfolioSummary(); }
   catch(e){if(request===state.request){state.snap=null;renderSnapshot({symbol,name:symbol,zone:'N/A',history:[],coverage:0,breakdown:{},warnings:[e.message],available:false});}}
-  finally{if(request===state.request)$('#dashboard').setAttribute('aria-busy','false');}
+  finally{if(request===state.request)$('#asset').setAttribute('aria-busy','false');}
 }
 async function positions() {
   const rows=[];
@@ -215,18 +324,19 @@ async function refreshStatus() {
   setText('#radarMode',s.mode==='demo'?'DEMO':'PROVIDERS REAIS');
   setText('#dataReadiness',s.mode==='demo'?'Modo de demonstração':s.configured?'Providers configurados':'Liga o teu primeiro provider');
   setText('#dataReadinessDetail',s.mode==='demo'?'Dados sintéticos. Introduz uma chave em Providers e muda para Live para receber dados reais.':s.configured?'Abre Providers para testar cada chave. A origem e a hora fornecida acompanham cada cotação.':'Adiciona uma chave EODHD, FMP ou Twelve Data. Os campos sem dados ficam indisponíveis.');
-}
-function showView(id) {
-  $$('.view').forEach(v=>v.classList.toggle('active',v.id===id));$$('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===id));setText('#viewTitle',id[0].toUpperCase()+id.slice(1));
-  const fn={portfolio:renderPortfolio,watchlist:renderWatch,calendar:renderCalendar,providers:renderProviders,screener:runScreener}[id];if(fn)guarded(()=>fn())();
+  events.emit('status:changed',s);
 }
 function runScreener() {const min=+$('#screenScore').value,zone=$('#screenZone').value;setText('#screenScoreLabel',min);return renderWatch('#screenerResults',s=>s.score!=null&&s.score>=min&&(zone==='all'||s.zone===zone));}
-$$('.nav').forEach(n=>n.onclick=()=>showView(n.dataset.view));
-$$('.asset-tab').forEach(t=>t.onclick=()=>{$$('.asset-tab').forEach(x=>x.classList.toggle('active',x===t));$$('.asset-panel').forEach(p=>p.classList.toggle('active',p.id===`tab-${t.dataset.tab}`));if(t.dataset.tab==='earnings')guarded(renderCalendar)();if(t.dataset.tab==='news')guarded(renderNews)();});
-$('#openProviders').onclick=()=>showView('providers');
-$('#refreshMarket').onclick=guarded(async()=>{cache.clear();await loadSnapshot(state.current);await renderWatch('#radarWatch');await renderCalendar();});
-$('#symbolInput').onkeydown=e=>{if(e.key==='Enter'){showView('dashboard');loadSnapshot(e.target.value);}};
 $('#screenScore').oninput=guarded(runScreener);$('#screenZone').onchange=guarded(runScreener);
 $('#addPosition').onclick=guarded(async()=>{const symbol=prompt('Ticker')?.trim().toUpperCase();if(!symbol)return;if(!validSymbol(symbol))throw new Error('Ticker inválido.');const qty=Number(prompt('Quantidade')),avg=Number(prompt('Preço médio'));let quote=null;try{quote=await snapshot(symbol);}catch{}const currency=prompt('Moeda do preço médio (EUR, USD, …)',quote?.currency||'EUR')?.trim().toUpperCase();if(!Number.isFinite(qty)||qty<=0||!Number.isFinite(avg)||avg<=0||!/^[A-Z]{3}$/.test(currency||''))throw new Error('Quantidade, preço ou moeda inválidos.');state.portfolio.push({symbol,qty,avg,currency});localStorage.setItem('ir_portfolio',JSON.stringify(state.portfolio));await renderPortfolio();});
 $('#addWatch').onclick=()=>{const s=prompt('Ticker')?.trim().toUpperCase();if(!s)return;if(!validSymbol(s)){notify('Ticker inválido.',true);return;}if(!state.watch.includes(s)){state.watch.push(s);localStorage.setItem('ir_watch',JSON.stringify(state.watch));guarded(()=>renderWatch())();}};
-guarded(async()=>{await refreshStatus();const runtime=isAndroid()?'Android · core C++ partilhado':'Desktop · core C++';setText('#runtime',runtime);setText('#settingsRuntime',runtime);await loadSnapshot(state.current);await renderWatch('#radarWatch');await renderCalendar();await renderPortfolioSummary();})();
+const app=new AppWidget(document.body,uiContext);
+app.mount();
+guarded(async()=>{
+  await refreshStatus();
+  const runtime=isAndroid()?'Android · core C++ partilhado':'Desktop · core C++';
+  setText('#runtime',runtime);setText('#settingsRuntime',runtime);
+  await renderWatch('#radarWatch');
+  await renderCalendar();
+  await renderPortfolioSummary();
+})();
