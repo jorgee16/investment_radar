@@ -45,3 +45,11 @@ Official references:
 - Quote timestamps may be missing or delayed; a successful provider connection is not proof of real-time exchange entitlement.
 - Valuation zones are heuristic estimates, not a recommendation or guaranteed fair value.
 - This benchmark does not certify UI visual parity, performance, touch interaction or Android runtime behavior without actual manual/device testing.
+
+## 2026-10-17 hardening pass
+
+- Android provider-host and TTL policy is isolated into a JVM-testable Kotlin object; tests cover all five provider hosts, HTTPS-only requests, lookalike hosts, credentials in URLs and quota-safe TTLs.
+- Article navigation on Android now opens only user-initiated **HTTPS** main-frame links in the system browser. HTTP, JavaScript, non-gesture and subframe navigation are not externally opened.
+- Compose Portfolio gains per-currency ticker/value/return sorting, an indicative quote-based session change and unit-tested missing-price/mismatched-currency handling.
+- Session change is **not** transaction-reconciled daily P/L. It is derived from the provider's quoted percentage change, and is omitted when inputs are missing.
+- These changes are code and automated-test coverage; Android emulator/device interaction and visual QA remain outstanding until actually exercised.

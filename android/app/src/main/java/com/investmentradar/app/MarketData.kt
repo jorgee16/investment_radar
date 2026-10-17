@@ -37,21 +37,10 @@ class ApiCache(ctx: Context) : SQLiteOpenHelper(ctx, "investment_radar_cache.db"
 }
 class ProviderHttpException(val status: Int) : Exception("Provider HTTP error")
 class HttpClient(private val cache: ApiCache) {
-    // Keep Android and desktop quota-safe cache TTLs in sync.
-    private fun ttl(u: String) = when {
-        listOf("real-time", "/quote", "GLOBAL_QUOTE").any { u.contains(it) } -> 900
-        listOf("/api/search/", "SYMBOL_SEARCH", "profile2").any { u.contains(it) } -> 604800
-        listOf("fundamentals", "statement", "ratios", "key-metrics",
-            "analyst-estimates", "INCOME_STATEMENT", "BALANCE_SHEET",
-            "CASH_FLOW", "stock/metric").any { u.contains(it) } -> 43200
-        u.contains("news") -> 900
-        u.contains("calendar") || u.contains("earnings") -> 1800
-        else -> 3600
-    }
     fun get(url: String, bypassCache: Boolean = false): String {
         val parsed = URL(url)
-        require(parsed.protocol == "https" && parsed.host in setOf("eodhd.com", "financialmodelingprep.com", "api.twelvedata.com", "www.alphavantage.co", "finnhub.io") && parsed.userInfo == null && (parsed.port == -1 || parsed.port == 443)) { "Unsupported provider URL" }
-        if (!bypassCache) cache.get(url, ttl(url))?.let { return it }
+        require(ProviderPolicy.allowsProviderUrl(parsed)) { "Unsupported provider URL" }
+        if (!bypassCache) cache.get(url, ProviderPolicy.ttlSeconds(url))?.let { return it }
         val connection = (parsed.openConnection() as HttpURLConnection).apply {
             connectTimeout = 10000; readTimeout = 20000; instanceFollowRedirects = false
             requestMethod = "GET"; setRequestProperty("Accept", "application/json")

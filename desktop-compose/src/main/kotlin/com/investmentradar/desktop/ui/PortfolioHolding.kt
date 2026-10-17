@@ -22,7 +22,7 @@ import com.investmentradar.desktop.model.*
    Text(F.price(gain,p.currency),color=if(gain==null)RadarColors.TextMuted else if(gain>=0)RadarColors.Positive else RadarColors.Negative)
   }
   Text("${p.qty} × ${F.price(p.avg,p.currency)} · Value ${F.price(value,p.currency)}",color=RadarColors.TextMuted,fontSize=10.sp)
-  Text("Return ${F.percent(gain?.div(p.qty*p.avg)?.times(100))} · Day ${F.price(day,p.currency)}",color=RadarColors.TextMuted,fontSize=10.sp)
+  Text("Return ${F.percent(gain?.div(p.qty*p.avg)?.times(100))} · Session Δ est. ${F.price(day,p.currency)}",color=RadarColors.TextMuted,fontSize=10.sp)
   val updated=q?.timestamp?.let{Instant.ofEpochSecond(it).toString().take(16).replace("T"," ")+" UTC"}?:"time not supplied"
   val stale=q?.timestamp?.let{System.currentTimeMillis()/1000-it>86400}==true
   Text((q?.source?:"No quote")+" · "+updated+(if(stale)" · STALE" else "")+

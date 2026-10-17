@@ -72,8 +72,8 @@ class MainActivity : AppCompatActivity() {
                 if (uri.scheme == "https" && uri.host == "appassets.androidplatform.net" &&
                     uri.path?.startsWith("/assets/") == true) return false
                 // External article links open in the system browser, never in this privileged WebView.
-                if (request.isForMainFrame && request.hasGesture() &&
-                    uri.scheme in setOf("https", "http") && !uri.host.isNullOrBlank()) {
+                if (ProviderPolicy.mayOpenExternal(uri.scheme, uri.host,
+                        request.isForMainFrame, request.hasGesture())) {
                     runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                 }
                 return true

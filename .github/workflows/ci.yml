@@ -37,9 +37,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Compile Compose desktop
+      - name: Compile and unit-test Compose desktop
         shell: pwsh
-        run: .\android\gradlew.bat -p desktop-compose --no-daemon compileKotlin
+        run: .\android\gradlew.bat -p desktop-compose --no-daemon test
       - name: Build Compose distributable
         shell: pwsh
         run: .\android\gradlew.bat -p desktop-compose --no-daemon createDistributable
@@ -70,9 +70,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Compile Compose desktop
+      - name: Compile and unit-test Compose desktop
         shell: pwsh
-        run: .\android\gradlew.bat -p desktop-compose --no-daemon compileKotlin
+        run: .\android\gradlew.bat -p desktop-compose --no-daemon test
       - name: Create Compose desktop distributable
         shell: pwsh
         run: .\android\gradlew.bat -p desktop-compose --no-daemon createDistributable
@@ -140,8 +140,8 @@ jobs:
           SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)
           test -x "$SDKMANAGER"
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
-      - name: Build installable Android APK with JNI core
-        run: ./android/gradlew -p android :app:assembleDebug --no-daemon
+      - name: Test Android provider policy and build APK with JNI core
+        run: ./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug --no-daemon
       - name: Verify APK contains native C++ core and bundled UI
         run: |
           APK=android/app/build/outputs/apk/debug/app-debug.apk
