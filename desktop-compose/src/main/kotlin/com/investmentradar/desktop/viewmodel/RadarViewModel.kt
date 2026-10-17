@@ -101,12 +101,41 @@ class RadarViewModel(
         }
         _state.update{it.copy(selectedSymbol=symbol,page=AppPage.RADAR,loading=true,error=null)}
         scope.launch{
-            runCatching{repository.snapshot(symbol)}
-                .onSuccess{snapshot->
-                    _state.update{it.copy(selected=snapshot,loading=false)}
-                    loadAssetExtras(symbol)
-                }
-                .onFailure{e->_state.update{it.copy(loading=false,error=e.message)}}
+            val quoteDeferred=async(Dispatchers.IO){runCatching{repository.quote(symbol)}.getOrNull()}
+            val historyDeferred=async(Dispatchers.IO){runCatching{repository.history(symbol,180)}.getOrDefault(emptyList())}
+            val quote=quoteDeferred.await()
+            val history=historyDeferred.await()
+
+            val basic=SnapshotDto(
+                symbol=symbol,
+                name=quote?.name?.ifBlank{symbol} ?: symbol,
+                price=quote?.price,
+                currency=quote?.currency.orEmpty(),
+                changePct=quote?.changePct,
+                history=history,
+                warnings=if(quote==null && history.isEmpty()) listOf("Quote/history unavailable") else emptyList()
+            )
+            _state.update{it.copy(selected=basic,loading=false,error=null)}
+
+            launch(Dispatchers.IO){
+                runCatching{repository.snapshot(symbol)}
+                    .onSuccess{snapshot->
+                        _state.update{
+                            if(it.selectedSymbol==symbol)
+                                it.copy(
+                                    selected=snapshot.copy(
+                                        history=if(snapshot.history.isNotEmpty()) snapshot.history else history,
+                                        price=snapshot.price ?: quote?.price,
+                                        currency=snapshot.currency.ifBlank{quote?.currency.orEmpty()},
+                                        changePct=snapshot.changePct ?: quote?.changePct,
+                                        name=snapshot.name.ifBlank{quote?.name?.ifBlank{symbol} ?: symbol}
+                                    )
+                                )
+                            else it
+                        }
+                    }
+            }
+            loadAssetExtras(symbol)
         }
     }
 
@@ -240,9 +269,9 @@ class RadarViewModel(
     private fun startPriceLoop(){
         scope.launch{
             while(isActive){
-                delay(5000)
+                delay(30000)
                 val current=_state.value
-                if(current.watchlist.isEmpty()) continue
+                if(current.loading || current.watchlist.isEmpty()) continue
                 val updated=current.watchlist.map{item->
                     async(Dispatchers.IO){
                         runCatching{repository.quote(item.symbol)}.getOrNull()?.let{q->
