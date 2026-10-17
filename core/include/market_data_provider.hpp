@@ -73,6 +73,10 @@ struct PriceBar {
     double price = 0;
     std::string source;
     Provenance metrics;
+    std::optional<double> open;
+    std::optional<double> high;
+    std::optional<double> low;
+    std::optional<double> close;
 };
 
 struct NewsItem {
