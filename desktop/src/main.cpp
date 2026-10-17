@@ -33,8 +33,12 @@ class Runtime {
         rebuild();
     }
     template <class F> json read(F f) {
-        std::lock_guard<std::mutex> lock(mu);
-        return f(*service);
+        std::shared_ptr<ir::ResearchService> current;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            current = service;
+        }
+        return f(*current);
     }
     json settings() {
         std::lock_guard<std::mutex> lock(mu);
@@ -59,10 +63,8 @@ class Runtime {
         std::lock_guard<std::mutex> lock(mu);
         // No cache reads: a connection test must reach the provider, even after an earlier success.
         struct Reset {
-            bool &flag;
-            ~Reset() {
-                flag = false;
-            }
+            std::atomic<bool> &flag;
+            ~Reset() { flag = false; }
         } reset{testing};
         testing = true;
         return service->test_providers(symbol, provider);
@@ -81,16 +83,16 @@ class Runtime {
 
   private:
     void rebuild() {
-        service = std::make_unique<ir::ResearchService>(
-            runtime_config(config), [this](const std::string &u) { return http.get(u, testing); });
+        service = std::make_shared<ir::ResearchService>(
+            runtime_config(config), [this](const std::string &u) { return http.get(u, testing.load()); });
     }
     ConfigStore store;
     HttpCache cache;
     CachedHttpsClient http;
     AppConfig config;
-    std::unique_ptr<ir::ResearchService> service;
+    std::shared_ptr<ir::ResearchService> service;
     std::mutex mu;
-    bool testing = false;
+    std::atomic<bool> testing = false;
 };
 } // namespace
 int main(int argc, char **argv) {
