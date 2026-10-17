@@ -20,11 +20,12 @@ class LoopbackNativeBridge:NativeBridge {
     private fun candidateHosts():List<File> {
         val env=System.getenv("IR_NATIVE_HOST")?.takeIf{it.isNotBlank()}?.let(::File)
         val commandDir=ProcessHandle.current().info().command().orElse(null)?.let{File(it).parentFile}
+        val packagedDir=System.getProperty("jpackage.app-path")?.takeIf{it.isNotBlank()}?.let{File(it).parentFile}
         val cwd=File(System.getProperty("user.dir"))
         val windows=System.getProperty("os.name").lowercase().contains("win")
         val exe=if(windows) "investment-radar.exe" else "investment-radar"
         val coreHost=if(windows) "investment-radar-core-host.exe" else "investment-radar-core-host"
-        return listOfNotNull(env,commandDir?.resolve(coreHost),commandDir?.resolve(exe),cwd.resolve(coreHost),cwd.resolve(exe),
+        return listOfNotNull(env,packagedDir?.resolve(coreHost),packagedDir?.resolve(exe),commandDir?.resolve(coreHost),commandDir?.resolve(exe),cwd.resolve(coreHost),cwd.resolve(exe),
             cwd.resolve("../build/windows/Release/$exe"),cwd.resolve("../build/linux/$exe"),cwd.resolve("../build/headless/$exe"))
             .distinctBy{it.absolutePath}
     }
