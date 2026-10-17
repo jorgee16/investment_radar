@@ -8,7 +8,30 @@ A base é executável e testável. Os providers estão ligados à aplicação; a
 validação com contas próprias e as medições de performance Android ficam pendentes.
 O calendário demo e os preços demo são sintéticos. O screener filtra a watchlist local; não pesquisa todo o mercado.
 
-## Compilar e executar
+## Usar noutro PC Windows
+
+O [CI](https://github.com/jorgee16/investment_radar/actions/workflows/ci.yml) está
+preparado para gerar a aplicação completa. Depois de o job Windows passar,
+descarregar **Artifacts → investment-radar-windows**, extrair e abrir
+`investment-radar.exe`. O pacote inclui assets, DLLs e runtime C++; o PC precisa
+de Windows 10/11 x64 e WebView2 Runtime. Não é preciso instalar ferramentas de
+compilação nem Docker para utilizar a aplicação.
+
+Ainda não conseguimos consultar o resultado do CI pela API desta sessão;
+a disponibilidade e validação do pacote Windows ficam por confirmar.
+
+## Docker para compilar e testar
+
+Com Docker/Compose, o core/API Linux usa um ambiente de build próprio:
+
+```bash
+docker compose run --build --rm build
+```
+
+O CI Windows gera o EXE nativo; Docker uniformiza os testes Linux. O fluxo,
+conteúdo dos pacotes e limitações estão em [BUILD_AND_DISTRIBUTE.md](docs/BUILD_AND_DISTRIBUTE.md).
+
+## Compilar o código localmente
 
 Os scripts estão **na raiz do repositório**, junto deste README:
 
@@ -52,8 +75,8 @@ e as DLLs junto do executável. Os antigos `compilar.cmd` e `iniciar.cmd` são a
 aliases de compatibilidade; os nomes usados daqui em diante são `install` e `run`.
 
 O [workflow do GitHub](https://github.com/jorgee16/investment_radar/actions/workflows/ci.yml)
-executa `install.bat` e, quando build, testes e smoke passam, disponibiliza
-`investment-radar-windows` em **Artifacts**. Extrair o ZIP completo e abrir o EXE.
+executa `install.bat`, empacota o componente Runtime e testa o pacote extraído.
+Depois disponibiliza `investment-radar-windows` em **Artifacts**. Extrair e abrir o EXE.
 Ainda não foi possível confirmar o resultado do workflow pela API desta sessão;
 não afirmamos que exista um binário Windows validado disponível para download.
 

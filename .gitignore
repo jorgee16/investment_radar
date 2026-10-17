@@ -1,6 +1,7 @@
 # CMake / native builds
 build/
 build-*/
+dist/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt

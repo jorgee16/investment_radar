@@ -85,3 +85,22 @@ arranque/reinício através de `run.sh`, diagnósticos de build em falta e sinta
 PowerShell/JSON. A instalação de pacotes via apt-get, os ficheiros batch e as
 janelas GUI ainda precisam de execução nos sistemas respetivos. A consulta ao
 CI GitHub continua bloqueada; não há confirmação de um artifact Windows.
+
+## Docker e distribuição
+
+Imagem Docker Debian 13 construída nesta sessão: CMake/Ninja Release, dois alvos
+CTest e smoke HTTP nativo passaram no build. A CA da rede foi montada como
+secret BuildKit com TLS verificado, sem copiar o bundle para a imagem.
+O componente CMake Runtime foi instalado numa pasta independente e o smoke
+passou contra esse executável relocado, com assets e avisos de dependências.
+
+O CI Windows usa cache binária vcpkg, instala DLLs/runtime MSVC, gera ZIP e
+SHA-256 e testa o conteúdo extraído. Publica a aplicação pronta a extrair e o ZIP
+original em artifacts separados. O script PowerShell passou na verificação de
+sintaxe; runtime MSVC, pacote/GUI Windows e download do artifact ainda dependem
+da execução do runner Windows. A imagem Docker gera apenas o core/API Linux.
+
+Também passaram: execução via Compose num container novo, exportação do target
+`artifacts` para `dist/linux` e smoke sobre esse binário exportado. Confirmada a
+ausência do mount da CA, `.git` e configuração local na imagem resultante.
+A imagem fica local; o repositório contém os ficheiros para a reproduzir.

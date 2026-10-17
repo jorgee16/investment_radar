@@ -1,0 +1,23 @@
+# Allow only build inputs. Never send local settings, credentials or caches.
+**
+!Dockerfile
+!CMakeLists.txt
+!core/
+!core/**
+!desktop/
+!desktop/**
+!shared/
+!shared/**
+!docs/
+!docs/RUNNING.md
+!scripts/
+!scripts/smoke.py
+**/.git
+**/.git/**
+**/.env
+**/.env.*
+**/config.json
+**/secrets.properties
+**/local.properties
+**/*.key
+**/*.pem

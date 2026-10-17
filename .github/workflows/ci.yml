@@ -10,10 +10,34 @@ jobs:
       - run: ./install.sh
       - run: node --check shared/web/app.js
       - run: python3 scripts/smoke.py build/linux/investment-radar
-  windows:
-    runs-on: windows-2022
+  docker:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: build
+          load: true
+          tags: investment-radar-build:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test inside the built image
+        run: docker run --rm investment-radar-build:ci
+  windows:
+    runs-on: windows-2022
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.tools\vcpkg-binary-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare dependency cache
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: windows-vcpkg-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}
       - name: Build native Windows app and tests
         shell: cmd
         env:
@@ -21,11 +45,25 @@ jobs:
         run: install.bat
       - name: Smoke test native API
         run: python scripts/smoke.py build/windows/Release/investment-radar.exe
+      - name: Package app and runtime libraries
+        shell: pwsh
+        run: ./scripts/package-windows.ps1
+      - name: Test extracted package independently of the build folder
+        shell: pwsh
+        run: |
+          $packageTest = Join-Path $env:RUNNER_TEMP 'radar package test'
+          Expand-Archive -LiteralPath dist/windows/investment-radar-windows-x64.zip -DestinationPath $packageTest
+          python scripts/smoke.py "$packageTest/investment-radar-windows-x64/investment-radar.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: investment-radar-windows
           if-no-files-found: error
+          path: ${{ runner.temp }}/radar package test/investment-radar-windows-x64/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-radar-windows-zip
+          if-no-files-found: error
           path: |
-            build/windows/Release/investment-radar.exe
-            build/windows/Release/*.dll
-            build/windows/Release/assets/
+            dist/windows/*.zip
+            dist/windows/*.sha256

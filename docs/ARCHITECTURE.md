@@ -92,3 +92,12 @@ o host desktop conserva-os no serviço até reconfiguração/reinício.
 Chaves locais têm prioridade sobre o ambiente. Runtime aplica as variáveis numa
 cópia em memória; o ficheiro guardado usa apenas a configuração local. O endpoint
 de settings devolve presença/origem, nunca os valores.
+
+## Build e distribuição
+
+O componente CMake `Runtime` instala apenas executável, assets, avisos de
+licenças e, no Windows, DLLs e runtime MSVC. `package-windows.ps1` produz o ZIP
+num staging novo. O CI testa o pacote extraído e disponibiliza a aplicação,
+separando o ambiente de desenvolvimento do conteúdo entregue aos utilizadores.
+A imagem Docker fixa Debian 13 e testa o core/API Linux em ambiente isolado;
+o EXE continua a ser compilado em Windows. Ver BUILD_AND_DISTRIBUTE.md.

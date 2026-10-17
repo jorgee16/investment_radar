@@ -1,0 +1,8 @@
+services:
+  build:
+    image: investment-radar-build:local
+    build:
+      context: .
+      target: build
+    # Test the native Linux API inside the container; no desktop/port exposure.
+    command: ["python3", "scripts/smoke.py", "build/investment-radar"]
