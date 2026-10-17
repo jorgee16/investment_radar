@@ -21,7 +21,7 @@ object RadarColors {
 }
 
 @Composable
-fun RadarTheme(content:@Composable()->Unit){
+fun RadarTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme=darkColorScheme(
             background=RadarColors.Background,
