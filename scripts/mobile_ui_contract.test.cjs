@@ -59,7 +59,7 @@ test('Android mobile shell preserves every destination and safe areas', () => {
     assert.match(html,new RegExp('data-view="'+view+'"'));
   assert.match(html,/viewport-fit=cover/);
   assert.match(css,/\.sidebar nav\{display:flex!important;flex-wrap:nowrap!important;/);
-  assert.match(css,/\.sidebar \.nav:nth-of-type\(n\+6\)\{display:flex!important;/);
+  assert.match(css,/\.sidebar \.nav:nth-of-type\(n\+6\)\{display:flex!important;?\}/);
   assert.match(css,/env\(safe-area-inset-top\)/);
   assert.match(css,/env\(safe-area-inset-bottom\)/);
 });
