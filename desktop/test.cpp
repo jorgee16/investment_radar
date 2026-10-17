@@ -63,9 +63,9 @@ int main() {
             std::string data{std::istreambuf_iterator<char>(f), {}};
             CHECK(data.find("fixture-not-a-real-key") == std::string::npos);
             CHECK(data.find("api_token") == std::string::npos);
-            CHECK(CachedHttpsClient::ttl_for("https://eodhd.com/api/real-time/AIR.PA") == 60);
+            CHECK(CachedHttpsClient::ttl_for("https://eodhd.com/api/real-time/AIR.PA") == 900);
             CHECK(CachedHttpsClient::ttl_for("https://eodhd.com/api/v1.1/fundamentals/AIR.PA") ==
-                  21600);
+                  43200);
         }
         std::filesystem::remove_all(dir);
         std::cout << "PASS configuration roundtrip, permissions, cache hashing/TTL, HTTPS policy\n";
