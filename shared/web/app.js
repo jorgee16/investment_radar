@@ -127,6 +127,12 @@ const uiContext={events,store:uiStore,router:null};
 const cache = new Map(), inFlight = new Map(), callbacks = new Map();
 let callId = 0, dataEpoch = 0;
 const isAndroid = () => !!window.AndroidBridge;
+function safeArticleUrl(raw) {
+  try {
+    const url = new URL(raw);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname ? url.href : null;
+  } catch { return null; }
+}
 window.nativeResult = (id, result) => {
   const cb = callbacks.get(String(id)); if (!cb) return;
   callbacks.delete(String(id)); clearTimeout(cb.timer);
@@ -191,7 +197,10 @@ function renderSnapshot(s) {
   $('#symbolInput').value=s.symbol;
   for(const [id,value] of Object.entries({assetName:s.name,assetTicker:s.symbol,assetSector:s.sector||'—',assetCurrency:s.currency||'—',assetPrice:money(s.price,s.currency),assetChange:pct(s.changePct),assetScore:s.score,assetZone:s.zone,decisionZone:s.zone,assetAvatar:(s.name||s.symbol)[0],decisionText:s.thesis,valuationPill:s.zone})) setText('#'+id,value);
   $('#assetChange').className=s.changePct==null?'':s.changePct>=0?'positive':'negative';
-  setText('#historySource',s.sources?.history==='Demo'?'Histórico sintético':s.sources?.history==='none'?'Sem histórico':s.sources?.history);
+  const quoteTime=s.timestamp?new Date(s.timestamp*1000).toLocaleString('pt-PT',{timeZone:'UTC'})+' UTC':'hora não fornecida';
+   const quoteStale=s.timestamp && Date.now()/1000-s.timestamp>86400?' · STALE':'';
+   setText('#assetQuoteSource',(s.sources?.quote||'none')+' · '+quoteTime+quoteStale+(s.mode==='demo'?' · DEMO':''));
+   setText('#historySource',s.sources?.history==='Demo'?'Histórico sintético':s.sources?.history==='none'?'Sem histórico':s.sources?.history);
   setText('#historyPeriod',s.history?.length?`${s.history[0].label} → ${s.history.at(-1).label}`:'—');
   $('#metricGrid').innerHTML=[metric('Revenue YoY',pct(s.revenueGrowth)),metric('EPS YoY',pct(s.epsGrowth)),metric('FCF margin',pct(s.fcfMargin)),metric('ROE',pct(s.roe)),metric('Forward P/E',fixed(s.forwardPE)),metric('Estimate revisions',pct(s.estimateRevision))].join('');
   $('#scoreBreakdown').innerHTML=Object.entries(s.breakdown||{}).map(([label,n])=>scorebar(label,n)).join('')+`<p class="note">Cobertura de métricas: ${s.coverage}%</p>`;
@@ -269,7 +278,11 @@ async function renderCalendar() {
 }
 async function renderNews() {
   const rows=await bridge(`/api/news?symbol=${encodeURIComponent(state.current)}`);
-  $('#assetNews').innerHTML=rows.map(r=>`<div class="financial-row"><span>${esc(r.title)}<small class="provenance">${esc(r.date)} · ${esc(r.source)}</small></span></div>`).join('')||'<p class="note">Sem notícias disponíveis. O modo live requer EODHD configurado.</p>';
+  $('#assetNews').innerHTML=rows.map(r=>{
+     const url=safeArticleUrl(r.url);
+     const link=url?`<a href="${esc(url)}" target="${isAndroid()?'_self':'_blank'}" rel="noopener noreferrer">Ler artigo original ↗</a>`:'<small class="provenance">Link original indisponível</small>';
+     return `<div class="financial-row"><span>${esc(r.title)}<small class="provenance">${esc(r.date)} · ${esc(r.source)}</small>${link}</span></div>`;
+   }).join('')||'<p class="note">Sem notícias disponíveis para este ticker.</p>';
 }
 async function saveSettings(body) {
   await bridge('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});

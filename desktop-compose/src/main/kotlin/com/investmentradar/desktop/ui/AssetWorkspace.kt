@@ -8,6 +8,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalUriHandler
+import java.net.URI
+import java.time.Instant
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -63,6 +66,11 @@ private fun AssetHeader(state:RadarUiState){
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(listOfNotNull(a.sector?.takeIf{it.isNotBlank()},a.sources.quote.takeIf{it!="none"}).joinToString(" · ").ifBlank{"Market data"},color=RadarColors.TextMuted,fontSize=9.sp)
+                val updated=a.timestamp?.let{Instant.ofEpochSecond(it).toString().take(16).replace("T"," ")+" UTC"}?:"time unavailable"
+                val stale=a.timestamp?.let{System.currentTimeMillis()/1000-it>86400}==true
+                Text("Quote: "+updated+(if(stale)" · STALE" else "")+
+                    (if(state.status.mode=="demo")" · SYNTHETIC DEMO" else ""),
+                    color=if(stale)RadarColors.Negative else RadarColors.TextMuted,fontSize=9.sp)
             }
             Spacer(Modifier.weight(1f))
             Column(horizontalAlignment=Alignment.End){
@@ -437,13 +445,22 @@ private fun EarningsTab(rows:List<EarningsDto>){
 
 @Composable
 private fun NewsTab(rows:List<NewsDto>){
+    val uriHandler=LocalUriHandler.current
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
-        Text("NEWS",color=RadarColors.TextMuted,fontSize=8.sp)
-        if(rows.isEmpty()) Text("No news available",color=RadarColors.TextMuted)
+        Text("NEWS · ORIGINAL SOURCES",color=RadarColors.TextMuted,fontSize=9.sp)
+        Text("Articles are retrieved from providers. No generated headlines or inferred sentiment.",
+            color=RadarColors.TextMuted,fontSize=10.sp)
+        if(rows.isEmpty()) Text("No articles available for this ticker",color=RadarColors.TextMuted)
         rows.forEach{n->
-            Column(Modifier.fillMaxWidth().background(RadarColors.PanelRaised).padding(12.dp)){
-                Text(n.title,color=RadarColors.Text,fontSize=10.sp,fontWeight=FontWeight.SemiBold)
-                Text("${n.date} · ${n.source}",color=RadarColors.TextMuted,fontSize=9.sp)
+            val uri=runCatching{URI(n.url.trim())}.getOrNull()
+            val safe=uri!=null && uri.scheme in listOf("https","http") && !uri.host.isNullOrBlank()
+            Column(Modifier.fillMaxWidth().background(RadarColors.PanelRaised).padding(12.dp),
+                verticalArrangement=Arrangement.spacedBy(5.dp)){
+                Text(n.title,color=RadarColors.Text,fontSize=12.sp,fontWeight=FontWeight.SemiBold)
+                Text(n.date+" · "+n.source,color=RadarColors.TextMuted,fontSize=9.sp)
+                if(safe)TextButton(onClick={runCatching{uriHandler.openUri(n.url)}; Unit}){
+                    Text("Read original article ↗",fontSize=10.sp)
+                }else Text("Original article URL unavailable",color=RadarColors.TextMuted,fontSize=9.sp)
             }
         }
     }

@@ -352,6 +352,7 @@ json ResearchService::snapshot(const std::string &s) {
             {"available", bool(q || f)},
             {"price", q ? json(q->price) : json(nullptr)},
             {"changePct", q ? nullable(q->change_pct) : json(nullptr)},
+            {"timestamp", q && q->timestamp ? json(q->timestamp) : json(nullptr)},
             {"pe", nullable(m.pe)},
             {"forwardPE", nullable(m.forward_pe)},
             {"revenueGrowth", nullable(m.revenue_growth_pct)},

@@ -26,7 +26,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class SnapshotDto(
     val symbol:String="", val name:String="", val sector:String?=null,
     val price:Double?=null, val currency:String="", val reportingCurrency:String="",
-    val changePct:Double?=null, val score:Double?=null, val zone:String="N/A",
+    val changePct:Double?=null, val timestamp:Long?=null, val score:Double?=null, val zone:String="N/A",
     val history:List<HistoryPointDto> = emptyList(), val coverage:Double=0.0,
     val pe:Double?=null, val forwardPE:Double?=null,
     val revenueGrowth:Double?=null, val epsGrowth:Double?=null,
