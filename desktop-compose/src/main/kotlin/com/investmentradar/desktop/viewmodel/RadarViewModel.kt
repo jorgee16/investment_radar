@@ -118,7 +118,7 @@ class RadarViewModel(
     private fun navigate(page:AppPage){
         _state.update{it.copy(page=page,error=null)}
         if(page==AppPage.PROVIDERS) loadProviders()
-        if(page==AppPage.EVENTS) loadEvents()
+        if(page==AppPage.EVENTS || page==AppPage.DASHBOARD) loadEvents()
         if(page==AppPage.SCREENER) loadWatchAnalysis()
     }
 
