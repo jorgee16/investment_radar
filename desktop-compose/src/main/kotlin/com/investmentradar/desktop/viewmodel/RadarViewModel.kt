@@ -301,7 +301,7 @@ class RadarViewModel(
     private fun startPriceLoop(){
         scope.launch{
             while(isActive){
-                delay(30000)
+                delay(12L*60L*60L*1000L)
                 val current=_state.value
                 if(current.loading || current.watchlist.isEmpty()) continue
                 val updated=current.watchlist.map{item->
