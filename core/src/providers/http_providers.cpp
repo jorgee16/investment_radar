@@ -131,6 +131,34 @@ std::string twelve_symbol(std::string s) {
             return s.substr(0, s.size() - std::string(a).size()) + b;
     return s;
 }
+std::string alpha_symbol(std::string s) {
+    for (auto [a, b] : {std::pair{".PA", ".PAR"}, {".DE", ".DEX"}, {".L", ".LON"}, {".US", ""}})
+        if (s.ends_with(a))
+            return s.substr(0, s.size() - std::string(a).size()) + b;
+    return s;
+}
+std::optional<double> metric_num(const json &j, std::initializer_list<const char *> keys) {
+    if (!j.is_object())
+        return {};
+    for (auto key : keys)
+        if (auto v = num(j, key))
+            return v;
+    return {};
+}
+std::optional<double> sum_field(const json &rows, const char *key, int n) {
+    if (!rows.is_array())
+        return {};
+    double total = 0;
+    int count = 0;
+    for (const auto &row : rows) {
+        if (auto v = num(row, key)) {
+            total += *v;
+            if (++count == n)
+                return total;
+        }
+    }
+    return {};
+}
 json request(const HttpGet &get, const std::string &u) {
     return checked_provider_payload(get(u));
 }
