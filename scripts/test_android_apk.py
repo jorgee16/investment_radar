@@ -25,6 +25,8 @@ for package in (args.apk, args.test_apk):
     if not package.is_file():
         raise SystemExit(f'APK missing: {package}')
     subprocess.run([*adb, 'install', '--no-streaming', '-r', '-t', str(package.resolve())], check=True)
+# Evidence belongs to this run, never to an earlier installation.
+subprocess.run([*adb, 'shell', 'rm', '-rf', '/sdcard/Pictures/InvestmentRadarValidation'], check=True)
 command = [*adb, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', args.test_class,
            'com.investmentradar.app.test/androidx.test.runner.AndroidJUnitRunner']
 result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

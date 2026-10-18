@@ -4,7 +4,7 @@ import java.net.URL
 import java.util.Locale
 
 /**
- * Pure platform policy shared by Android transport and WebView navigation.
+ * Pure platform policy shared by Android transport and external article actions.
  * Deliberately has no Android dependencies so it can be unit-tested on the JVM.
  */
 internal object ProviderPolicy {
@@ -33,7 +33,7 @@ internal object ProviderPolicy {
         }
     }
 
-    /** Never allow a privileged WebView to follow an untrusted navigation. */
+    /** External links require an explicit foreground action and an HTTPS destination. */
     fun mayOpenExternal(
         scheme: String?, host: String?, isMainFrame: Boolean, hasGesture: Boolean
     ): Boolean =

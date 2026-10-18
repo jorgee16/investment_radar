@@ -1,282 +1,254 @@
 package com.investmentradar.app
 
-import android.content.Intent
 import android.content.ContentValues
-import android.os.Build
-import android.provider.MediaStore
+import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
+import android.os.Build
 import android.os.SystemClock
-import android.view.InputDevice
+import android.provider.MediaStore
 import android.view.KeyEvent
-import android.view.MotionEvent
-import android.webkit.WebStorage
 import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
-import androidx.test.runner.lifecycle.Stage
+import org.json.JSONArray
 import org.json.JSONObject
-import org.json.JSONTokener
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** Exercises the installed APK: real WebView, Kotlin bridge, JNI, SQLite and Keystore.
- * Demo fixtures are explicit; no paid-provider entitlement is simulated here. */
+/** Installed Release APK tests: Compose semantics/touch, real JNI, SQLite and Keystore.
+ * No network entitlement is simulated. All market values in Demo are explicitly synthetic. */
 @RunWith(AndroidJUnit4::class)
 class AndroidFlowTest {
+    @get:Rule val ui = createEmptyComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
+    private lateinit var scenario: ActivityScenario<MainActivity>
     private lateinit var activity: MainActivity
-    private lateinit var web: WebView
-
+    private fun state() = activity.model.state.value
     @Before fun launch() {
-        context.getSharedPreferences("secure_providers", 0).edit().clear().commit()
-        context.getSharedPreferences("providers", 0).edit().clear().commit()
-        instrumentation.runOnMainSync { WebStorage.getInstance().deleteAllData() }
+        listOf("secure_providers", "providers", "radar_native", "radar_appearance").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
+        LocalPortfolio(context).write(defaultWatch, emptyList(), true)
         start()
     }
     private fun start() {
-        activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
-        instrumentation.runOnMainSync { web = (activity.findViewById<android.widget.FrameLayout>(android.R.id.content).getChildAt(0) as android.widget.FrameLayout).getChildAt(0) as WebView }
-        await("Android UI initialized") { truth("return document.querySelector('#runtime')?.textContent.includes('Android') && !!document.querySelector('#mobileMore') && !!document.querySelector('#mobilePositionDialog') && !!document.querySelector('#mobileWatchDialog');") }
-        view("asset")
-        await("demo snapshot loaded") { truth("return document.querySelector('#assetPrice')?.textContent.includes('188') && document.querySelector('#asset').getAttribute('aria-busy')==='false';") }
+        scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java))
+        scenario.onActivity { activity = it }
+        await("native data initialized") { state().ready && state().snapshot != null && !state().loading }
     }
-    @After fun finish() { if (::activity.isInitialized) instrumentation.runOnMainSync { activity.finish() } }
-    private fun eval(script: String): Any? {
-        val latch = CountDownLatch(1); var value: Any? = null
-        instrumentation.runOnMainSync {
-            web.evaluateJavascript("(()=>{$script})()") { raw -> value = JSONTokener(raw ?: "null").nextValue(); latch.countDown() }
-        }
-        assertTrue("WebView callback timed out", latch.await(45, TimeUnit.SECONDS))
-        return value
+    @After fun close() {
+        if (::scenario.isInitialized) { scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }; scenario.close() }
     }
-    private fun truth(script: String) = eval(script) == true
-    private fun await(label: String, check: () -> Boolean) {
-        val end = SystemClock.uptimeMillis() + 90000
-        do { if (check()) return; SystemClock.sleep(100) } while (SystemClock.uptimeMillis() < end)
-        capture("failure-"+label.replace(Regex("[^a-zA-Z0-9]+"),"-"))
-        fail("Timed out: $label; state="+eval("return JSON.stringify({portfolio:state.portfolio,watch:state.watch,positionError:document.querySelector('#mobilePositionError')?.textContent});")+"; notice=" + eval("return document.querySelector('#notice')?.textContent;"))
+    private fun await(label: String, predicate: () -> Boolean) {
+        try { ui.waitUntil(90000, predicate) } catch (e: AssertionError) { capture("failure-" + label.replace(Regex("[^a-zA-Z0-9]+"), "-")); throw e }
     }
-    private fun tap(selector: String) {
-        val quoted = JSONObject.quote(selector)
-        eval("document.querySelector($quoted).scrollIntoView({block:'center',inline:'nearest'});")
-        val box = eval("const r=document.querySelector($quoted).getBoundingClientRect();return JSON.stringify({x:r.x+r.width/2,y:r.y+r.height/2,w:innerWidth});") as String
-        val rect = JSONObject(box); val location = IntArray(2); var ratio = 1f
-        instrumentation.runOnMainSync { web.getLocationOnScreen(location); ratio = web.width / rect.getDouble("w").toFloat() }
-        val x = location[0] + rect.getDouble("x").toFloat() * ratio
-        val y = location[1] + rect.getDouble("y").toFloat() * ratio
-        val now = SystemClock.uptimeMillis()
-        for ((action, time) in listOf(MotionEvent.ACTION_DOWN to now, MotionEvent.ACTION_UP to now + 30)) {
-            val event = MotionEvent.obtain(now, time, action, x, y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
-            assertTrue("Touch injection failed: $selector", instrumentation.uiAutomation.injectInputEvent(event, true)); event.recycle()
-        }
-        instrumentation.waitForIdleSync()
+    private fun click(tag: String) {
+        val node = ui.onNodeWithTag(tag)
+        // Scroll only when offscreen; dialog and navigation nodes have no scroll parent.
+        runCatching { node.assertIsDisplayed() }.onFailure { node.performScrollTo() }
+        node.performClick()
     }
-    private fun openWatch() {
-        tap("#addWatch")
-        await("watch editor opened") { truth("return document.querySelector('#mobileWatchDialog').open && document.querySelector('#mobileWatchSymbol').getBoundingClientRect().width>0;") }
-    }
-    private fun openPosition() {
-        tap("#addPosition")
-        await("position editor opened") { truth("return document.querySelector('#mobilePositionDialog').open && document.querySelector('#mobilePositionSymbol').getBoundingClientRect().width>0;") }
-    }
-    private fun fill(selector: String, value: String) { eval("const e=document.querySelector(${JSONObject.quote(selector)});e.value=${JSONObject.quote(value)};e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));") }
-    private fun view(id: String) {
-        if (id in setOf("screener", "calendar", "providers", "settings")) {
-            tap("#mobileMore"); await("more menu") { truth("return !document.querySelector('#mobileMorePanel').hidden;") }; tap("[data-open-view='$id']")
-        } else tap(".nav[data-view='$id']")
-        await("view $id") { truth("return document.querySelector('#$id').classList.contains('active');") }
-        if (id == "providers") await("provider form") { truth("return document.querySelector('#providers').getAttribute('aria-busy')==='false';") }
-        assertLayout(id)
-    }
-    private fun assertLayout(label: String) {
-        assertTrue("Horizontal page overflow: $label", truth("return document.documentElement.scrollWidth<=innerWidth+1;"))
-        assertTrue("Bottom navigation overlapped or outside viewport: $label", truth("const r=document.querySelector('.sidebar').getBoundingClientRect();return r.bottom<=innerHeight+1 && r.top>=0;"))
-    }
-    private fun capture(name: String) {
-        instrumentation.waitForIdleSync()
-        val image = instrumentation.uiAutomation.takeScreenshot()
-        assertNotNull("Screenshot unavailable", image)
-        if (Build.VERSION.SDK_INT >= 29) {
-            val folder="Pictures/InvestmentRadarValidation/"
-            val resolver=context.contentResolver
-            resolver.delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                "${MediaStore.Images.Media.DISPLAY_NAME}=? AND ${MediaStore.Images.Media.RELATIVE_PATH}=?", arrayOf("$name.png",folder))
-            val values=ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME,"$name.png")
-                put(MediaStore.Images.Media.MIME_TYPE,"image/png")
-                put(MediaStore.Images.Media.RELATIVE_PATH,folder)
-                put(MediaStore.Images.Media.IS_PENDING,1)
-            }
-            val uri=checkNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values))
-            checkNotNull(resolver.openOutputStream(uri)).use { assertTrue(image!!.compress(Bitmap.CompressFormat.PNG,100,it)) }
-            resolver.update(uri,ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING,0) },null,null)
-        } else {
-            val folder = File(context.getExternalFilesDir(null), "validation-screenshots").apply { mkdirs() }
-            File(folder, "$name.png").outputStream().use { assertTrue(image!!.compress(Bitmap.CompressFormat.PNG, 100, it)) }
-        }
-        image!!.recycle()
+    private fun fill(tag: String, value: String) { ui.onNodeWithTag(tag).performTextReplacement(value) }
+    private fun page(page: Page) {
+        if (page in listOf(Page.Home, Page.Markets, Page.Portfolio)) click("nav-${page.name}")
+        else { click("nav-More"); click("menu-${page.name}") }
+        ui.onNodeWithTag("screen-${page.name}").assertIsDisplayed()
+        assertEquals(page, state().page)
     }
     private fun back() { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK); instrumentation.waitForIdleSync() }
-    private fun setMode(mode: String) {
-        fill("#dataMode", mode); tap("#saveProviderKeys")
-        await("mode $mode") { truth("return document.querySelector('#settingsMode').textContent==='${mode.uppercase()}' && document.querySelector('#providers').getAttribute('aria-busy')==='false' && document.querySelector('#asset').getAttribute('aria-busy')==='false';") }
+    private fun restart() { scenario.close(); start() }
+    private fun search(value: String) { click("open-search"); fill("search-input", value); click("search-submit") }
+    private fun capture(name: String) {
+        instrumentation.waitForIdleSync()
+        val image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        if (Build.VERSION.SDK_INT >= 29) {
+            val resolver = context.contentResolver; val folder = "Pictures/InvestmentRadarValidation/"
+            resolver.delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "${MediaStore.Images.Media.DISPLAY_NAME}=? AND ${MediaStore.Images.Media.RELATIVE_PATH}=?", arrayOf("$name.png", folder))
+            val values = ContentValues().apply { put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png"); put(MediaStore.Images.Media.MIME_TYPE, "image/png"); put(MediaStore.Images.Media.RELATIVE_PATH, folder); put(MediaStore.Images.Media.IS_PENDING, 1) }
+            val uri = checkNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+            checkNotNull(resolver.openOutputStream(uri)).use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+        } else {
+            val directory = File(context.getExternalFilesDir(null), "validation-screenshots").apply { mkdirs() }
+            File(directory, "$name.png").outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        }
+        image.recycle()
     }
-
-    @Test fun nativeCoreAndBridge() {
-        val config = "{\"demo\":true}"
-        val result = JSONObject(activity.nativeRequest("/api/snapshot", "AIR.PA", config)).getJSONObject("data")
-        assertEquals(188.0, result.getDouble("price"), 0.001)
-        assertEquals("Demo", result.getJSONObject("sources").getString("quote"))
-        assertTrue(JSONObject(activity.nativeRequest("/api/unknown", "", config)).has("error"))
-        assertTrue(JSONObject(activity.nativeRequest("/api/snapshot", "<script>", config)).has("error"))
-        assertTrue(truth("return typeof AndroidBridge.request==='function' && document.querySelector('#settingsRuntime').textContent.includes('Android');"))
-        view("dashboard");capture("01-dashboard")
+    @Test fun nativeCoreAndNativePresentation() {
+        val core = NativeCore(context)
+        try {
+            val result = JSONObject(core.nativeRequest("/api/snapshot", "AIR.PA", "{\"demo\":true}")).getJSONObject("data")
+            assertEquals(188.0, result.getDouble("price"), .001); assertEquals("Demo", result.getJSONObject("sources").getString("quote"))
+            assertTrue(JSONObject(core.nativeRequest("/api/unknown", "", "{}")).has("error"))
+            assertTrue(JSONObject(core.nativeRequest("/api/snapshot", "<script>", "{}")).has("error"))
+        } finally { core.close() }
+        ui.onNodeWithTag("native-app").assertExists(); capture("01-home")
+        page(Page.Markets); ui.onNodeWithTag("asset-price").assertTextContains("188")
+        ui.onNodeWithTag("price-chart").performScrollTo().assertIsDisplayed(); capture("02-asset-summary")
+        var webCount = 0
+        instrumentation.runOnMainSync {
+            fun count(view: android.view.View) { if (view is WebView) webCount++; if (view is android.view.ViewGroup) for (i in 0 until view.childCount) count(view.getChildAt(i)) }
+            count(activity.window.decorView)
+        }
+        assertEquals("Financial screens must be native Compose", 0, webCount)
     }
     @Test fun allNavigationAndAssetTabs() {
-        for (id in listOf("portfolio", "watchlist", "calendar", "screener", "providers", "settings")) { view(id); capture("nav-$id") }
-        back(); await("back returns previous page") { truth("return document.querySelector('#providers').classList.contains('active');") };view("asset")
-        for (tab in listOf("financials", "valuation", "earnings", "news", "overview")) {
-            tap("[data-tab='$tab']"); await("tab $tab") { truth("return document.querySelector('#tab-$tab').classList.contains('active');") }; assertLayout(tab); capture("tab-$tab")
+        for (target in listOf(Page.Portfolio, Page.Watchlist, Page.Screener, Page.Calendar, Page.Providers, Page.Settings)) {
+            page(target); capture("nav-${target.name}")
         }
-        tap("#mobileMore"); back(); await("back dismisses menu") { truth("return document.querySelector('#mobileMorePanel').hidden;") }
+        back(); await("back restores providers") { state().page == Page.Providers }
+        page(Page.Markets)
+        for (tab in 0..4) {
+            click("asset-tab-$tab"); assertEquals(tab, state().tab)
+            await("auxiliary finished") { !state().auxiliaryLoading }; capture("asset-tab-$tab")
+        }
+        back(); await("back selects summary") { state().tab == 0 }
+        click("nav-More"); back(); ui.onNodeWithTag("menu-Settings").assertDoesNotExist()
     }
     @Test fun watchlistFormsAndPersistence() {
-        view("watchlist"); await("watch cards") { truth("return document.querySelectorAll('#watchGrid [data-w]').length===6;") }
-        openWatch(); fill("#mobileWatchSymbol", "BAD SYMBOL"); tap("#mobileWatchSubmit")
-        await("invalid watch ticker rejected"){truth("return !document.querySelector('#mobileWatchError').hidden && state.watch.length===6;")}
-        fill("#mobileWatchSymbol", "AIR.PA"); tap("#mobileWatchSubmit")
-        await("duplicate watch ticker rejected"){truth("return !document.querySelector('#mobileWatchError').hidden && document.querySelector('#mobileWatchError').textContent.includes('já');")}
-        fill("#mobileWatchSymbol", "AAPL"); tap("#mobileWatchSubmit")
-        await("added ticker") { truth("return document.querySelectorAll('#watchGrid [data-w]').length===7;") }
-        tap("#watchGrid [data-w='AAPL']"); await("open added ticker") { truth("return document.querySelector('#assetTicker').textContent==='AAPL' && document.querySelector('#assetName').textContent==='Apple Inc.';") }
-        instrumentation.runOnMainSync { activity.finish() }; start(); view("watchlist")
-        await("watch persisted after Activity restart") { truth("return !!document.querySelector('#watchGrid [data-w='AAPL']');") }
-        tap("#watchGrid [data-w='AAPL'] [data-rw]")
-        await("remove ticker") { truth("return !document.querySelector('#watchGrid [data-w='AAPL']') && document.querySelectorAll('#radarWatch [data-w]').length===6;") }
-        openWatch();back();if(truth("return document.querySelector('#mobileWatchDialog').open;"))back();await("back dismisses editor"){truth("return !document.querySelector('#mobileWatchDialog').open;")}
+        page(Page.Watchlist); click("add-watch"); fill("watch-input", "<bad>"); click("watch-submit")
+        ui.onNodeWithTag("form-error").assertIsDisplayed(); assertEquals(6, state().watch.size)
+        fill("watch-input", "AIR.PA"); click("watch-submit"); ui.onNodeWithTag("form-error").assertTextContains("já")
+        fill("watch-input", "aapl"); click("watch-submit"); await("watch added") { "AAPL" in state().watch }
+        ui.onNodeWithTag("quote-AAPL").performScrollTo().performClick(); await("AAPL loaded") { state().snapshot?.text("symbol") == "AAPL" }
+        restart(); assertTrue("AAPL" in state().watch)
+        page(Page.Watchlist); click("remove-watch-AAPL"); assertFalse("AAPL" in state().watch)
+        capture("watchlist-updated"); click("add-watch"); back(); ui.onNodeWithTag("watch-input").assertDoesNotExist()
     }
-    @Test fun portfolioValidationTotalsAndPersistence() {
-        view("portfolio"); openPosition()
-        fill("#mobilePositionSymbol", "AIR.PA"); fill("#mobilePositionQty", "-1"); fill("#mobilePositionAvg", "180,50"); fill("#mobilePositionCurrency", "EUR"); tap("#mobilePositionSubmit")
-        await("invalid position rejected"){truth("return !document.querySelector('#mobilePositionError').hidden;")};capture("position-validation")
-        fill("#mobilePositionQty", "2,5"); tap("#mobilePositionSubmit")
-        await("position saved and valued") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===1 && document.querySelector('#pfCurrent').textContent.includes('470');") }
-        assertTrue(truth("return document.querySelector('#pfInvested').textContent.includes('451,25') && document.querySelector('#pfPL').textContent.includes('18,75');"))
-        openPosition();fill("#mobilePositionSymbol","AIR.PA");fill("#mobilePositionQty","1,5");fill("#mobilePositionAvg","200");fill("#mobilePositionCurrency","EUR");tap("#mobilePositionSubmit")
-        await("multiple lots valued") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===2 && document.querySelector('#pfCurrent').textContent.includes('752');") }
-        view("asset");assertTrue(truth("return document.querySelector('#positionTitle').textContent==='4 unidades' && document.querySelector('#positionCurrent').textContent.includes('752');"))
-        instrumentation.runOnMainSync { activity.finish() }; start(); view("portfolio")
-        await("position persisted") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===2;") }; capture("portfolio-with-position")
-        tap("#portfolioTable [data-rp]");await("first lot removed"){truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===1;")};tap("#portfolioTable [data-rp]"); await("position removed") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===0 && document.querySelector('#pfCurrent').textContent==='—';") }
-        view("asset"); assertTrue(truth("return document.querySelector('#positionTitle').textContent==='Sem posição';"))
+    @Test fun portfolioValidationMultiLotAndPersistence() {
+        page(Page.Portfolio); click("add-position"); fill("position-qty", "-1"); fill("position-avg", "180,50"); click("position-submit")
+        ui.onNodeWithTag("form-error").assertIsDisplayed(); assertTrue(state().positions.isEmpty())
+        fill("position-qty", "2,5"); click("position-submit"); await("first lot saved") { state().positions.size == 1 }
+        click("add-position"); fill("position-qty", "1,5"); fill("position-avg", "200"); click("position-submit")
+        await("second lot saved") { state().positions.size == 2 && state().quotes["AIR.PA"]?.number("price") != null }
+        val total = portfolioTotals(state().positions, state().quotes).single()
+        assertEquals(751.25, total.invested, .001); assertEquals(752.0, total.value!!, .001)
+        ui.onNodeWithTag("total-EUR").performScrollTo(); ui.onNodeWithText("752,00 €").assertExists()
+        capture("portfolio-multiple-lots"); restart(); assertEquals(2, state().positions.size)
+        page(Page.Portfolio); val ids = state().positions.map { it.id }
+        ids.forEach { click("remove-position-$it") }; assertTrue(state().positions.isEmpty()); capture("portfolio-empty")
     }
-    @Test fun demoLiveMissingKeysAndRouting() {
-        view("providers"); tap("#testAllProviders")
-        await("missing key reports") { truth("return providerTests.size===5 && [...providerTests.values()].every(r=>r.code==='missing_key');") }
-        setMode("live")
-        assertTrue(truth("return document.querySelector('#assetPrice').textContent==='—' && document.querySelector('#assetScore').textContent==='—' && document.querySelectorAll('#priceChart path').length===0;"))
-        capture("live-without-keys")
-        fill("[data-route='quotes']", "twelve"); tap("#saveRouting")
-        await("routing saved") { truth("return document.querySelector('[data-route=quotes]').value==='twelve' && !document.querySelector('#saveRouting').disabled;") }
-        instrumentation.runOnMainSync { activity.finish() }
-        activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
-        instrumentation.runOnMainSync { web = (activity.findViewById<android.widget.FrameLayout>(android.R.id.content).getChildAt(0) as android.widget.FrameLayout).getChildAt(0) as WebView }
-        await("live survives restart") { truth("return document.querySelector('#settingsMode')?.textContent==='LIVE' && !!document.querySelector('#mobileMore') && !!document.querySelector('#mobileWatchDialog');") }
-        view("providers"); assertTrue(truth("return document.querySelector('[data-route=quotes]').value==='twelve';")); setMode("demo")
-        await("demo restored") { truth("return document.querySelector('#assetPrice').textContent.includes('188');") }
-    }
-    @Test fun keystoreAndCredentialForm() {
-        view("providers"); fill("#keyEodhd", "fixture-not-a-real-api-key"); tap("#saveProviderKeys")
-        await("key saved") { truth("return document.querySelector('#keyEodhd').placeholder.includes('Configurado') && !document.querySelector('#saveProviderKeys').disabled;") }
-        assertEquals("fixture-not-a-real-api-key", SecureSettings(context).load().getString("eodhdKey"))
-        val encrypted = context.getSharedPreferences("secure_providers", 0).getString("config", "")!!
-        assertFalse(encrypted.contains("fixture-not-a-real-api-key"))
-        val cfg = JSONObject(activity.nativeRequest("/api/settings", "", SecureSettings(context).load().toString())).getJSONObject("data")
-        assertFalse(cfg.toString().contains("fixture-not-a-real-api-key")); assertEquals("local", cfg.getJSONObject("keySources").getString("eodhd"))
-        assertTrue(truth("return document.querySelector('#keyEodhd').value==='' && document.querySelector('#providerKeyForm').textContent.includes('Chave guardada');"))
-        eval("document.querySelector('#clearEodhd').checked=true;"); tap("#saveProviderKeys")
-        await("key removed") { truth("return document.querySelector('#keyEodhd').placeholder==='Chave de API' && !document.querySelector('#saveProviderKeys').disabled;") }
-        assertEquals("", SecureSettings(context).load().optString("eodhdKey"))
-    }
-    @Test fun searchScreenerAndKeyboard() {
-        tap("#symbolInput"); instrumentation.sendStringSync("JPM"); fill("#symbolInput", "JPM")
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_ENTER)
-        await("IME search") { truth("return document.querySelector('#assetTicker').textContent==='JPM' && document.querySelector('#assetName').textContent.includes('JPMorgan');") }
-        fill("#symbolInput", "BAD SYMBOL"); tap("#symbolSearch button")
-        assertTrue(truth("return document.querySelector('#notice').textContent==='Ticker inválido.';"))
-        view("screener"); fill("#screenScore", "40")
-        await("screener results") { truth("return document.querySelectorAll('#screenerResults [data-w]').length>0;") }
-        fill("#screenZone", "BUY")
-        await("screener filter") { truth("return [...document.querySelectorAll('#screenerResults .watch-meta')].every(e=>e.textContent.includes('BUY'));") }
-        capture("screener-filtered")
-    }
-    @Test fun rendererTerminationRecoversWithoutLosingWatchlist() {
-        view("watchlist"); openWatch(); fill("#mobileWatchSymbol","AAPL"); tap("#mobileWatchSubmit")
-        await("watch saved before renderer termination") { truth("return !!document.querySelector(\"#watchGrid [data-w='AAPL']\");") }
-        instrumentation.runOnMainSync {
-            if (Build.VERSION.SDK_INT >= 29) assertTrue(web.webViewRenderProcess?.terminate() == true)
-            else web.loadUrl("chrome://crash")
+    @Test fun currencySeparationAndMissingQuotes() {
+        page(Page.Portfolio)
+        fun add(ticker: String, qty: String, avg: String, currency: String) {
+            click("add-position"); fill("position-symbol", ticker); fill("position-qty", qty); fill("position-avg", avg); fill("position-currency", currency); click("position-submit")
         }
-        var retry: android.widget.Button?=null
-        await("native recovery screen") {
-            instrumentation.runOnMainSync { retry=activity.findViewById<android.widget.FrameLayout>(android.R.id.content).findViewWithTag("retry-webview") }
-            retry != null
+        add("AIR.PA", "1", "180", "EUR"); add("JPM", "2", "300", "USD"); add("UNKNOWN", "1", "10", "EUR")
+        await("JPM quote") { state().quotes["JPM"]?.number("price") == 310.0 }
+        val totals = portfolioTotals(state().positions, state().quotes).associateBy { it.currency }
+        assertEquals(2, totals.size); assertNull(totals.getValue("EUR").value); assertEquals(620.0, totals.getValue("USD").value!!, .001)
+        capture("portfolio-currency-and-missing")
+    }
+    @Test fun demoLiveClearsSyntheticDataAndPersistsRouting() {
+        page(Page.Providers); click("mode-live")
+        await("live without keys") { !state().demo && !state().saving && !state().loading && state().snapshot != null }
+        assertNull(state().snapshot!!.number("price")); assertNull(state().snapshot!!.number("score")); assertTrue(state().history.isEmpty())
+        page(Page.Markets); ui.onNodeWithTag("asset-price").assertTextEquals("—"); capture("live-without-keys")
+        page(Page.Providers); click("route-quotes"); click("route-option-quotes-twelve"); click("save-routing")
+        await("routing saved") { state().routing["quotes"] == "twelve" && !state().saving }
+        restart(); assertFalse(state().demo); assertEquals("twelve", state().routing["quotes"])
+        page(Page.Providers); click("mode-demo"); await("demo restored") { state().demo && state().snapshot?.number("price") == 188.0 }
+    }
+    @Test fun encryptedCredentialsAndFiveProviderReports() {
+        page(Page.Providers); fill("key-eodhd", "instrumentation-fixture-only"); click("save-keys")
+        await("key stored") { "eodhd" in state().configured && !state().saving }
+        val stored = context.getSharedPreferences("secure_providers", 0).getString("config", "")!!
+        assertFalse(stored.contains("instrumentation-fixture-only"))
+        val actual = SecureSettings(context).load(); assertEquals("instrumentation-fixture-only", actual.getString("eodhdKey"))
+        ui.onNodeWithTag("key-eodhd").assertTextContains("", substring = true)
+        click("clear-key-eodhd"); await("key removed") { state().configured.isEmpty() && !state().saving }
+        click("test-providers"); await("five missing key reports") { state().reports.size == 5 && !state().testing }
+        assertTrue(state().reports.all { it.text("code") == "missing_key" && !it.optBoolean("connected") })
+        ui.onNodeWithTag("report-eodhd").performScrollTo().assertIsDisplayed(); capture("providers-test-results")
+        restart(); assertTrue(state().configured.isEmpty())
+    }
+    @Test fun searchScreenerAndBack() {
+        click("open-search"); fill("search-input", "<bad>"); click("search-submit"); ui.onNodeWithTag("form-error").assertIsDisplayed()
+        fill("search-input", "JPM"); ui.onNodeWithTag("search-input").performImeAction()
+        await("JPM selected") { state().snapshot?.text("symbol") == "JPM" }; assertEquals(Page.Markets, state().page)
+        page(Page.Screener); click("run-screener"); await("screening completed") { !state().screeningBusy && state().screening.size == 6 }
+        fill("screener-filter", "AIR.PA"); ui.onNodeWithTag("screened-AIR.PA").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("screened-JPM").assertDoesNotExist(); capture("screener-filtered")
+        click("quote-AIR.PA"); await("AIR selected") { state().snapshot?.text("symbol") == "AIR.PA" }
+    }
+    @Test fun chartRangesAndExpansion() {
+        page(Page.Markets); click("range-365"); await("one year history") { !state().historyLoading && state().days == 365 && state().history.isNotEmpty() }
+        ui.onNodeWithTag("price-chart").performScrollTo().performTouchInput { click(center) }
+        capture("chart-crosshair")
+        ui.onNodeWithText("Velas").assertIsNotEnabled(); ui.onNodeWithText("Ampliar").performScrollTo().performClick()
+        ui.onNodeWithTag("close-chart").assertIsDisplayed(); capture("chart-expanded"); back(); ui.onNodeWithTag("close-chart").assertDoesNotExist()
+        click("range-30"); await("one month history") { !state().historyLoading && state().days == 30 }
+    }
+    @Test fun rotationKeyboardAndDialog() {
+        page(Page.Watchlist)
+        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        await("landscape") { activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE }
+        ui.onNodeWithTag("screen-Watchlist").assertIsDisplayed(); capture("landscape-watchlist")
+        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+        await("portrait") { activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT }
+        capture("portrait-watchlist")
+        instrumentation.uiAutomation.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1").use { fd -> android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() } }
+        click("add-watch"); click("watch-input")
+        await("keyboard visible") {
+            var visible = false
+            instrumentation.runOnMainSync { visible = ViewCompat.getRootWindowInsets(activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true }; visible
         }
-        capture("renderer-recovery")
-        val old=activity
-        instrumentation.runOnMainSync { retry!!.performClick() }
-        await("activity recreated") {
-            var next: MainActivity?=null
-            instrumentation.runOnMainSync {
-                next=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
-                    .filterIsInstance<MainActivity>().firstOrNull { it !== old }
-            }
-            if (next != null) {
-                activity=next!!
-                instrumentation.runOnMainSync { web=(activity.findViewById<android.widget.FrameLayout>(android.R.id.content).getChildAt(0) as android.widget.FrameLayout).getChildAt(0) as WebView }
-                true
-            } else false
-        }
-        await("mobile controls restored") { truth("return !!document.querySelector('#mobileMore') && !!document.querySelector('#mobileWatchDialog');") }
-        view("asset")
-        await("snapshot restored after renderer termination") { truth("return document.querySelector('#assetPrice')?.textContent.includes('188');") }
-        view("watchlist"); await("watchlist preserved after renderer termination") { truth("return !!document.querySelector(\"#watchGrid [data-w='AAPL']\");") }
+        ui.onNodeWithTag("watch-submit").assertIsDisplayed(); capture("keyboard-watch-form"); back(); back()
+    }
+    @Test fun themeAndActivityRestoration() {
+        page(Page.Settings); click("dark-theme"); assertTrue(state().dark); capture("dark-settings")
+        page(Page.Markets); click("asset-tab-2"); scenario.recreate(); scenario.onActivity { activity = it }
+        ui.onNodeWithTag("screen-Markets").assertIsDisplayed(); assertEquals(2, state().tab); assertTrue(state().dark); capture("dark-financials")
+        restart(); assertTrue(state().dark)
     }
     @Test fun sqliteCacheAndTransportPolicy() {
         ApiCache(context).use { cache ->
-            val url="https://eodhd.com/api/quote?api_token=cache-fixture"
-            cache.put(url,"{\"close\":123}")
-            assertNotNull(cache.get(url,60)); assertNull(cache.get(url,0))
-            cache.readableDatabase.rawQuery("SELECT cache_key FROM http_cache_v2",null).use { c -> assertTrue(c.moveToFirst()); assertEquals(64,c.getString(0).length); assertFalse(c.getString(0).contains("cache-fixture")) }
-            try { HttpClient(cache).get("http://eodhd.com/api/quote"); fail("Cleartext should be rejected") } catch (_: IllegalArgumentException) { }
-            try { HttpClient(cache).get("https://example.org/api/quote"); fail("Unexpected host should be rejected") } catch (_: IllegalArgumentException) { }
+            val url = "https://eodhd.com/api/quote?api_token=cache-fixture"
+            cache.put(url, "{\"close\":123}"); assertNotNull(cache.get(url, 60)); assertNull(cache.get(url, 0))
+            cache.readableDatabase.rawQuery("SELECT cache_key FROM http_cache_v2", null).use { c -> assertTrue(c.moveToFirst()); assertEquals(64, c.getString(0).length); assertFalse(c.getString(0).contains("cache-fixture")) }
+            try { HttpClient(cache).get("http://eodhd.com/api/quote"); fail("Cleartext must be rejected") } catch (_: IllegalArgumentException) { }
+            try { HttpClient(cache).get("https://example.org/api/quote"); fail("Unexpected host must be rejected") } catch (_: IllegalArgumentException) { }
         }
     }
-    @Test fun rotationRetainsNavigationAndSafeInsets() {
-        view("watchlist")
-        instrumentation.runOnMainSync { activity.requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-        await("landscape") { truth("return innerWidth>innerHeight;") }
-        assertTrue(truth("return document.querySelector('#watchlist').classList.contains('active');")); assertLayout("landscape"); capture("landscape-watchlist")
-        instrumentation.runOnMainSync { activity.requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
-        await("portrait") { truth("return innerHeight>innerWidth;") }; assertLayout("portrait"); capture("portrait-watchlist")
-        instrumentation.uiAutomation.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1").use { fd ->
-            android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
+    @Test fun legacyWebViewMigrationPreservesData() {
+        val seeded = CountDownLatch(1); lateinit var web: WebView
+        instrumentation.runOnMainSync {
+            web = WebView(context); web.settings.apply { javaScriptEnabled = true; domStorageEnabled = true }
+            web.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    view.evaluateJavascript("localStorage.setItem('ir_watch','[\"AAPL\"]');localStorage.setItem('ir_portfolio','[{\"symbol\":\"AIR.PA\",\"qty\":2.5,\"avg\":180.5,\"currency\":\"EUR\"}]');true") { seeded.countDown() }
+                }
+            }
+            web.loadDataWithBaseURL("https://appassets.androidplatform.net/assets/index.html", "<!doctype html><html></html>", "text/html", "UTF-8", null)
         }
-        openWatch(); tap("#mobileWatchSymbol")
-        await("software keyboard visible") {
-            var visible=false
-            instrumentation.runOnMainSync { visible=androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true }
-            visible
-        }
-        assertLayout("keyboard");capture("keyboard-and-dialog");back()
+        assertTrue(seeded.await(60, TimeUnit.SECONDS)); instrumentation.runOnMainSync { web.destroy() }
+        val migrated = CountDownLatch(1); var result: JSONObject? = null
+        instrumentation.runOnMainSync { LegacyPortfolioMigration(context, { result = it; migrated.countDown() }, { migrated.countDown() }).start() }
+        assertTrue(migrated.await(60, TimeUnit.SECONDS)); assertNotNull("Actual old WebView storage must migrate", result)
+        val store = LocalPortfolio(context); store.migrate(result!!)
+        assertEquals(listOf("AAPL"), store.watch()); assertEquals(2.5, store.positions().single().qty, .001)
+        restart(); assertEquals(listOf("AAPL"), state().watch); assertEquals(1, state().positions.size)
+        page(Page.Portfolio); capture("portfolio-migrated-from-webview")
+    }
+    @Test fun rapidAssetChangesNeverReplaceLatestSelection() {
+        search("JPM"); search("AAPL"); search("TSM")
+        await("latest selection completes") { !state().loading && state().snapshot?.text("symbol") == "TSM" }
+        ui.onNodeWithTag("asset-price").assertTextContains("330"); assertEquals("TSM", state().symbol)
+        click("asset-tab-4"); search("AIR.PA"); await("new asset clears old news") { state().snapshot?.text("symbol") == "AIR.PA" }
+        assertTrue(state().news.isEmpty()); assertEquals(0, state().tab)
     }
 }

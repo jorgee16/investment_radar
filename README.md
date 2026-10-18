@@ -2,7 +2,7 @@
 
 Aplicação de pesquisa de investimentos para Windows e Android, com core C++20.
 O **desktop principal está a migrar para Kotlin + Compose Multiplatform Desktop**
-com MVVM/UDF e Canvas nativo; o Android mantém a WebView partilhada por agora.
+com MVVM/UDF e Canvas nativo; o Android usa Jetpack Compose nativo, com ViewModel, StateFlow e gráficos Canvas.
 A WebView desktop anterior permanece apenas como fallback temporário.
 
 A base é executável e testável. Os providers estão ligados à aplicação; a
@@ -156,7 +156,8 @@ cd android
 .\gradlew.bat :app:assembleDebug
 ```
 
-A UI é empacotada diretamente de `shared/web/`: não há cópia de assets para manter.
+A UI Android é nativa em Jetpack Compose, com gráficos Canvas, ViewModel e
+StateFlow. Ver [arquitetura e testes Android](docs/ANDROID_COMPOSE.md).
 Kotlin trata do lifecycle, transporte HTTPS, cache e armazenamento cifrado por
 Android Keystore. Normalização, routing, snapshots e avaliação ficam em C++ via
 JNI. Os pedidos correm num executor fora da thread principal.

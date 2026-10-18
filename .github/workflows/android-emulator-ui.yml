@@ -53,13 +53,13 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -accel on
-          script: python3 scripts/test_android_apk.py android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk --serial emulator-5554 --output dist/android-validation --test-class com.investmentradar.app.AndroidFlowTest,com.investmentradar.app.WebViewSanityTest
+          script: python3 scripts/test_android_apk.py android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk --serial emulator-5554 --output dist/android-validation --test-class com.investmentradar.app.AndroidFlowTest
       - name: Require successful tests and screenshots before packaging candidate
         shell: python
         run: |
           import json, pathlib, shutil
           report = json.loads(pathlib.Path('dist/android-validation/result.json').read_text())
-          assert report['passed'] and report['tests'] == 11, report
+          assert report['passed'] and report['tests'] == 14, report
           assert len(list(pathlib.Path('dist/android-validation/screenshots').rglob('*.png'))) >= 15
           shutil.copy2('android/app/build/outputs/apk/release/app-release.apk', 'dist/android-validation/investment-radar-candidate.apk')
       - uses: actions/upload-artifact@v4

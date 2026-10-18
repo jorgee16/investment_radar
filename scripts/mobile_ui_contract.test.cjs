@@ -55,7 +55,7 @@ test('watchlist cards bind click events on a collection', async () => {
   assert.deepEqual(events,['asset:selected:AIR.PA']);
 });
 
-test('Android mobile shell preserves every destination and safe areas', () => {
+test('Shared web mobile shell preserves every destination and safe areas', () => {
   for(const view of ['dashboard','asset','portfolio','watchlist','screener','calendar','providers','settings'])
     assert.match(html,new RegExp('data-view="'+view+'"'));
   assert.match(html,/viewport-fit=cover/);
@@ -65,14 +65,4 @@ test('Android mobile shell preserves every destination and safe areas', () => {
   assert.match(css,/env\(safe-area-inset-bottom\)/);
 });
 
-test('Android edge-to-edge system bars use a dark background and explicit insets', () => {
-  const theme = ['values','values-v27','values-v29'].map(folder=>fs.readFileSync(path.join(root,'android/app/src/main/res',folder,'styles.xml'),'utf8')).join('\n');
-  const activity = fs.readFileSync(path.join(root,'android/app/src/main/java/com/investmentradar/app/MainActivity.kt'),'utf8');
-  assert.match(theme,/android:windowBackground">#0b0f14/);
-  assert.match(theme,/android:windowLightStatusBar">false/);
-  assert.match(theme,/android:windowLightNavigationBar">false/);
-  assert.match(activity,/container\.setBackgroundColor\(background\)/);
-  assert.match(activity,/WindowInsetsCompat\.Type\.systemBars/);
-});
-
-test('Android mobile assets are included',()=>{for(const n of ['mobile.css','mobile-nav.js','mobile-position.js','mobile-watch.js'])assert.ok(fs.existsSync(path.join(root,'shared/web',n)));});
+test('Shared web mobile assets are included',()=>{for(const n of ['mobile.css','mobile-nav.js','mobile-position.js','mobile-watch.js'])assert.ok(fs.existsSync(path.join(root,'shared/web',n)));});

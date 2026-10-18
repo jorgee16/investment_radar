@@ -25,7 +25,7 @@ std::string date_offset(int days) {
     return b;
 }
 } // namespace
-extern "C" JNIEXPORT jstring JNICALL Java_com_investmentradar_app_MainActivity_nativeRequest(
+extern "C" JNIEXPORT jstring JNICALL Java_com_investmentradar_app_NativeCore_nativeRequest(
     JNIEnv *env, jobject self, jstring path, jstring symbol, jstring settings) {
     json result;
     try {

@@ -5,10 +5,10 @@ Build a maintainable cross-platform investment research application for desktop 
 
 ## Architecture constraints
 - Keep investment scoring, valuation logic, normalized domain models, and provider-routing policy in C++ where practical.
-- Android uses Kotlin for platform integration (Activity/WebView, networking/storage where appropriate, notifications, secure storage) and JNI/NDK to reach the shared C++ core.
+- Android uses Jetpack Compose for its native interface, Kotlin ViewModel/StateFlow for presentation, and JNI/NDK to reach the shared C++ core. WebView is used only for a one-time upgrade migration of existing localStorage holdings.
 - Desktop remains C++ with a native WebView host.
 - Do not introduce Node.js, Electron, or a JavaScript server runtime.
-- The shared web UI under `shared/web/` is used by both desktop and Android unless a platform-specific divergence is justified.
+- Android UI is under `android/app/src/main/java/`; shared/web remains the web-host fallback and must keep working independently. Android Compose migration is explicitly requested by the user; do not restore WebView financial screens.
 - Do not duplicate scoring or valuation formulas in Kotlin or JavaScript.
 
 ## Data-provider rules
