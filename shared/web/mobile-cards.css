@@ -1,0 +1,60 @@
+/* Mobile portfolio, market research and data forms */
+@media(max-width:900px){
+.dashboard-terminal{gap:12px!important}
+.workspace-panel,.card{border-radius:17px!important;border:1px solid #2b4051!important;background:#111f2d!important;box-shadow:0 10px 30px #0002!important}
+.panel-toolbar{height:auto!important;min-height:0!important;padding:15px 17px 8px!important;border:0!important}
+.panel-toolbar h2,.panel-toolbar h3{font-size:16px!important;font-weight:750!important}
+.panel-kicker,.eyebrow{font-family:inherit!important;font-size:10px!important;letter-spacing:.12em!important}
+.hero-panel{min-height:0!important;border-color:#2e6255!important;background:linear-gradient(135deg,#164035,#112f37)!important}
+.portfolio-hero{display:block!important;min-height:0!important}
+.portfolio-hero>div:first-child{min-height:0!important;padding:10px 17px 14px!important;border:0!important}
+.portfolio-hero small{font-size:12px!important;color:#bbdbce!important}
+.portfolio-hero strong{font-size:36px!important;font-weight:770!important;letter-spacing:-.045em!important}
+.portfolio-chart-empty{display:none!important}
+.mobile-empty-portfolio{display:block;padding:0 17px 17px}
+.mobile-empty-portfolio p{font-size:12px;color:#b8d7ce;line-height:1.5;margin:0 0 12px}
+.mobile-empty-portfolio .primary{min-height:43px;border-radius:12px;font-size:13px}
+body.has-positions .mobile-empty-portfolio{display:none}
+.workspace-grid-2{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+.compact-panel,.activity-panel{min-height:0!important}
+.compact-panel .panel-toolbar{padding:13px 12px 5px!important;align-items:start!important}
+.compact-panel .panel-toolbar h3{font-size:14px!important}
+.empty-terminal{padding:8px 12px 14px!important;font-size:11px!important;line-height:1.5!important}
+.activity-columns{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.activity-columns>div{padding:12px 9px!important;border:0!important}
+.activity-columns strong{font-size:15px!important;overflow-wrap:anywhere}
+.activity-label,.activity-columns small{font-size:10px!important}
+.page-head{align-items:center!important;margin:0 0 15px!important}
+.page-head h2{font-size:25px!important}
+.primary,.secondary{min-height:42px;border-radius:11px!important;font-size:12px!important}
+.summary-cards{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+#portfolio .stat:nth-child(2){grid-column:1/-1;grid-row:1;background:linear-gradient(135deg,#164035,#112f37)!important}
+#portfolio .stat{padding:15px!important}
+#portfolio .stat strong{font-size:23px!important;overflow-wrap:anywhere}
+#portfolioTable{overflow-x:auto}
+#portfolioTable .table{min-width:570px}
+.watch-grid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}
+.watch-card{border-radius:14px!important;padding:15px!important}
+.filter-row{display:grid!important;gap:14px!important}
+.filter-row input[type=range]{width:100%!important}
+#asset .asset-head{display:grid!important;grid-template-columns:1fr auto!important;gap:12px!important;padding:15px!important}
+.asset-id{grid-column:1/-1!important}
+.asset-id h2{font-size:19px!important}
+.asset-quote{text-align:left!important}
+.asset-quote strong{font-size:27px!important}
+#asset .asset-tabs{display:flex!important;overflow-x:auto!important;position:sticky!important;top:0!important;z-index:10!important;margin:0 0 13px!important;padding:4px!important;border-radius:0 0 12px 12px!important;background:#10202d!important}
+#asset .asset-tab{flex:0 0 auto!important;font-size:12px!important;padding:11px!important}
+#asset .asset-tab.active{background:#1d3e35!important;border-radius:8px!important;color:var(--green)!important}
+#asset .metrics,.metrics{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+.g2,.g3,.financial-table{grid-template-columns:1fr!important}
+.card{padding:16px!important}
+#asset .chart-card svg{height:210px!important}
+.event{grid-template-columns:75px 65px minmax(0,1fr)!important;gap:8px!important}
+.event>*:nth-child(3){display:none!important}
+.routing label{grid-template-columns:1fr!important;gap:7px!important}
+.routing select,.routing input,#testSymbol{width:100%!important;min-width:0!important}
+.setting{gap:10px!important}
+.setting>b{overflow-wrap:anywhere;text-align:right}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--green)!important;outline-offset:2px!important}
+}
+@media(max-width:370px){.workspace-grid-2{grid-template-columns:1fr!important}.sidebar .nav b{font-size:9px!important}}
