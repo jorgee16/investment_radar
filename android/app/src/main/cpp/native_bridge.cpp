@@ -1,5 +1,6 @@
 #include "provider_error.hpp"
 #include "research_service.hpp"
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <jni.h>
@@ -80,8 +81,18 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_investmentradar_app_MainActivity_n
             data = service.quote(sym.empty() ? "AIR.PA" : sym);
         else if (op == "/api/snapshot")
             data = service.snapshot(sym.empty() ? "AIR.PA" : sym);
-        else if (op == "/api/history")
-            data = service.history(sym.empty() ? "AIR.PA" : sym);
+        else if (op == "/api/history") {
+            std::string history_symbol = "AIR.PA";
+            int history_days = 120;
+            if (!sym.empty() && sym.front() == '{') {
+                auto request = json::parse(sym);
+                history_symbol = request.value("symbol", history_symbol);
+                history_days = std::clamp(request.value("days", history_days), 1, 5000);
+            } else if (!sym.empty()) {
+                history_symbol = sym;
+            }
+            data = service.history(history_symbol, history_days);
+        }
         else if (op == "/api/earnings")
             data = service.earnings(sym, date_offset(-7), date_offset(90));
         else if (op == "/api/news")
