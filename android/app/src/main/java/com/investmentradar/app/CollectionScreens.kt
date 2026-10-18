@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -75,6 +76,8 @@ import androidx.compose.ui.unit.sp
     EventsList(state.events, state.auxiliaryLoading, model::selectAsset)
 }
 @Composable internal fun SettingsScreen(state: RadarState, model: RadarViewModel) {
+    val context = LocalContext.current
+    val version = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     FinanceCard(title = "Apresentação") {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text("Tema escuro", fontWeight = FontWeight.SemiBold); Text("O tema claro segue as tuas referências.", style = MaterialTheme.typography.bodySmall) }
@@ -86,7 +89,7 @@ import androidx.compose.ui.unit.sp
         TextButton({ model.navigate(Page.Providers) }, Modifier.testTag("settings-providers")) { Text("Gerir chaves e modo de dados →") }
         Text("As chaves são cifradas com Android Keystore. A carteira e a watchlist ficam no dispositivo. Os backups da aplicação estão desativados.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    FinanceCard(title = "Investment Radar · 0.6.0") {
+    FinanceCard(title = "Investment Radar · $version") {
         Text("Acompanha mercados e investimentos, com fontes identificadas e uma carteira guardada neste dispositivo.")
         Text("Score e valuation são modelos heurísticos para investigação, não aconselhamento financeiro. Confirma sempre a fonte, a moeda e a data dos dados.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
