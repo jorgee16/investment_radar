@@ -33,8 +33,12 @@ class Runtime {
         rebuild();
     }
     template <class F> json read(F f) {
-        std::lock_guard<std::mutex> lock(mu);
-        return f(*service);
+        std::shared_ptr<ir::ResearchService> current;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            current = service;
+        }
+        return f(*current);
     }
     json settings() {
         std::lock_guard<std::mutex> lock(mu);
@@ -45,10 +49,14 @@ class Runtime {
         return {{"eodhdConfigured", !effective.eodhd_key.empty()},
                 {"fmpConfigured", !effective.fmp_key.empty()},
                 {"twelveConfigured", !effective.twelve_key.empty()},
+                {"alphaConfigured", !effective.alpha_key.empty()},
+                {"finnhubConfigured", !effective.finnhub_key.empty()},
                 {"keySources",
                  {{"eodhd", source(config.eodhd_key, effective.eodhd_key)},
                   {"fmp", source(config.fmp_key, effective.fmp_key)},
-                  {"twelve", source(config.twelve_key, effective.twelve_key)}}},
+                  {"twelve", source(config.twelve_key, effective.twelve_key)},
+                  {"alpha", source(config.alpha_key, effective.alpha_key)},
+                  {"finnhub", source(config.finnhub_key, effective.finnhub_key)}}},
                 {"demo", config.demo}};
     }
     json test(const json &request) {
@@ -59,7 +67,7 @@ class Runtime {
         std::lock_guard<std::mutex> lock(mu);
         // No cache reads: a connection test must reach the provider, even after an earlier success.
         struct Reset {
-            bool &flag;
+            std::atomic<bool> &flag;
             ~Reset() {
                 flag = false;
             }
@@ -81,16 +89,17 @@ class Runtime {
 
   private:
     void rebuild() {
-        service = std::make_unique<ir::ResearchService>(
-            runtime_config(config), [this](const std::string &u) { return http.get(u, testing); });
+        service = std::make_shared<ir::ResearchService>(
+            runtime_config(config),
+            [this](const std::string &u) { return http.get(u, testing.load()); });
     }
     ConfigStore store;
     HttpCache cache;
     CachedHttpsClient http;
     AppConfig config;
-    std::unique_ptr<ir::ResearchService> service;
+    std::shared_ptr<ir::ResearchService> service;
     std::mutex mu;
-    bool testing = false;
+    std::atomic<bool> testing = false;
 };
 } // namespace
 int main(int argc, char **argv) {
@@ -193,6 +202,11 @@ int main(int argc, char **argv) {
                 reply(r, {{"error", "Invalid settings JSON"}});
             }
         });
+        server.Get("/api/history", [&](const auto &q, auto &r) {
+            auto sym = q.has_param("symbol") ? q.get_param_value("symbol") : "AIR.PA";
+            auto days = q.has_param("days") ? std::stoi(q.get_param_value("days")) : 120;
+            reply(r, rt.read([&](auto &s) { return s.history(sym, days); }));
+        });
         server.Get("/api/snapshot", [&](const auto &q, auto &r) {
             auto sym = q.has_param("symbol") ? q.get_param_value("symbol") : "AIR.PA";
             reply(r, rt.read([&](auto &s) { return s.snapshot(sym); }));
@@ -209,7 +223,9 @@ int main(int argc, char **argv) {
             }));
         });
         // Exact static allowlist avoids traversal, filesystem exposure, and directory reads.
-        for (auto name : {"index.html", "app.js", "styles.css"})
+        for (auto name : {"index.html", "app.js", "styles.css", "compat.js", "compat.css",
+                          "mobile.css", "mobile-cards.css", "mobile-dialogs.css", "mobile-nav.js",
+                          "mobile-icons.js", "mobile-position.js", "mobile-watch.js"})
             server.Get(std::string("/") + name, [&, name](const auto &, auto &r) {
                 std::ifstream f(assets / name, std::ios::binary);
                 std::string body{std::istreambuf_iterator<char>(f), {}};

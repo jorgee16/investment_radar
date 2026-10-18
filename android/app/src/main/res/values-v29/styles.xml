@@ -1,0 +1,6 @@
+<resources>
+  <style name="Theme.InvestmentRadar" parent="Theme.InvestmentRadar.Base">
+    <item name="android:enforceNavigationBarContrast">false</item>
+    <item name="android:windowLightNavigationBar">false</item>
+  </style>
+</resources>

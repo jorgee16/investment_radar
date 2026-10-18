@@ -1,7 +1,7 @@
 """Run installed-APK instrumentation; a zero adb exit is not proof of success.
 
 Build app and androidTest APKs first, using the same signing certificate.
-Requires a running Android emulator/device and adb on PATH (or --adb).
+Resets app test data. Use a disposable Android emulator. Requires adb and adb on PATH (or --adb).
 """
 import argparse
 import hashlib

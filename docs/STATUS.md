@@ -7,7 +7,7 @@ real foi criada ou introduzida. Esta etapa inclui código; não é apenas onboar
 
 - Teste original do ZIP antes das alterações (um caso básico, sem providers).
 - Build CMake/Ninja C++20 do core, plataforma e host headless, com GCC 14.2.
-- 32 casos no executável de testes do core; segundo alvo CTest testa settings,
+- Casos no executável de testes do core; segundo alvo CTest testa settings,
   permissões, roundtrip, cache SHA-256/TTL e política HTTPS.
 - CTest: 2 alvos passaram; os testes não desaparecem em builds Release.
 - Smoke HTTP contra processo C++ real: assets, snapshot AIR.PA demo, modo live
@@ -27,9 +27,8 @@ real foi criada ou introduzida. Esta etapa inclui código; não é apenas onboar
 - Windows: script/presets/vcpkg e CI criados; sem runner Windows nesta sessão.
   Build, WebView2, DPAPI, DLLs e distribuição ainda precisam de execução Windows.
 - Android: SDK 35, Build Tools 35.0.0, NDK 27.0.12077973, CMake 3.22.1 e
-  JDK completo instalados. Build Release para arm64-v8a, armeabi-v7a, x86 e
-  x86_64 e lint passaram. O teste focado do core/JNI/interface passou no emulador
-  Android 11 após corrigir incompatibilidades com WebView 83. A suíte funcional
+  JDK completo instalados. Build Release para arm64-v8a e x86_64 e lint passaram. O teste focado do core/JNI/interface passou também após integrar a versão
+  atual da branch remota e corrigir o arranque/navegação e WebView 83. A suíte funcional
   completa e revisão dos screenshots continuam pendentes neste checkpoint.
   O emulador Android 15 sem KVM apresenta ANRs do System UI e falha também no
   controlo WebView sem código da app. Nenhuma APK foi declarada validada.
@@ -129,3 +128,9 @@ rejeita crashes/erros mesmo se adb terminar com zero, regista SHA-256 e recolhe
 screenshots. O workflow Android usa KVM e só gera um artifact candidato depois
 de onze testes verdes e screenshots; estes ainda precisam de revisão visual.
 Chaves de assinatura de validação são locais/efémeras e não são publicadas.
+
+A base remota foi sincronizada antes da validação final, preservando o novo
+workspace de ativos, cinco providers, histórico OHLC e UI específica Android.
+Corrigidos seletores únicos usados como listas no arranque, carteiras e comandos
+do gráfico. Pedidos tardios não substituem a análise completa nem o histórico
+do novo ticker/período. O core normalizado e a UI Compose desktop foram mantidos.

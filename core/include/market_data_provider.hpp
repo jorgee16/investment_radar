@@ -47,6 +47,9 @@ struct Fundamentals {
     std::optional<double> debt_to_equity;
     std::string source;
     Provenance metrics;
+    // Raw normalized input used by the C++ aggregation layer to derive P/E when
+    // the provider exposes statements/earnings but not a ready-made ratio.
+    std::optional<double> eps_ttm;
 };
 
 struct EstimateSnapshot {
@@ -73,6 +76,10 @@ struct PriceBar {
     double price = 0;
     std::string source;
     Provenance metrics;
+    std::optional<double> open;
+    std::optional<double> high;
+    std::optional<double> low;
+    std::optional<double> close;
 };
 
 struct NewsItem {

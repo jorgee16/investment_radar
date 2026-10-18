@@ -45,7 +45,9 @@ class AndroidFlowTest {
     private fun start() {
         activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
         instrumentation.runOnMainSync { web = (activity.findViewById<android.widget.FrameLayout>(android.R.id.content).getChildAt(0) as android.widget.FrameLayout).getChildAt(0) as WebView }
-        await("demo snapshot loaded") { truth("return document.querySelector('#assetPrice')?.textContent.includes('188') && document.querySelector('#runtime')?.textContent.includes('Android');") }
+        await("Android UI initialized") { truth("return document.querySelector('#runtime')?.textContent.includes('Android') && !!document.querySelector('#mobileMore') && !!document.querySelector('#mobilePositionDialog') && !!document.querySelector('#mobileWatchDialog');") }
+        view("asset")
+        await("demo snapshot loaded") { truth("return document.querySelector('#assetPrice')?.textContent.includes('188') && document.querySelector('#asset').getAttribute('aria-busy')==='false';") }
     }
     @After fun finish() { if (::activity.isInitialized) instrumentation.runOnMainSync { activity.finish() } }
     private fun eval(script: String): Any? {
@@ -79,8 +81,8 @@ class AndroidFlowTest {
     }
     private fun fill(selector: String, value: String) { eval("const e=document.querySelector(${JSONObject.quote(selector)});e.value=${JSONObject.quote(value)};e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));") }
     private fun view(id: String) {
-        if (id in setOf("screener", "providers", "settings")) {
-            tap("#moreNav"); await("more menu") { truth("return document.querySelector('#moreDialog').open;") }; tap("[data-open-view='$id']")
+        if (id in setOf("screener", "calendar", "providers", "settings")) {
+            tap("#mobileMore"); await("more menu") { truth("return !document.querySelector('#mobileMorePanel').hidden;") }; tap("[data-open-view='$id']")
         } else tap(".nav[data-view='$id']")
         await("view $id") { truth("return document.querySelector('#$id').classList.contains('active');") }
         if (id == "providers") await("provider form") { truth("return document.querySelector('#providers').getAttribute('aria-busy')==='false';") }
@@ -116,8 +118,8 @@ class AndroidFlowTest {
     }
     private fun back() { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK); instrumentation.waitForIdleSync() }
     private fun setMode(mode: String) {
-        fill("#dataMode", mode); tap("#applyDataMode")
-        await("mode $mode") { truth("return document.querySelector('#providerModeBadge').textContent==='${mode.uppercase()}' && document.querySelector('#providers').getAttribute('aria-busy')==='false' && document.querySelector('#dashboard').getAttribute('aria-busy')==='false';") }
+        fill("#dataMode", mode); tap("#saveProviderKeys")
+        await("mode $mode") { truth("return document.querySelector('#settingsMode').textContent==='${mode.uppercase()}' && document.querySelector('#providers').getAttribute('aria-busy')==='false' && document.querySelector('#asset').getAttribute('aria-busy')==='false';") }
     }
 
     @Test fun nativeCoreAndBridge() {
@@ -128,46 +130,49 @@ class AndroidFlowTest {
         assertTrue(JSONObject(activity.nativeRequest("/api/unknown", "", config)).has("error"))
         assertTrue(JSONObject(activity.nativeRequest("/api/snapshot", "<script>", config)).has("error"))
         assertTrue(truth("return typeof AndroidBridge.request==='function' && document.querySelector('#settingsRuntime').textContent.includes('Android');"))
-        capture("01-dashboard")
+        view("dashboard");capture("01-dashboard")
     }
     @Test fun allNavigationAndAssetTabs() {
         for (id in listOf("portfolio", "watchlist", "calendar", "screener", "providers", "settings")) { view(id); capture("nav-$id") }
-        back(); await("back returns dashboard") { truth("return document.querySelector('#dashboard').classList.contains('active');") }
+        back(); await("back returns previous page") { truth("return document.querySelector('#providers').classList.contains('active');") };view("asset")
         for (tab in listOf("financials", "valuation", "earnings", "news", "overview")) {
             tap("[data-tab='$tab']"); await("tab $tab") { truth("return document.querySelector('#tab-$tab').classList.contains('active');") }; assertLayout(tab); capture("tab-$tab")
         }
-        tap("#moreNav"); back(); await("back dismisses menu") { truth("return !document.querySelector('#moreDialog').open;") }
+        tap("#mobileMore"); back(); await("back dismisses menu") { truth("return document.querySelector('#mobileMorePanel').hidden;") }
     }
     @Test fun watchlistFormsAndPersistence() {
         view("watchlist"); await("watch cards") { truth("return document.querySelectorAll('#watchGrid [data-w]').length===6;") }
-        tap("#addWatch"); fill("#entrySymbol", "BAD SYMBOL"); tap("#entrySubmit")
-        assertTrue(truth("return document.querySelector('#entryError').textContent.includes('inválido');"))
-        fill("#entrySymbol", "AIR.PA"); tap("#entrySubmit")
-        assertTrue(truth("return document.querySelector('#entryError').textContent.includes('já');"))
-        fill("#entrySymbol", "AAPL"); tap("#entrySubmit")
+        tap("#addWatch"); fill("#mobileWatchSymbol", "BAD SYMBOL"); tap("#mobileWatchSubmit")
+        assertTrue(truth("return !document.querySelector('#mobileWatchError').hidden;"))
+        fill("#mobileWatchSymbol", "AIR.PA"); tap("#mobileWatchSubmit")
+        assertTrue(truth("return document.querySelector('#mobileWatchError').textContent.includes('já');"))
+        fill("#mobileWatchSymbol", "AAPL"); tap("#mobileWatchSubmit")
         await("added ticker") { truth("return document.querySelectorAll('#watchGrid [data-w]').length===7;") }
         tap("#watchGrid [data-w='AAPL']"); await("open added ticker") { truth("return document.querySelector('#assetTicker').textContent==='AAPL' && document.querySelector('#assetName').textContent==='Apple Inc.';") }
         instrumentation.runOnMainSync { activity.finish() }; start(); view("watchlist")
         await("watch persisted after Activity restart") { truth("return !!document.querySelector('#watchGrid [data-w='AAPL']');") }
         tap("#watchGrid [data-w='AAPL'] [data-rw]")
         await("remove ticker") { truth("return !document.querySelector('#watchGrid [data-w='AAPL']') && document.querySelectorAll('#radarWatch [data-w]').length===6;") }
-        tap("#addWatch"); back(); if (truth("return document.querySelector('#entryDialog').open;")) back(); assertTrue(truth("return !document.querySelector('#entryDialog').open;"))
+        tap("#addWatch");back();if(truth("return document.querySelector('#mobileWatchDialog').open;"))back();await("back dismisses editor"){truth("return !document.querySelector('#mobileWatchDialog').open;")}
     }
     @Test fun portfolioValidationTotalsAndPersistence() {
         view("portfolio"); tap("#addPosition")
-        fill("#entrySymbol", "AIR.PA"); fill("#entryQty", "-1"); fill("#entryAvg", "180,50"); fill("#entryCurrency", "EUR"); tap("#entrySubmit")
-        assertTrue(truth("return !document.querySelector('#entryError').hidden;")); capture("position-validation")
-        fill("#entryQty", "2,5"); tap("#entrySubmit")
-        await("position saved and valued") { truth("return document.querySelectorAll('#portfolioTable tbody tr').length===1 && document.querySelector('#pfCurrent').textContent.includes('470');") }
+        fill("#mobilePositionSymbol", "AIR.PA"); fill("#mobilePositionQty", "-1"); fill("#mobilePositionAvg", "180,50"); fill("#mobilePositionCurrency", "EUR"); tap("#mobilePositionSubmit")
+        assertTrue(truth("return !document.querySelector('#mobilePositionError').hidden;")); capture("position-validation")
+        fill("#mobilePositionQty", "2,5"); tap("#mobilePositionSubmit")
+        await("position saved and valued") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===1 && document.querySelector('#pfCurrent').textContent.includes('470');") }
         assertTrue(truth("return document.querySelector('#pfInvested').textContent.includes('451,25') && document.querySelector('#pfPL').textContent.includes('18,75');"))
+        tap("#addPosition");fill("#mobilePositionSymbol","AIR.PA");fill("#mobilePositionQty","1,5");fill("#mobilePositionAvg","200");fill("#mobilePositionCurrency","EUR");tap("#mobilePositionSubmit")
+        await("multiple lots valued") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===2 && document.querySelector('#pfCurrent').textContent.includes('752');") }
+        view("asset");assertTrue(truth("return document.querySelector('#positionTitle').textContent==='4 unidades' && document.querySelector('#positionCurrent').textContent.includes('752');"))
         instrumentation.runOnMainSync { activity.finish() }; start(); view("portfolio")
-        await("position persisted") { truth("return document.querySelectorAll('#portfolioTable tbody tr').length===1;") }; capture("portfolio-with-position")
-        tap("#portfolioTable [data-rp]"); await("position removed") { truth("return document.querySelectorAll('#portfolioTable tbody tr').length===0 && document.querySelector('#pfCurrent').textContent==='—';") }
-        view("dashboard"); assertTrue(truth("return document.querySelector('#positionTitle').textContent==='Sem posição';"))
+        await("position persisted") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===2;") }; capture("portfolio-with-position")
+        tap("#portfolioTable [data-rp]");await("first lot removed"){truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===1;")};tap("#portfolioTable [data-rp]"); await("position removed") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===0 && document.querySelector('#pfCurrent').textContent==='—';") }
+        view("asset"); assertTrue(truth("return document.querySelector('#positionTitle').textContent==='Sem posição';"))
     }
     @Test fun demoLiveMissingKeysAndRouting() {
         view("providers"); tap("#testAllProviders")
-        await("missing key reports") { truth("return document.querySelector('#providerCards').textContent.split('missing_key').length===4;") }
+        await("missing key reports") { truth("return providerTests.size===5 && [...providerTests.values()].every(r=>r.code==='missing_key');") }
         setMode("live")
         assertTrue(truth("return document.querySelector('#assetPrice').textContent==='—' && document.querySelector('#assetScore').textContent==='—' && document.querySelectorAll('#priceChart path').length===0;"))
         capture("live-without-keys")
@@ -176,7 +181,7 @@ class AndroidFlowTest {
         instrumentation.runOnMainSync { activity.finish() }
         activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
         instrumentation.runOnMainSync { web = (activity.findViewById<android.widget.FrameLayout>(android.R.id.content).getChildAt(0) as android.widget.FrameLayout).getChildAt(0) as WebView }
-        await("live survives restart") { truth("return document.querySelector('#settingsMode')?.textContent==='LIVE' && document.querySelector('#dashboard').getAttribute('aria-busy')==='false';") }
+        await("live survives restart") { truth("return document.querySelector('#settingsMode')?.textContent==='LIVE' && !!document.querySelector('#mobileMore') && !!document.querySelector('#mobileWatchDialog');") }
         view("providers"); assertTrue(truth("return document.querySelector('[data-route=quotes]').value==='twelve';")); setMode("demo")
         await("demo restored") { truth("return document.querySelector('#assetPrice').textContent.includes('188');") }
     }
@@ -206,7 +211,7 @@ class AndroidFlowTest {
         capture("screener-filtered")
     }
     @Test fun rendererTerminationRecoversWithoutLosingWatchlist() {
-        view("watchlist"); tap("#addWatch"); fill("#entrySymbol","AAPL"); tap("#entrySubmit")
+        view("watchlist"); tap("#addWatch"); fill("#mobileWatchSymbol","AAPL"); tap("#mobileWatchSubmit")
         await("watch saved before renderer termination") { truth("return !!document.querySelector(\"#watchGrid [data-w='AAPL']\");") }
         instrumentation.runOnMainSync {
             if (Build.VERSION.SDK_INT >= 29) assertTrue(web.webViewRenderProcess?.terminate() == true)
@@ -232,6 +237,8 @@ class AndroidFlowTest {
                 true
             } else false
         }
+        await("mobile controls restored") { truth("return !!document.querySelector('#mobileMore') && !!document.querySelector('#mobileWatchDialog');") }
+        view("asset")
         await("snapshot restored after renderer termination") { truth("return document.querySelector('#assetPrice')?.textContent.includes('188');") }
         view("watchlist"); await("watchlist preserved after renderer termination") { truth("return !!document.querySelector(\"#watchGrid [data-w='AAPL']\");") }
     }
@@ -252,6 +259,15 @@ class AndroidFlowTest {
         assertTrue(truth("return document.querySelector('#watchlist').classList.contains('active');")); assertLayout("landscape"); capture("landscape-watchlist")
         instrumentation.runOnMainSync { activity.requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
         await("portrait") { truth("return innerHeight>innerWidth;") }; assertLayout("portrait"); capture("portrait-watchlist")
-        tap("#addWatch"); tap("#entrySymbol"); capture("keyboard-and-dialog"); back()
+        instrumentation.uiAutomation.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1").use { fd ->
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
+        }
+        tap("#addWatch"); tap("#mobileWatchSymbol")
+        await("software keyboard visible") {
+            var visible=false
+            instrumentation.runOnMainSync { visible=androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true }
+            visible
+        }
+        assertLayout("keyboard");capture("keyboard-and-dialog");back()
     }
 }

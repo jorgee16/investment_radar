@@ -1,0 +1,15 @@
+/* Mobile dialogs and native-feeling inputs */
+.mobile-dialog{color:#f1f7fa;background:#122231;border:1px solid #335164;border-radius:22px;padding:0;width:min(420px,calc(100vw - 26px));max-height:85dvh;box-shadow:0 22px 70px #000b}
+.mobile-dialog::backdrop{background:#020a10cb;backdrop-filter:blur(4px)}
+.mobile-dialog form{display:grid;gap:16px;padding:21px}
+.mobile-dialog .dialog-head{display:flex;justify-content:space-between;align-items:start}
+.mobile-dialog h2{font-size:23px;margin:0 0 3px;letter-spacing:-.035em}
+.mobile-dialog .dialog-close{width:34px;height:34px;border:0;border-radius:50%;background:#263e50;color:white;font-size:22px}
+.mobile-dialog label{display:grid;gap:6px;font-size:12px;font-weight:650;color:#b6c9d6}
+.mobile-dialog input,.mobile-dialog select{min-width:0;width:100%;height:46px;padding:0 12px;border:1px solid #35546a;border-radius:11px;background:#0b1824;color:#f1f7fa;font:inherit;font-size:15px}
+.mobile-dialog .dialog-row{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.mobile-dialog .dialog-help{font-size:11px;line-height:1.55;color:#9db4c2;margin:0}
+.mobile-dialog .dialog-error{font-size:12px;color:#ff9eaa;margin:0}
+.mobile-dialog .dialog-submit{height:48px;font-size:14px}
+.mobile-empty-portfolio{display:none}
+@media(max-width:900px){.mobile-empty-portfolio{display:block}}

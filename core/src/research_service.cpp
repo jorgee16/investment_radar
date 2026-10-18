@@ -143,11 +143,14 @@ ResearchConfig parse_config(const json &j) {
     c.eodhd_key = j.value("eodhdKey", "");
     c.fmp_key = j.value("fmpKey", "");
     c.twelve_key = j.value("twelveKey", "");
+    c.alpha_key = j.value("alphaKey", "");
+    c.finnhub_key = j.value("finnhubKey", "");
     c.demo = j.value("demo", true);
     auto r = j.value("routing", json::object());
     auto route = [&](const char *k) {
         auto v = r.value(k, "auto");
-        if (v != "auto" && v != "eodhd" && v != "fmp" && v != "twelve")
+        if (v != "auto" && v != "eodhd" && v != "fmp" && v != "twelve" &&
+            v != "alpha" && v != "finnhub")
             throw std::invalid_argument("Invalid provider routing");
         return v;
     };
@@ -159,11 +162,15 @@ json config_json(const ResearchConfig &c) {
     return {{"eodhdKey", c.eodhd_key},
             {"fmpKey", c.fmp_key},
             {"twelveKey", c.twelve_key},
+            {"alphaKey", c.alpha_key},
+            {"finnhubKey", c.finnhub_key},
             {"demo", c.demo},
             {"routing", routing_json(c.routing)}};
 }
 ResearchService::ResearchService(const ResearchConfig &c, HttpGet get) : config_(c) {
     manager_.add(std::make_shared<EodhdProvider>(c.eodhd_key, get));
+    manager_.add(std::make_shared<AlphaVantageProvider>(c.alpha_key, get));
+    manager_.add(std::make_shared<FinnhubProvider>(c.finnhub_key, get));
     manager_.add(std::make_shared<FmpProvider>(c.fmp_key, get));
     manager_.add(std::make_shared<TwelveDataProvider>(c.twelve_key, get));
     manager_.set_routing(c.routing);
@@ -183,6 +190,7 @@ json ResearchService::test_providers(const std::string &symbol, const std::strin
                        {"httpStatus", r.http_status ? json(r.http_status) : json(nullptr)},
                        {"connected", r.code == "ok"},
                        {"capability", "quotes"},
+                       {"capabilities", r.capability_codes},
                        {"price", r.quote ? json(r.quote->price) : json(nullptr)},
                        {"currency", r.quote ? r.quote->currency : ""},
                        {"quoteTimestamp",
@@ -213,7 +221,8 @@ json ResearchService::status() const {
                          std::any_of(manager_.health().begin(), manager_.health().end(),
                                      [](const auto &entry) { return entry.second.code == "ok"; })},
             {"configured",
-             !config_.eodhd_key.empty() || !config_.fmp_key.empty() || !config_.twelve_key.empty()},
+             !config_.eodhd_key.empty() || !config_.fmp_key.empty() || !config_.twelve_key.empty() ||
+                 !config_.alpha_key.empty() || !config_.finnhub_key.empty()},
             {"provider", config_.demo ? "demo" : "multi-provider"},
             {"engine", "C++20"},
             {"routing", routing_json(config_.routing)}};
@@ -243,6 +252,23 @@ json ResearchService::providers() const {
     }
     return out;
 }
+json ResearchService::history(const std::string &s, int days) {
+    if (!valid_symbol(s))
+        throw std::invalid_argument("Invalid symbol");
+    active().clear_diagnostics();
+    auto h = active().history(s, days);
+    json out = json::array();
+    for (auto &x : h)
+        out.push_back({{"label", x.label},
+                       {"price", x.price},
+                       {"open", nullable(x.open)},
+                       {"high", nullable(x.high)},
+                       {"low", nullable(x.low)},
+                       {"close", nullable(x.close)},
+                       {"source", x.source}});
+    return out;
+}
+
 json ResearchService::snapshot(const std::string &s) {
     if (!valid_symbol(s))
         throw std::invalid_argument("Invalid symbol");
@@ -268,10 +294,29 @@ json ResearchService::snapshot(const std::string &s) {
         m.estimate_revision_pct = e->estimate_revision_pct;
         m.forward_eps = e->estimated_eps;
     }
+    // Cross-provider derivation: price may come from EODHD while EPS/estimates come
+    // from another free provider. Ratios are computed only when units are compatible.
+    if (!m.pe && q && f && f->eps_ttm && *f->eps_ttm > 0 &&
+        (f->currency.empty() || q->currency.empty() || f->currency == q->currency)) {
+        m.pe = q->price / *f->eps_ttm;
+        f->metrics["pe"] = {"Investment Radar", "", "price / aggregated TTM EPS"};
+    }
+    if (!m.forward_pe && q && e && e->estimated_eps && *e->estimated_eps > 0 &&
+        (!f || f->currency.empty() || q->currency.empty() || f->currency == q->currency)) {
+        m.forward_pe = q->price / *e->estimated_eps;
+        if (f)
+            f->metrics["forwardPE"] = {"Investment Radar", "", "price / forward EPS estimate"};
+    }
     auto ev = json::parse(evaluation_json(evaluate(m)));
     json hist = json::array();
     for (auto &x : h)
-        hist.push_back({{"label", x.label}, {"price", x.price}, {"source", x.source}});
+        hist.push_back({{"label", x.label},
+                        {"price", x.price},
+                        {"open", nullable(x.open)},
+                        {"high", nullable(x.high)},
+                        {"low", nullable(x.low)},
+                        {"close", nullable(x.close)},
+                        {"source", x.source}});
     json metadata = json::object();
     auto append = [&](const Provenance &p) {
         for (auto &[k, v] : p)
@@ -308,6 +353,7 @@ json ResearchService::snapshot(const std::string &s) {
             {"available", bool(q || f)},
             {"price", q ? json(q->price) : json(nullptr)},
             {"changePct", q ? nullable(q->change_pct) : json(nullptr)},
+            {"timestamp", q && q->timestamp ? json(q->timestamp) : json(nullptr)},
             {"pe", nullable(m.pe)},
             {"forwardPE", nullable(m.forward_pe)},
             {"revenueGrowth", nullable(m.revenue_growth_pct)},

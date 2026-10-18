@@ -1,0 +1,151 @@
+/* Mobile portfolio, market research and data forms */
+@media(max-width:900px){
+.dashboard-terminal{gap:12px!important}
+.workspace-panel,.card{border-radius:17px!important;border:1px solid #2b4051!important;background:#111f2d!important;box-shadow:0 10px 30px #0002!important}
+.panel-toolbar{height:auto!important;min-height:0!important;padding:15px 17px 8px!important;border:0!important}
+.panel-toolbar h2,.panel-toolbar h3{font-size:16px!important;font-weight:750!important}
+.panel-kicker,.eyebrow{font-family:inherit!important;font-size:10px!important;letter-spacing:.12em!important}
+.hero-panel{min-height:0!important;border-color:#2e6255!important;background:linear-gradient(135deg,#164035,#112f37)!important}
+.portfolio-hero{display:block!important;min-height:0!important}
+.portfolio-hero>div:first-child{min-height:0!important;padding:10px 17px 14px!important;border:0!important}
+.portfolio-hero small{font-size:12px!important;color:#bbdbce!important}
+.portfolio-hero strong{font-size:36px!important;font-weight:770!important;letter-spacing:-.045em!important}
+.portfolio-chart-empty{display:none!important}
+.mobile-empty-portfolio{display:block;padding:0 17px 17px}
+.mobile-empty-portfolio p{font-size:12px;color:#b8d7ce;line-height:1.5;margin:0 0 12px}
+.mobile-empty-portfolio .primary{min-height:43px;border-radius:12px;font-size:13px}
+body.has-positions .mobile-empty-portfolio{display:none}
+.workspace-grid-2{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+.compact-panel,.activity-panel{min-height:0!important}
+.compact-panel .panel-toolbar{padding:13px 12px 5px!important;align-items:start!important}
+.compact-panel .panel-toolbar h3{font-size:14px!important}
+.empty-terminal{padding:8px 12px 14px!important;font-size:11px!important;line-height:1.5!important}
+.activity-columns{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.activity-columns>div{padding:12px 9px!important;border:0!important}
+.activity-columns strong{font-size:15px!important;overflow-wrap:anywhere}
+.activity-label,.activity-columns small{font-size:10px!important}
+.page-head{align-items:center!important;margin:0 0 15px!important}
+.page-head h2{font-size:25px!important}
+.primary,.secondary{min-height:42px;border-radius:11px!important;font-size:12px!important}
+.summary-cards{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+#portfolio .stat:nth-child(2){grid-column:1/-1;grid-row:1;background:linear-gradient(135deg,#164035,#112f37)!important}
+#portfolio .stat{padding:15px!important}
+#portfolio .stat strong{font-size:23px!important;overflow-wrap:anywhere}
+#portfolioTable{overflow-x:auto}
+#portfolioTable .table{min-width:570px}
+.watch-grid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}
+.watch-card{border-radius:14px!important;padding:15px!important}
+.filter-row{display:grid!important;gap:14px!important}
+.filter-row input[type=range]{width:100%!important}
+#asset .asset-head{display:grid!important;grid-template-columns:1fr auto!important;gap:12px!important;padding:15px!important}
+.asset-id{grid-column:1/-1!important}
+.asset-id h2{font-size:19px!important}
+.asset-quote{text-align:left!important}
+.asset-quote strong{font-size:27px!important}
+#asset .asset-tabs{display:flex!important;overflow-x:auto!important;position:sticky!important;top:0!important;z-index:10!important;margin:0 0 13px!important;padding:4px!important;border-radius:0 0 12px 12px!important;background:#10202d!important}
+#asset .asset-tab{flex:0 0 auto!important;font-size:12px!important;padding:11px!important}
+#asset .asset-tab.active{background:#1d3e35!important;border-radius:8px!important;color:var(--green)!important}
+#asset .metrics,.metrics{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+.g2,.g3,.financial-table{grid-template-columns:1fr!important}
+.card{padding:16px!important}
+#asset .chart-card svg{height:210px!important}
+.event{grid-template-columns:75px 65px minmax(0,1fr)!important;gap:8px!important}
+.event>*:nth-child(3){display:none!important}
+.routing label{grid-template-columns:1fr!important;gap:7px!important}
+.routing select,.routing input,#testSymbol{width:100%!important;min-width:0!important}
+.setting{gap:10px!important}
+.setting>b{overflow-wrap:anywhere;text-align:right}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--green)!important;outline-offset:2px!important}
+}
+@media(max-width:370px){.workspace-grid-2{grid-template-columns:1fr!important}.sidebar .nav b{font-size:9px!important}}
+
+@media(max-width:900px){
+.chart-controls{display:grid!important;grid-template-columns:1fr!important;gap:9px!important;margin:0 0 12px!important}
+.range-buttons{display:grid!important;grid-template-columns:repeat(6,1fr)!important;gap:5px!important;overflow:visible!important}
+.style-buttons{display:grid!important;grid-template-columns:1fr 1fr!important}
+.chart-controls button{min-width:0!important;padding:8px 4px!important;font-size:11px!important}
+#asset .chart-card svg{height:250px!important}
+#portfolio .summary-cards{grid-template-columns:1fr 1fr!important}
+#portfolio .summary-cards .stat:nth-child(2){grid-column:1/-1!important;padding:20px!important}
+#portfolio .summary-cards .stat:nth-child(2) strong{font-size:34px!important}
+#portfolio .summary-cards .stat:nth-child(1),#portfolio .summary-cards .stat:nth-child(3){padding:14px!important}
+#portfolioTable .table{min-width:100%!important}
+#portfolioTable table thead{display:none!important}
+#portfolioTable table,#portfolioTable tbody,#portfolioTable tr,#portfolioTable td{display:block!important;width:100%!important}
+#portfolioTable tr{position:relative!important;padding:14px 8px!important;border-bottom:1px solid #294050!important}
+#portfolioTable td{border:0!important;padding:4px 0!important}
+#portfolioTable td:first-child{font-size:18px!important;font-weight:750!important}
+#portfolioTable td:nth-child(2)::before{content:"Qtd  ";color:var(--muted)}
+#portfolioTable td:nth-child(3)::before{content:"Média  ";color:var(--muted)}
+#portfolioTable td:nth-child(4)::before{content:"Preço  ";color:var(--muted)}
+#portfolioTable td:nth-child(5){font-size:18px!important;font-weight:750!important;color:var(--green)}
+#portfolioTable td:nth-child(6){display:none!important}
+#portfolioTable td:last-child{position:absolute!important;right:8px!important;top:12px!important;width:auto!important}
+}
+
+@media(max-width:900px){
+/* Investment-app density: reduce card chrome and keep the market story continuous. */
+#asset{margin:0 -3px}
+#asset .page-head{display:none!important}
+#asset .asset-head{
+  border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;
+  padding:2px 2px 10px!important;margin:0!important;
+}
+#asset .asset-id{align-items:center!important}
+#asset .asset-id .avatar{width:46px!important;height:46px!important;border-radius:13px!important}
+#asset .asset-id h2{font-size:21px!important;letter-spacing:-.03em!important}
+#asset .asset-id p{margin-top:2px!important}
+#asset .asset-quote{margin-top:2px!important}
+#asset .asset-quote strong{font-size:38px!important;line-height:1!important}
+#asset .score-ring{transform:scale(.82);transform-origin:right center}
+#asset .asset-tabs{
+  position:sticky!important;top:0!important;z-index:20!important;
+  margin:0 -15px 8px!important;padding:0 15px!important;
+  border-radius:0!important;border-top:1px solid #203443!important;border-bottom:1px solid #203443!important;
+  background:#0b1722fa!important;backdrop-filter:blur(12px);
+}
+#asset .asset-tab{padding:12px 11px 10px!important;border-radius:0!important;font-size:12px!important}
+#asset .asset-tab.active{background:transparent!important;border-bottom:3px solid var(--green)!important}
+#asset .grid.g2{display:block!important}
+#asset .chart-card{
+  margin:0 -15px 10px!important;padding:13px 15px 10px!important;border-radius:0!important;
+  border-left:0!important;border-right:0!important;box-shadow:none!important;background:#0d1925!important;
+}
+#asset .chart-card .card-head{margin-bottom:7px!important}
+#asset .chart-card .card-head h3{font-size:15px!important}
+#asset .chart-card svg{height:285px!important}
+#asset .chart-footer{font-size:10px!important}
+#asset .position-card{
+  margin:0 0 10px!important;padding:15px!important;border-radius:14px!important;background:#101e2a!important;
+}
+#asset .position-big strong{font-size:28px!important}
+#asset .metrics{margin-top:10px!important}
+#asset .metric{padding:12px!important;border-radius:12px!important}
+#asset .metric strong{font-size:18px!important}
+#asset .decision-card{margin-top:10px!important}
+#asset .card:not(.chart-card):not(.position-card){box-shadow:none!important}
+#portfolio{padding-bottom:8px}
+#portfolio .page-head{margin-bottom:8px!important}
+#portfolio .summary-cards{gap:8px!important;margin-bottom:10px!important}
+#portfolio .summary-cards .stat{border-radius:13px!important;box-shadow:none!important}
+#portfolio .summary-cards .stat:nth-child(2){
+  background:transparent!important;border:0!important;padding:6px 2px 12px!important;
+}
+#portfolio .summary-cards .stat:nth-child(2) small{font-size:12px!important}
+#portfolio .summary-cards .stat:nth-child(2) strong{font-size:38px!important}
+#portfolio .summary-cards .stat:nth-child(1),
+#portfolio .summary-cards .stat:nth-child(3){background:#101e2a!important}
+#portfolio>article.card{padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
+.portfolio-list{display:grid;gap:8px}
+.portfolio-row{
+  position:relative;padding:14px 42px 13px 14px;border:1px solid #294150;border-radius:14px;background:#101e2a;
+}
+.portfolio-row-main{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.portfolio-row-main strong{display:block;font-size:16px;line-height:1.2}
+.portfolio-row-main small{display:block;margin-top:3px;color:var(--muted);font-size:11px}
+.portfolio-row-price{text-align:right}
+.portfolio-row-price b{display:block;font-size:17px}
+.portfolio-row-price span{display:block;margin-top:3px;font-size:12px;font-weight:700}
+.portfolio-row-meta{display:flex;gap:14px;margin-top:10px;color:var(--muted);font-size:10px}
+.portfolio-row>.remove{position:absolute;right:10px;top:10px}
+}

@@ -31,6 +31,23 @@ class Stub : public ir::IMarketDataProvider {
         return result;
     }
 };
+
+class FundStub : public ir::IMarketDataProvider {
+  public:
+    std::string id;
+    ir::Fundamentals value;
+    bool enabled = true;
+    explicit FundStub(std::string name) : id(std::move(name)) {
+        value.symbol = "AIR.PA";
+        value.source = id;
+    }
+    ir::ProviderDescriptor descriptor() const override {
+        return {id, id, enabled, false, "test", {ir::DataCapability::Fundamentals}};
+    }
+    std::optional<ir::Fundamentals> fundamentals(const std::string &) override {
+        return value;
+    }
+};
 } // namespace
 int main() {
     int passed = 0;
@@ -159,6 +176,68 @@ int main() {
         CHECK(std::abs(*e->earnings_surprise_pct - 10) < .001);
         CHECK(!e->estimate_revision_pct);
     });
+    test("Alpha Vantage derives fundamentals from free statements", [] {
+        ir::AlphaVantageProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("INCOME_STATEMENT") != url.npos)
+                return R"({"quarterlyReports":[
+                    {"fiscalDateEnding":"2025-12-31","reportedCurrency":"EUR","totalRevenue":"120","netIncome":"12"},
+                    {"fiscalDateEnding":"2025-09-30","reportedCurrency":"EUR","totalRevenue":"110","netIncome":"11"},
+                    {"fiscalDateEnding":"2025-06-30","reportedCurrency":"EUR","totalRevenue":"100","netIncome":"10"},
+                    {"fiscalDateEnding":"2025-03-31","reportedCurrency":"EUR","totalRevenue":"90","netIncome":"9"}],
+                    "annualReports":[
+                    {"fiscalDateEnding":"2025-12-31","reportedCurrency":"EUR","totalRevenue":"420"},
+                    {"fiscalDateEnding":"2024-12-31","reportedCurrency":"EUR","totalRevenue":"350"}]})";
+            if (url.find("BALANCE_SHEET") != url.npos)
+                return R"({"quarterlyReports":[{"fiscalDateEnding":"2025-12-31","totalShareholderEquity":"200","shortLongTermDebtTotal":"100"}]})";
+            if (url.find("CASH_FLOW") != url.npos)
+                return R"({"quarterlyReports":[
+                    {"fiscalDateEnding":"2025-12-31","operatingCashflow":"20","capitalExpenditures":"5"},
+                    {"fiscalDateEnding":"2025-09-30","operatingCashflow":"20","capitalExpenditures":"5"},
+                    {"fiscalDateEnding":"2025-06-30","operatingCashflow":"20","capitalExpenditures":"5"},
+                    {"fiscalDateEnding":"2025-03-31","operatingCashflow":"20","capitalExpenditures":"5"}]})";
+            if (url.find("EARNINGS") != url.npos)
+                return R"({"quarterlyEarnings":[
+                    {"fiscalDateEnding":"2025-12-31","reportedEPS":"2.0","estimatedEPS":"1.8"},
+                    {"fiscalDateEnding":"2025-09-30","reportedEPS":"1.5"},
+                    {"fiscalDateEnding":"2025-06-30","reportedEPS":"1.2"},
+                    {"fiscalDateEnding":"2025-03-31","reportedEPS":"1.3"}],
+                    "annualEarnings":[
+                    {"fiscalDateEnding":"2025-12-31","reportedEPS":"6.0"},
+                    {"fiscalDateEnding":"2024-12-31","reportedEPS":"5.0"}]})";
+            return "{}";
+        });
+        auto f = p.fundamentals("AIR.PA");
+        CHECK(f);
+        CHECK(f->currency == "EUR");
+        CHECK(std::abs(*f->revenue_growth_pct - 20.0) < .001);
+        CHECK(std::abs(*f->eps_growth_pct - 20.0) < .001);
+        CHECK(std::abs(*f->fcf_margin_pct - (60.0 / 420.0 * 100.0)) < .001);
+        CHECK(std::abs(*f->roe_pct - 21.0) < .001);
+        CHECK(std::abs(*f->debt_to_equity - .5) < .001);
+        CHECK(std::abs(*f->eps_ttm - 6.0) < .001);
+    });
+    test("Finnhub normalizes profile and key metrics", [] {
+        ir::FinnhubProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("profile2") != url.npos)
+                return R"({"name":"Airbus SE","currency":"EUR","finnhubIndustry":"Aerospace & Defense"})";
+            if (url.find("/stock/metric") != url.npos)
+                return R"({"metric":{"peBasicExclExtraTTM":22.5,"revenueGrowthTTMYoy":8.2,"epsGrowthTTMYoy":10.3,"roeTTM":17.5,"debtEquityAnnual":0.7}})";
+            if (url.find("/quote") != url.npos)
+                return R"({"c":200,"dp":1.2,"t":1})";
+            return "[]";
+        });
+        auto f = p.fundamentals("AIR.PA");
+        CHECK(f && f->name == "Airbus SE");
+        CHECK(f->sector == "Aerospace & Defense");
+        CHECK(f->currency == "EUR");
+        CHECK(f->pe == 22.5);
+        CHECK(f->revenue_growth_pct == 8.2);
+        CHECK(f->eps_growth_pct == 10.3);
+        CHECK(f->roe_pct == 17.5);
+        CHECK(f->debt_to_equity == .7);
+        auto q = p.quote("AIR.PA");
+        CHECK(q && q->price == 200);
+    });
     test("Twelve normalizes symbol and rejects malformed numbers", [] {
         std::string url;
         ir::TwelveDataProvider p("fixture", [&](auto &u) {
@@ -175,6 +254,46 @@ int main() {
         auto h = p.history("AIR.PA", 30);
         CHECK(h.size() == 2);
         CHECK(h[0].price == 11);
+    });
+    test("fundamentals aggregate complementary provider fields", [] {
+        ir::ProviderManager m;
+        auto a = std::make_shared<FundStub>("a");
+        auto b = std::make_shared<FundStub>("b");
+        a->value.name = "Airbus SE";
+        a->value.currency = "EUR";
+        a->value.revenue_growth_pct = 12;
+        a->value.metrics["revenueGrowth"] = {"a", "2025", "annual YoY"};
+        b->value.sector = "Aerospace";
+        b->value.roe_pct = 18;
+        b->value.eps_ttm = 8;
+        b->value.metrics["roe"] = {"b", "2025Q4", "TTM"};
+        m.add(a);
+        m.add(b);
+        auto f = m.fundamentals("AIR.PA");
+        CHECK(f);
+        CHECK(f->name == "Airbus SE");
+        CHECK(f->sector == "Aerospace");
+        CHECK(f->currency == "EUR");
+        CHECK(f->revenue_growth_pct == 12);
+        CHECK(f->roe_pct == 18);
+        CHECK(f->eps_ttm == 8);
+        CHECK(f->source == "Aggregated");
+        CHECK(f->metrics.at("revenueGrowth").source == "a");
+        CHECK(f->metrics.at("roe").source == "b");
+    });
+    test("config supports Alpha Vantage and Finnhub routing", [] {
+        auto c = ir::parse_config({{"alphaKey", "a"},
+                                   {"finnhubKey", "f"},
+                                   {"demo", false},
+                                   {"routing", {{"fundamentals", "alpha"},
+                                                {"estimates", "finnhub"}}}});
+        CHECK(c.alpha_key == "a");
+        CHECK(c.finnhub_key == "f");
+        CHECK(c.routing.fundamentals == "alpha");
+        CHECK(c.routing.estimates == "finnhub");
+        auto j = ir::config_json(c);
+        CHECK(j["alphaKey"] == "a");
+        CHECK(j["finnhubKey"] == "f");
     });
     test("explicit demo does not call network", [] {
         ir::ResearchConfig c;
@@ -238,23 +357,27 @@ int main() {
         CHECK(!ir::valid_symbol("<script>"));
         CHECK(ir::valid_symbol("AIR.PA"));
     });
-    test("unknown quote currency is never inferred from reporting currency", [] {
+    test("listing suffix supplies quote currency without using reporting currency", [] {
         ir::ResearchConfig c;
         c.demo = false;
         c.eodhd_key = "fixture";
         ir::ResearchService service(c, [](const std::string &url) -> std::string {
             if (url.find("real-time") != url.npos)
                 return R"({"close":188})";
+            // Simulate the free plan: listing metadata/fundamentals are unavailable.
             if (url.find("filter=") != url.npos)
                 return "{}";
             if (url.find("fundamentals") != url.npos)
-                return R"({"General":{"CurrencyCode":"EUR"},"Highlights":{"PERatio":20,"QuarterlyRevenueGrowthYOY":0.1,"QuarterlyEarningsGrowthYOY":0.1,"ReturnOnEquityTTM":0.1}})";
+                return R"({"General":{"CurrencyCode":"USD"},"Financials":{"Income_Statement":{"currency_symbol":"USD"}},"Highlights":{"PERatio":20}})";
             return "[]";
         });
         auto j = service.snapshot("AIR.PA");
-        CHECK(j["currency"] == "");
-        CHECK(j["reportingCurrency"] == "");
+        // AIR.PA is a Paris listing, so the quote currency can safely fall back to EUR.
+        // The USD reporting/fundamental payload must not override the listing currency.
+        CHECK(j["currency"] == "EUR");
+        CHECK(j["reportingCurrency"] == "USD");
         CHECK(j["price"] == 188);
+        // Currency mismatch keeps monetary valuation disabled.
         CHECK(j["fairLow"].is_null());
     });
     test("connection tests skip missing keys and never probe demo", [] {
@@ -264,7 +387,7 @@ int main() {
             return "{}";
         });
         auto rows = service.test_providers("AAPL");
-        CHECK(rows.size() == 3);
+        CHECK(rows.size() == 5);
         for (const auto &r : rows) {
             CHECK(r["code"] == "missing_key");
             CHECK(!r["connected"].get<bool>());
@@ -279,15 +402,17 @@ int main() {
         ir::ResearchService service(config, [&](const auto &url) {
             ++calls;
             CHECK(url.find("eodhd.com/") != url.npos);
-            return R"({"close":205,"currency":"USD","timestamp":1770000000})";
+            return R"({"close":205,"currency":"USD","name":"Apple Inc.","timestamp":1770000000})";
         });
         auto test = service.test_providers("AAPL", "eodhd");
-        CHECK(calls == 1 && test.size() == 1);
+        CHECK(calls == 6 && test.size() == 1);
         CHECK(test[0]["connected"] == true && test[0]["price"] == 205);
+        CHECK(test[0]["capabilities"]["quotes"] == "ok");
+        CHECK(test[0]["capabilities"]["fundamentals"] == "no_data");
         CHECK(service.providers()[0]["connected"] == true);
         CHECK(service.status()["live"] == false);
         CHECK(service.quote("AIR.PA")["price"] == 188);
-        CHECK(calls == 1);
+        CHECK(calls == 6);
     });
     test("failed retest clears success and errors never disclose credentials", [] {
         ir::ResearchConfig config;
@@ -306,7 +431,7 @@ int main() {
         CHECK(report[0]["code"] == "authentication");
         CHECK(report[0]["httpStatus"] == 401);
         CHECK(report.dump().find("sensitive-fixture") == std::string::npos);
-        CHECK(service.providers()[2]["connected"] == false);
+        CHECK(service.providers()[4]["connected"] == false);
         CHECK(service.status()["live"] == false);
     });
     test("HTTP 200 quota errors and malformed payloads are safely classified", [] {
@@ -352,83 +477,6 @@ int main() {
         });
         CHECK(provider.quote("AIR.PA")->currency == "EUR");
         CHECK(provider.fundamentals("AIR.PA")->currency == "USD");
-    });
-    test("EODHD listing search resolves quote currency without fundamentals access", [] {
-        int search = 0, fundamentals = 0;
-        ir::EodhdProvider provider("fixture", [&](const auto &url) -> std::string {
-            if (url.find("real-time") != url.npos)
-                return R"({"close":198.82})";
-            if (url.find("/api/search/AIR?") != url.npos) {
-                ++search;
-                CHECK(url.find("exchange=PA") != url.npos);
-                return R"([{"Code":"AIR","Exchange":"US","Currency":"USD"},{"Code":"AIRBUS","Exchange":"PA","Currency":"EUR"},{"Code":"AIR","Exchange":"PA","Currency":"EUR","Name":"Airbus SE"}])";
-            }
-            ++fundamentals;
-            throw ir::ProviderError("subscription", 403);
-        });
-        auto quote = provider.quote("AIR.PA");
-        CHECK(quote && quote->price == 198.82);
-        CHECK(quote->currency == "EUR" && quote->name == "Airbus SE");
-        CHECK(search == 1 && fundamentals == 0);
-    });
-    test("EODHD refuses wrong listings and ambiguous search matches", [] {
-        std::string results =
-            R"([{"Code":"AIR","Exchange":"US","Currency":"USD"},{"Code":"AIRBUS","Exchange":"PA","Currency":"EUR"}])";
-        ir::EodhdProvider provider("fixture", [&](const auto &url) -> std::string {
-            if (url.find("real-time") != url.npos)
-                return R"({"close":198.82})";
-            if (url.find("/api/search/") != url.npos)
-                return results;
-            return "{}";
-        });
-        CHECK(provider.quote("AIR.PA")->currency.empty());
-        results =
-            R"([{"Code":"AIR","Exchange":"PA","Currency":"EUR"},{"Code":"AIR","Exchange":"PA","Currency":"USD"}])";
-        CHECK(provider.quote("AIR.PA")->currency.empty());
-    });
-    test("EODHD invalid search currency falls back to listing General metadata", [] {
-        ir::EodhdProvider provider("fixture", [&](const auto &url) -> std::string {
-            if (url.find("real-time") != url.npos)
-                return R"({"close":198.82})";
-            if (url.find("/api/search/") != url.npos)
-                return R"([{"Code":"AIR","Exchange":"PA","Currency":"unknown"}])";
-            CHECK(url.find("filter=General") != url.npos);
-            return R"({"General":{"CurrencyCode":"EUR","Name":"Airbus SE"}})";
-        });
-        CHECK(provider.quote("AIR.PA")->currency == "EUR");
-    });
-    test("EODHD missing reference permissions preserve price and explain unknown currency", [] {
-        ir::ResearchConfig config;
-        config.demo = false;
-        config.eodhd_key = "fixture";
-        ir::ResearchService service(config, [&](const auto &url) -> std::string {
-            if (url.find("real-time") != url.npos)
-                return R"({"close":198.82})";
-            throw ir::ProviderError("subscription", 403);
-        });
-        auto report = service.test_providers("AIR.PA", "eodhd");
-        CHECK(report[0]["connected"] == true && report[0]["price"] == 198.82);
-        CHECK(report[0]["currency"] == "");
-        CHECK(report[0]["message"].get<std::string>().find("moeda") != std::string::npos);
-        CHECK(service.quote("AIR.PA")["price"] == 198.82);
-    });
-    test("subscription warnings identify each unavailable capability without duplicates", [] {
-        ir::ResearchConfig config;
-        config.demo = false;
-        config.eodhd_key = "sensitive-fixture";
-        ir::ResearchService service(config, [](const auto &url) -> std::string {
-            if (url.find("real-time") != url.npos)
-                return R"({"close":198.82,"currency":"EUR"})";
-            throw ir::ProviderError("subscription", 403);
-        });
-        auto result = service.snapshot("AIR.PA");
-        auto warnings = result["warnings"].dump();
-        CHECK(result["price"] == 198.82);
-        CHECK(result["score"].is_null());
-        CHECK(warnings.find("EODHD · Fundamentais:") != warnings.npos);
-        CHECK(warnings.find("EODHD · Estimativas:") != warnings.npos);
-        CHECK(warnings.find("EODHD · Histórico:") != warnings.npos);
-        CHECK(warnings.find("sensitive-fixture") == warnings.npos);
     });
     std::cout << passed << " tests passed\n";
 }

@@ -6,7 +6,8 @@ android {
     ndkVersion = "27.0.12077973"
     defaultConfig {
         applicationId = "com.investmentradar.app"
-        minSdk = 26; targetSdk = 35; versionCode = 5; versionName = "0.4.1"
+        minSdk = 26; targetSdk = 35; versionCode = 6; versionName = "0.5.1"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild { cmake { cppFlags += "-std=c++20"; arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON" } }
     }
@@ -34,4 +35,5 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("junit:junit:4.13.2")
 }

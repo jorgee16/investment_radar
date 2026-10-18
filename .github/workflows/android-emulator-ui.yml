@@ -1,4 +1,7 @@
-name: Android validation
+name: Android emulator UI smoke
+concurrency:
+  group: android-ui-${{ github.ref }}
+  cancel-in-progress: true
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read

@@ -5,19 +5,23 @@ específico. Recebe uma função `HttpGet`. Pode servir uma UI Android Compose s
 avaliação de performance justificar essa mudança.
 
 ```text
-shared/web (HTML/CSS/JS)
-    ├── Windows: WebView2 → API HTTP loopback C++ → ResearchService
-    └── Android: WebView → bridge assíncrona Kotlin → JNI → ResearchService
-                                                        │
-                            ProviderManager ← routing por capacidade
-                                  │
-                        EODHD / FMP / Twelve Data
-                                  │
-                    modelos normalizados + provenance
-                                  │
+Desktop Compose (Kotlin)
+  ↓ RadarIntent / StateFlow
+RadarViewModel
+  ↓
+MarketRepository
+  ↓
+NativeBridge → investment-radar-core-host (loopback local)
+                                   │
+Android WebView → Kotlin/JNI ──────┤
+                                   ▼
+                            ResearchService C++
+                                   │
+                       ProviderManager / routing
+                         │        │        │
+                      EODHD      FMP    Twelve Data
+                                   │
                          InvestmentEngine C++20
-                                  │
-                   snapshot JSON com campos null e avisos
 ```
 
 ## Limites das camadas
@@ -44,8 +48,10 @@ shared/web (HTML/CSS/JS)
   Não contém modelos, fórmulas ou policy de routing específicos de providers.
 - Android JNI: instancia o mesmo ResearchService e chama o transporte Kotlin no
   executor. O endpoint interno de validação não é exposto à interface WebView.
-- UI: apresenta dados, guarda watchlist e carteira localmente, solicita operações
-  nativas. Sem fórmulas de scoring/valuation no JavaScript.
+- Desktop Compose: UI nativa Kotlin, MVVM/UDF, Canvas para séries e `StateFlow`.
+  Não contém fórmulas de scoring/valuation nem conhecimento de providers.
+- WebView: continua no Android e como fallback desktop temporário; sem fórmulas
+  de scoring/valuation no JavaScript.
 
 ## Segurança e empacotamento
 

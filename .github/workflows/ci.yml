@@ -1,4 +1,8 @@
 name: Build and test
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
@@ -9,6 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./install.sh
       - run: node --check shared/web/app.js
+      - run: node --test scripts/mobile_ui_contract.test.cjs
       - run: python3 scripts/smoke.py build/linux/investment-radar
   docker:
     runs-on: ubuntu-24.04
@@ -25,6 +30,20 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke test inside the built image
         run: docker run --rm investment-radar-build:ci
+  compose-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile and unit-test Compose desktop
+        shell: pwsh
+        run: .\android\gradlew.bat -p desktop-compose --no-daemon test
+      - name: Build Compose distributable
+        shell: pwsh
+        run: .\android\gradlew.bat -p desktop-compose --no-daemon createDistributable
   windows:
     runs-on: windows-2022
     env:
@@ -48,6 +67,37 @@ jobs:
       - name: Package app and runtime libraries
         shell: pwsh
         run: ./scripts/package-windows.ps1
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile and unit-test Compose desktop
+        shell: pwsh
+        run: .\android\gradlew.bat -p desktop-compose --no-daemon test
+      - name: Create Compose desktop distributable
+        shell: pwsh
+        run: .\android\gradlew.bat -p desktop-compose --no-daemon createDistributable
+      - name: Bundle native C++ host with Compose desktop
+        shell: pwsh
+        run: |
+          $launcher = Get-ChildItem -Path desktop-compose/build/compose/binaries/main/app -Filter '*.exe' -Recurse |
+            Where-Object { $_.Name -like 'Investment Radar*' } |
+            Select-Object -First 1
+          if (-not $launcher) { throw 'Compose launcher not found' }
+          $appDir = $launcher.Directory.FullName
+          Copy-Item build/windows/Release/investment-radar-core-host.exe $appDir/investment-radar-core-host.exe
+          Get-ChildItem build/windows/Release -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName $appDir }
+          Copy-Item -Recurse build/windows/Release/assets $appDir/assets
+          if (-not (Test-Path "$appDir/investment-radar-core-host.exe")) { throw 'Native core host missing from Compose package' }
+          if (-not (Test-Path "$appDir/assets/index.html")) { throw 'Native host assets missing from Compose package' }
+          $composeOut = 'dist/windows/investment-radar-compose-windows-x64'
+          Remove-Item -Recurse -Force $composeOut -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $composeOut | Out-Null
+          $appSource = Split-Path $launcher.FullName -Parent
+          Copy-Item -Path (Join-Path $appSource '*') -Destination $composeOut -Recurse -Force
+          python scripts/smoke.py "$composeOut/investment-radar-core-host.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path "$composeOut/*" -DestinationPath dist/windows/investment-radar-compose-windows-x64.zip -Force
       - name: Test extracted package independently of the build folder
         shell: pwsh
         run: |
@@ -55,6 +105,16 @@ jobs:
           Expand-Archive -LiteralPath dist/windows/investment-radar-windows-x64.zip -DestinationPath $packageTest
           python scripts/smoke.py "$packageTest/investment-radar-windows-x64/investment-radar.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-radar-compose-windows
+          if-no-files-found: error
+          path: dist/windows/investment-radar-compose-windows-x64/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-radar-compose-windows-zip
+          if-no-files-found: error
+          path: dist/windows/investment-radar-compose-windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: investment-radar-windows
@@ -67,3 +127,39 @@ jobs:
           path: |
             dist/windows/*.zip
             dist/windows/*.sha256
+
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK components
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+      - name: Test Android provider policy and build APK with JNI core
+        run: ./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug --no-daemon
+      - name: Validate mobile UI contracts and packaged assets
+        run: |
+          node --test scripts/mobile_ui_contract.test.cjs
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          for asset in index.html app.js styles.css; do
+            unzip -p "$APK" "assets/$asset" | cmp - "shared/web/$asset"
+          done
+      - name: Verify APK contains native C++ core and bundled UI
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libinvestment_radar.so'
+          unzip -l "$APK" | grep -q 'lib/x86_64/libinvestment_radar.so'
+          unzip -l "$APK" | grep -q 'assets/index.html'
+          unzip -l "$APK" | grep -q 'assets/app.js'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: investment-radar-android-debug-apk
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/debug/app-debug.apk

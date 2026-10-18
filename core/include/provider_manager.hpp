@@ -13,6 +13,7 @@ struct ProviderProbe {
     long long tested_at = 0;
     int http_status = 0;
     std::optional<Quote> quote;
+    std::unordered_map<std::string, std::string> capability_codes;
 };
 
 class ProviderManager {
@@ -46,8 +47,6 @@ class ProviderManager {
   private:
     std::vector<std::shared_ptr<IMarketDataProvider>> ordered(const std::string &preferred,
                                                               DataCapability cap);
-    void add_diagnostic(const std::shared_ptr<IMarketDataProvider> &, DataCapability,
-                        const std::string &);
     void record_failure(const std::shared_ptr<IMarketDataProvider> &, DataCapability,
                         const ProviderError &);
     static bool supports(const ProviderDescriptor &, DataCapability);
