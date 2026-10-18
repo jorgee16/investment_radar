@@ -37,3 +37,10 @@ main{position:relative!important;z-index:1!important;width:100%!important;max-wi
 .search kbd{display:none!important}
 [hidden]{display:none!important}
 }
+
+/* The app bar already names the page: do not repeat it in the content. */
+@media(max-width:900px){
+#portfolio .page-head h2,#portfolio .page-head .eyebrow,#watchlist .page-head h2,#watchlist .page-head .eyebrow{display:none!important}
+#portfolio .page-head,#watchlist .page-head{justify-content:flex-end!important;min-height:42px!important}
+#screener .page-head,#calendar .page-head,#providers .page-head,#settings .page-head{display:none!important}
+}
