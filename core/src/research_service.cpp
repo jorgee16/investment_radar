@@ -190,6 +190,7 @@ json ResearchService::test_providers(const std::string &symbol, const std::strin
                        {"httpStatus", r.http_status ? json(r.http_status) : json(nullptr)},
                        {"connected", r.code == "ok"},
                        {"capability", "quotes"},
+                       {"capabilities", r.capability_codes},
                        {"price", r.quote ? json(r.quote->price) : json(nullptr)},
                        {"currency", r.quote ? r.quote->currency : ""},
                        {"quoteTimestamp",
