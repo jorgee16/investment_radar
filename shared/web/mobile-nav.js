@@ -1,6 +1,15 @@
 /* Android navigation extension; keeps all existing app.js routes. */
 (function(){
   const nav=document.querySelector('.sidebar nav');
+  // Capture touch/click at the nav root so injected mobile controls work even
+  // when other scripts replace buttons or stop bubbling on child elements.
+  nav?.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-view]');
+    if(!button || !nav.contains(button))return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    uiContext.router?.navigate(button.dataset.view);
+  },true);
   if(!nav || document.getElementById('mobileMore'))return;
   const more=document.createElement('button');
   more.id='mobileMore';more.type='button';more.className='nav nav-more';
