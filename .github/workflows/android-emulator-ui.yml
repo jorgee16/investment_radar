@@ -73,6 +73,16 @@ jobs:
             sleep 2
             adb shell screencap -p /sdcard/ir-more.png
             adb pull /sdcard/ir-more.png screenshot-more.png
+            # Fail the workflow if taps leave the app stuck on the dashboard.
+            python3 -m pip install --quiet Pillow
+            python3 - <<'PY'
+            from PIL import Image, ImageChops
+            base = Image.open('screenshot-412.png').convert('RGB')
+            for name in ('portfolio', 'watchlist', 'asset'):
+                other = Image.open(f'screenshot-{name}.png').convert('RGB')
+                assert ImageChops.difference(base.crop((0, 100, 412, 730)), other.crop((0, 100, 412, 730))).getbbox(), f'{name} did not navigate away from dashboard'
+            print('Bottom navigation changed content for portfolio, watchlist and asset')
+            PY
             adb logcat -d -s AndroidRuntime:E > android-runtime.log
             ! grep -q 'FATAL EXCEPTION' android-runtime.log
       - uses: actions/upload-artifact@v4
