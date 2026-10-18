@@ -353,5 +353,82 @@ int main() {
         CHECK(provider.quote("AIR.PA")->currency == "EUR");
         CHECK(provider.fundamentals("AIR.PA")->currency == "USD");
     });
+    test("EODHD listing search resolves quote currency without fundamentals access", [] {
+        int search = 0, fundamentals = 0;
+        ir::EodhdProvider provider("fixture", [&](const auto &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":198.82})";
+            if (url.find("/api/search/AIR?") != url.npos) {
+                ++search;
+                CHECK(url.find("exchange=PA") != url.npos);
+                return R"([{"Code":"AIR","Exchange":"US","Currency":"USD"},{"Code":"AIRBUS","Exchange":"PA","Currency":"EUR"},{"Code":"AIR","Exchange":"PA","Currency":"EUR","Name":"Airbus SE"}])";
+            }
+            ++fundamentals;
+            throw ir::ProviderError("subscription", 403);
+        });
+        auto quote = provider.quote("AIR.PA");
+        CHECK(quote && quote->price == 198.82);
+        CHECK(quote->currency == "EUR" && quote->name == "Airbus SE");
+        CHECK(search == 1 && fundamentals == 0);
+    });
+    test("EODHD refuses wrong listings and ambiguous search matches", [] {
+        std::string results =
+            R"([{"Code":"AIR","Exchange":"US","Currency":"USD"},{"Code":"AIRBUS","Exchange":"PA","Currency":"EUR"}])";
+        ir::EodhdProvider provider("fixture", [&](const auto &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":198.82})";
+            if (url.find("/api/search/") != url.npos)
+                return results;
+            return "{}";
+        });
+        CHECK(provider.quote("AIR.PA")->currency.empty());
+        results =
+            R"([{"Code":"AIR","Exchange":"PA","Currency":"EUR"},{"Code":"AIR","Exchange":"PA","Currency":"USD"}])";
+        CHECK(provider.quote("AIR.PA")->currency.empty());
+    });
+    test("EODHD invalid search currency falls back to listing General metadata", [] {
+        ir::EodhdProvider provider("fixture", [&](const auto &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":198.82})";
+            if (url.find("/api/search/") != url.npos)
+                return R"([{"Code":"AIR","Exchange":"PA","Currency":"unknown"}])";
+            CHECK(url.find("filter=General") != url.npos);
+            return R"({"General":{"CurrencyCode":"EUR","Name":"Airbus SE"}})";
+        });
+        CHECK(provider.quote("AIR.PA")->currency == "EUR");
+    });
+    test("EODHD missing reference permissions preserve price and explain unknown currency", [] {
+        ir::ResearchConfig config;
+        config.demo = false;
+        config.eodhd_key = "fixture";
+        ir::ResearchService service(config, [&](const auto &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":198.82})";
+            throw ir::ProviderError("subscription", 403);
+        });
+        auto report = service.test_providers("AIR.PA", "eodhd");
+        CHECK(report[0]["connected"] == true && report[0]["price"] == 198.82);
+        CHECK(report[0]["currency"] == "");
+        CHECK(report[0]["message"].get<std::string>().find("moeda") != std::string::npos);
+        CHECK(service.quote("AIR.PA")["price"] == 198.82);
+    });
+    test("subscription warnings identify each unavailable capability without duplicates", [] {
+        ir::ResearchConfig config;
+        config.demo = false;
+        config.eodhd_key = "sensitive-fixture";
+        ir::ResearchService service(config, [](const auto &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":198.82,"currency":"EUR"})";
+            throw ir::ProviderError("subscription", 403);
+        });
+        auto result = service.snapshot("AIR.PA");
+        auto warnings = result["warnings"].dump();
+        CHECK(result["price"] == 198.82);
+        CHECK(result["score"].is_null());
+        CHECK(warnings.find("EODHD · Fundamentais:") != warnings.npos);
+        CHECK(warnings.find("EODHD · Estimativas:") != warnings.npos);
+        CHECK(warnings.find("EODHD · Histórico:") != warnings.npos);
+        CHECK(warnings.find("sensitive-fixture") == warnings.npos);
+    });
     std::cout << passed << " tests passed\n";
 }

@@ -16,6 +16,9 @@ with tempfile.TemporaryDirectory() as d:
    page.screenshot(path=str(Path(d)/'desktop.png'),full_page=True)
    page.locator('[data-view=providers]').click()
    page.wait_for_selector('#providers[aria-busy=false] #dataMode')
+   assert page.locator('#dataMode').count()==1
+   assert page.locator('#applyDataMode').is_visible()
+   assert page.locator('#dataMode').bounding_box()['y'] < page.locator('#testSymbol').bounding_box()['y']
    page.locator('#testAllProviders').click()
    page.wait_for_function("() => document.querySelector('#providerTestSummary').textContent.includes('Adiciona uma chave')")
    assert page.locator('#providerCards').inner_text().count('missing_key')==3
@@ -34,7 +37,7 @@ with tempfile.TemporaryDirectory() as d:
    held=[]
    page.route('**/api/snapshot?symbol=AIR.PA',lambda route:held.append(route))
    page.locator('#dataMode').select_option('live')
-   page.locator('#saveProviderKeys').click()
+   page.locator('#applyDataMode').click()
    page.wait_for_function("() => document.querySelector('#settingsMode').textContent==='LIVE' && document.querySelector('#assetPrice').textContent==='—'")
    assert page.locator('#assetScore').inner_text()=='—'
    assert page.locator('#priceChart path').count()==0

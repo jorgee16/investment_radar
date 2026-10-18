@@ -5,6 +5,25 @@
 #include <ctime>
 
 namespace ir {
+namespace {
+std::string capability_label(DataCapability cap) {
+    switch (cap) {
+    case DataCapability::Quotes:
+        return "Cotações";
+    case DataCapability::Fundamentals:
+        return "Fundamentais";
+    case DataCapability::Estimates:
+        return "Estimativas";
+    case DataCapability::Earnings:
+        return "Calendário";
+    case DataCapability::News:
+        return "Notícias";
+    case DataCapability::History:
+        return "Histórico";
+    }
+    return "Dados";
+}
+} // namespace
 void ProviderManager::add(std::shared_ptr<IMarketDataProvider> p) {
     providers_.push_back(std::move(p));
 }
@@ -60,8 +79,12 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
             cooldowns_.erase(d.id + ":quotes");
         }
         r.tested_at = std::time(nullptr);
-        r.message = r.code == "ok" ? "Cotação recebida; outras permissões dependem do plano."
-                                   : provider_error_message(r.code);
+        r.message = r.code == "ok"
+                        ? (r.quote->currency.empty()
+                               ? "Cotação recebida; moeda não identificada. O valor da carteira "
+                                 "fica indisponível até confirmar a moeda."
+                               : "Cotação recebida; outras permissões dependem do plano.")
+                        : provider_error_message(r.code);
         health_[d.id] = r;
         out.push_back(std::move(r));
     }
@@ -91,10 +114,7 @@ std::vector<std::shared_ptr<IMarketDataProvider>> ProviderManager::ordered(const
         for (const auto &key : {d.id, d.id + ":" + capability_name(cap)}) {
             auto it = cooldowns_.find(key);
             if (it != cooldowns_.end() && it->second.first > std::time(nullptr)) {
-                auto warning = d.name + ": " + provider_error_message(it->second.second);
-                if (std::find(diagnostics_.begin(), diagnostics_.end(), warning) ==
-                    diagnostics_.end())
-                    diagnostics_.push_back(std::move(warning));
+                add_diagnostic(p, cap, provider_error_message(it->second.second));
                 return true;
             }
         }
@@ -102,9 +122,15 @@ std::vector<std::shared_ptr<IMarketDataProvider>> ProviderManager::ordered(const
     });
     return out;
 }
+void ProviderManager::add_diagnostic(const std::shared_ptr<IMarketDataProvider> &p,
+                                     DataCapability cap, const std::string &message) {
+    auto warning = p->descriptor().name + " · " + capability_label(cap) + ": " + message;
+    if (std::find(diagnostics_.begin(), diagnostics_.end(), warning) == diagnostics_.end())
+        diagnostics_.push_back(std::move(warning));
+}
 void ProviderManager::record_failure(const std::shared_ptr<IMarketDataProvider> &p,
                                      DataCapability cap, const ProviderError &e) {
-    diagnostics_.push_back(p->descriptor().name + ": " + e.what());
+    add_diagnostic(p, cap, e.what());
     const auto id = p->descriptor().id;
     if (e.code == "authentication" || e.code == "rate_limit" || e.code == "network")
         cooldowns_[id] = {std::time(nullptr) + (e.code == "authentication" ? 300
@@ -122,7 +148,8 @@ std::optional<Quote> ProviderManager::quote(const std::string &s) {
         } catch (const ProviderError &e) {
             record_failure(p, DataCapability::Quotes, e);
         } catch (...) {
-            diagnostics_.push_back(p->descriptor().name + ": request failed; fallback attempted");
+            add_diagnostic(p, DataCapability::Quotes,
+                           "Pedido falhou; foram tentadas as alternativas configuradas.");
         }
     return {};
 }
@@ -134,7 +161,8 @@ std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) 
         } catch (const ProviderError &e) {
             record_failure(p, DataCapability::Fundamentals, e);
         } catch (...) {
-            diagnostics_.push_back(p->descriptor().name + ": request failed; fallback attempted");
+            add_diagnostic(p, DataCapability::Fundamentals,
+                           "Pedido falhou; foram tentadas as alternativas configuradas.");
         }
     return {};
 }
@@ -146,7 +174,8 @@ std::optional<EstimateSnapshot> ProviderManager::estimates(const std::string &s)
         } catch (const ProviderError &e) {
             record_failure(p, DataCapability::Estimates, e);
         } catch (...) {
-            diagnostics_.push_back(p->descriptor().name + ": request failed; fallback attempted");
+            add_diagnostic(p, DataCapability::Estimates,
+                           "Pedido falhou; foram tentadas as alternativas configuradas.");
         }
     return {};
 }
@@ -160,7 +189,8 @@ std::vector<EarningsEvent> ProviderManager::earnings(const std::string &s, const
         } catch (const ProviderError &e) {
             record_failure(p, DataCapability::Earnings, e);
         } catch (...) {
-            diagnostics_.push_back(p->descriptor().name + ": request failed; fallback attempted");
+            add_diagnostic(p, DataCapability::Earnings,
+                           "Pedido falhou; foram tentadas as alternativas configuradas.");
         }
     return {};
 }
@@ -173,7 +203,8 @@ std::vector<PriceBar> ProviderManager::history(const std::string &s, int d) {
         } catch (const ProviderError &e) {
             record_failure(p, DataCapability::History, e);
         } catch (...) {
-            diagnostics_.push_back(p->descriptor().name + ": request failed; fallback attempted");
+            add_diagnostic(p, DataCapability::History,
+                           "Pedido falhou; foram tentadas as alternativas configuradas.");
         }
     return {};
 }
@@ -186,7 +217,8 @@ std::vector<NewsItem> ProviderManager::news(const std::string &s, int n) {
         } catch (const ProviderError &e) {
             record_failure(p, DataCapability::News, e);
         } catch (...) {
-            diagnostics_.push_back(p->descriptor().name + ": request failed; fallback attempted");
+            add_diagnostic(p, DataCapability::News,
+                           "Pedido falhou; foram tentadas as alternativas configuradas.");
         }
     return {};
 }

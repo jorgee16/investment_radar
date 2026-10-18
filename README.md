@@ -127,7 +127,7 @@ sintaxe JavaScript; não faz parte do runtime da aplicação.
 ## Android
 
 Abrir `android/` no Android Studio e instalar SDK 35, NDK **27.0.12077973** e CMake
-**3.22.1**. Usar JDK 17+ completo. O wrapper inclui Gradle 8.9 com checksum fixado.
+**3.22.1** e Build Tools **35.0.0**. Usar JDK 17+ completo. O wrapper inclui Gradle 8.9 com checksum fixado.
 
 ```powershell
 cd android
@@ -139,8 +139,9 @@ Kotlin trata do lifecycle, transporte HTTPS, cache e armazenamento cifrado por
 Android Keystore. Normalização, routing, snapshots e avaliação ficam em C++ via
 JNI. Os pedidos correm num executor fora da thread principal.
 
-O wrapper foi executado na nuvem. O APK e o comportamento Android ainda precisam
-de SDK/NDK, JDK completo e dispositivo/emulador para validação. Consultar
+Build e lint Android foram executados na nuvem. A validação funcional usa os
+testes instrumentados e screenshots do APK instalado. A disponibilidade de uma
+APK validada depende da conclusão destes controlos. Consultar
 [estado e limitações](docs/STATUS.md).
 
 ## Dados e configuração dos providers

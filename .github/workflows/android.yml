@@ -1,0 +1,74 @@
+name: Android validation
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install pinned Android build tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.0.12077973' 'cmake;3.22.1'
+      - name: Create a temporary validation signing key
+        shell: python
+        run: |
+          import os, pathlib, secrets, subprocess
+          path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'radar-validation.jks'
+          password = secrets.token_urlsafe(36)
+          child = dict(os.environ, IR_ANDROID_STORE_PASSWORD=password)
+          subprocess.run(['keytool', '-genkeypair', '-keystore', str(path),
+              '-storepass:env', 'IR_ANDROID_STORE_PASSWORD', '-keypass:env', 'IR_ANDROID_STORE_PASSWORD',
+              '-alias', 'investment-radar', '-keyalg', 'RSA', '-keysize', '3072', '-validity', '10000',
+              '-dname', 'CN=Investment Radar Validation,O=Investment Radar,C=PT', '-noprompt'], env=child, check=True)
+          path.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f'IR_ANDROID_KEYSTORE={path}\nIR_ANDROID_STORE_PASSWORD={password}\n')
+      - name: Build Release and instrumentation APKs and run lint
+        working-directory: android
+        run: ./gradlew :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease -PirTestBuildType=release --console=plain
+      - name: Enable KVM for the emulator
+        run: |
+          test -c /dev/kvm
+          sudo chmod 666 /dev/kvm
+      - name: Test installed Release APK on Android 15
+        uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_5
+          cores: 2
+          ram-size: 4096M
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -accel on
+          script: python3 scripts/test_android_apk.py android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk --serial emulator-5554 --output dist/android-validation --test-class com.investmentradar.app.AndroidFlowTest,com.investmentradar.app.WebViewSanityTest
+      - name: Require successful tests and screenshots before packaging candidate
+        shell: python
+        run: |
+          import json, pathlib, shutil
+          report = json.loads(pathlib.Path('dist/android-validation/result.json').read_text())
+          assert report['passed'] and report['tests'] == 11, report
+          assert len(list(pathlib.Path('dist/android-validation/screenshots').rglob('*.png'))) >= 15
+          shutil.copy2('android/app/build/outputs/apk/release/app-release.apk', 'dist/android-validation/investment-radar-candidate.apk')
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: investment-radar-android-candidate
+          if-no-files-found: error
+          path: dist/android-validation/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: investment-radar-android-test-reports
+          path: |
+            dist/android-validation/instrumentation.txt
+            dist/android-validation/result.json
+            dist/android-validation/screenshots/
+            android/app/build/reports/lint-results-release.*

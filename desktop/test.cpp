@@ -64,6 +64,7 @@ int main() {
             CHECK(data.find("fixture-not-a-real-key") == std::string::npos);
             CHECK(data.find("api_token") == std::string::npos);
             CHECK(CachedHttpsClient::ttl_for("https://eodhd.com/api/real-time/AIR.PA") == 60);
+            CHECK(CachedHttpsClient::ttl_for("https://eodhd.com/api/search/AIR") == 21600);
             CHECK(CachedHttpsClient::ttl_for("https://eodhd.com/api/v1.1/fundamentals/AIR.PA") ==
                   21600);
         }

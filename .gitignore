@@ -18,6 +18,7 @@ compile_commands.json
 # Android / Gradle
 android/.gradle/
 android/app/build/
+android/app/.cxx/
 .gradle/
 **/build/
 local.properties

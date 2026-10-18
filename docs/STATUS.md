@@ -1,4 +1,4 @@
-# Estado verificado — 17 outubro 2026
+# Estado verificado — 18 outubro 2026
 
 Base do ZIP importada na branch `codex/initial-implementation`. Nenhuma chave
 real foi criada ou introduzida. Esta etapa inclui código; não é apenas onboarding.
@@ -7,7 +7,7 @@ real foi criada ou introduzida. Esta etapa inclui código; não é apenas onboar
 
 - Teste original do ZIP antes das alterações (um caso básico, sem providers).
 - Build CMake/Ninja C++20 do core, plataforma e host headless, com GCC 14.2.
-- 27 casos no executável de testes do core; segundo alvo CTest testa settings,
+- 32 casos no executável de testes do core; segundo alvo CTest testa settings,
   permissões, roundtrip, cache SHA-256/TTL e política HTTPS.
 - CTest: 2 alvos passaram; os testes não desaparecem em builds Release.
 - Smoke HTTP contra processo C++ real: assets, snapshot AIR.PA demo, modo live
@@ -26,10 +26,13 @@ real foi criada ou introduzida. Esta etapa inclui código; não é apenas onboar
   desativada a sandbox WebKit para contornar o problema.
 - Windows: script/presets/vcpkg e CI criados; sem runner Windows nesta sessão.
   Build, WebView2, DPAPI, DLLs e distribuição ainda precisam de execução Windows.
-- Android: tentativa `:app:assembleDebug` chegou à configuração do projeto e
-  terminou com `SDK location not found`. Faltam SDK/NDK/CMake Android e um JDK
-  completo na máquina. Kotlin/JNI/Keystore e APK ainda não foram validados em
-  Android. Não há métricas de consumo, tamanho release ou fluidez no dispositivo.
+- Android: SDK 35, Build Tools 35.0.0, NDK 27.0.12077973, CMake 3.22.1 e
+  JDK completo instalados. Build Release para arm64-v8a, armeabi-v7a, x86 e
+  x86_64 e lint passaram. O teste focado do core/JNI/interface passou no emulador
+  Android 11 após corrigir incompatibilidades com WebView 83. A suíte funcional
+  completa e revisão dos screenshots continuam pendentes neste checkpoint.
+  O emulador Android 15 sem KVM apresenta ANRs do System UI e falha também no
+  controlo WebView sem código da app. Nenhuma APK foi declarada validada.
 - Providers: cotação e moeda AAPL recebidas pelo host C++ com o token público
   demo EODHD. Não há chaves de contas próprias. FMP/Twelve autenticados, cobertura
   europeia e permissões dos restantes endpoints ainda precisam de validação.
@@ -111,3 +114,18 @@ Novos builds usam o triplet `x64-windows-release` para evitar dependências Debu
 O helper mantém caches antigos `x64-windows` e checkouts existentes; novos
 checkouts são criados fora de OneDrive, em LOCALAPPDATA. Alteração validada por
 sintaxe/configuração nesta máquina Linux; não há medição Windows do ganho.
+
+## Correções Android em validação
+
+Formulários locais substituem prompts JavaScript; menu Mais torna screener,
+providers e definições acessíveis no telemóvel. Botão Voltar, insets do sistema,
+rotação e recuperação após término do renderer são tratados no host Kotlin.
+A UI evita sintaxe/APIs ausentes no WebView 83 e fornece alternativa aos diálogos.
+Carteira, radar e análise atualizam os estados relacionados após alterações.
+
+`AndroidFlowTest` cobre dez fluxos no APK instalado; `WebViewSanityTest` isola
+problemas do motor Android. `scripts/test_android_apk.py` exige testes efetivos,
+rejeita crashes/erros mesmo se adb terminar com zero, regista SHA-256 e recolhe
+screenshots. O workflow Android usa KVM e só gera um artifact candidato depois
+de onze testes verdes e screenshots; estes ainda precisam de revisão visual.
+Chaves de assinatura de validação são locais/efémeras e não são publicadas.

@@ -192,9 +192,9 @@ void HttpCache::put(const std::string &u, const std::string &b) {
 int CachedHttpsClient::ttl_for(const std::string &u) {
     if (u.find("real-time") != u.npos || u.find("/quote") != u.npos)
         return 60;
-    if (u.find("fundamentals") != u.npos || u.find("statement") != u.npos ||
-        u.find("ratios") != u.npos || u.find("key-metrics") != u.npos ||
-        u.find("analyst-estimates") != u.npos)
+    if (u.find("/api/search/") != u.npos || u.find("fundamentals") != u.npos ||
+        u.find("statement") != u.npos || u.find("ratios") != u.npos ||
+        u.find("key-metrics") != u.npos || u.find("analyst-estimates") != u.npos)
         return 21600;
     if (u.find("news") != u.npos)
         return 900;

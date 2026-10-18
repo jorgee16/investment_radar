@@ -39,7 +39,7 @@ class ProviderHttpException(val status: Int) : Exception("Provider HTTP error")
 class HttpClient(private val cache: ApiCache) {
     private fun ttl(u: String) = when {
         u.contains("real-time") || u.contains("/quote") -> 60
-        listOf("fundamentals", "statement", "ratios", "key-metrics", "analyst-estimates").any { u.contains(it) } -> 21600
+        listOf("/api/search/", "fundamentals", "statement", "ratios", "key-metrics", "analyst-estimates").any { u.contains(it) } -> 21600
         u.contains("news") -> 900
         u.contains("calendar") || u.contains("earnings") -> 1800
         else -> 3600

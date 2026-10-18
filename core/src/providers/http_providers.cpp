@@ -90,6 +90,17 @@ std::optional<double> growth(std::optional<double> a, std::optional<double> b) {
 std::string str(const json &j, const char *k, const std::string &d = "") {
     return j.is_object() && j.contains(k) && j[k].is_string() ? j[k].get<std::string>() : d;
 }
+bool same_identifier(const std::string &a, const std::string &b) {
+    return a.size() == b.size() &&
+           std::equal(a.begin(), a.end(), b.begin(), [](unsigned char x, unsigned char y) {
+               return std::toupper(x) == std::toupper(y);
+           });
+}
+bool valid_currency(const std::string &currency) {
+    return currency.size() == 3 &&
+           std::all_of(currency.begin(), currency.end(),
+                       [](unsigned char c) { return c >= 'A' && c <= 'Z'; });
+}
 json object(const json &j, const char *k) {
     return j.is_object() && j.contains(k) && j[k].is_object() ? j[k] : json::object();
 }
@@ -181,13 +192,43 @@ std::optional<Quote> EodhdProvider::quote(const std::string &s) {
         return {};
     auto currency = str(j, "currency"), name = str(j, "name", s);
     if (currency.empty()) {
+        auto symbol = eod_symbol(s);
+        const auto dot = symbol.rfind('.');
+        if (dot != symbol.npos) {
+            const auto code = symbol.substr(0, dot), exchange = symbol.substr(dot + 1);
+            // Search provides listing metadata independently of fundamentals access.
+            auto results = optional_request(
+                get_, "https://eodhd.com/api/search/" + enc(code) + "?api_token=" + enc(key_) +
+                          "&fmt=json&exchange=" + enc(exchange) + "&limit=50");
+            const json *match = nullptr;
+            bool ambiguous = false;
+            if (results.is_array())
+                for (const auto &row : results) {
+                    if (!same_identifier(str(row, "Code"), code) ||
+                        !same_identifier(str(row, "Exchange"), exchange))
+                        continue;
+                    if (match) {
+                        ambiguous = true;
+                        break;
+                    }
+                    match = &row;
+                }
+            if (match && !ambiguous && valid_currency(str(*match, "Currency"))) {
+                currency = str(*match, "Currency");
+                name = str(*match, "Name", name);
+            }
+        }
+    }
+    if (currency.empty()) {
         auto general =
             optional_request(get_, "https://eodhd.com/api/v1.1/fundamentals/" + enc(eod_symbol(s)) +
                                        "?api_token=" + enc(key_) + "&fmt=json&filter=General");
         if (general.contains("General"))
             general = object(general, "General");
         // General.CurrencyCode is explicitly the listing currency, not reporting currency.
-        currency = str(general, "CurrencyCode");
+        auto reference_currency = str(general, "CurrencyCode");
+        if (valid_currency(reference_currency))
+            currency = reference_currency;
         name = str(general, "Name", name);
     }
     return Quote{
