@@ -174,15 +174,38 @@ const pct = n => n == null || !Number.isFinite(n) ? '—' : `${n>=0?'+':''}${n.t
 const fixed = (n,d=1) => n == null || !Number.isFinite(n) ? '—' : n.toFixed(d);
 const metric = (label,value,sub='') => `<div class="metric"><label>${esc(label)}</label><strong>${esc(value)}</strong><small>${esc(sub)}</small></div>`;
 function scorebar(label,n) { return `<div class="scorebar"><span>${esc(label)}</span><div class="track"><div class="fill" style="width:${Number.isFinite(n)?Math.max(0,Math.min(100,n)):0}%"></div></div><b>${n??'—'}</b></div>`; }
+let chartStyle='candles', chartDays=186, chartRows=[];
 function drawChart(rows, currency) {
   const svg=$('#priceChart'); svg.replaceChildren(); setText('#chartRange','Sem histórico disponível');
-  rows=(rows||[]).filter(r=>Number.isFinite(r.price)&&r.price>0);
+  rows=(rows||[]).filter(r=>Number.isFinite(r.price)&&r.price>0); chartRows=rows;
   if (!rows.length) return;
-  const W=680,H=220,p=12,values=rows.map(r=>r.price),lo=Math.min(...values),hi=Math.max(...values),span=hi-lo||1;
-  const points=rows.map((r,i)=>[rows.length===1?W/2:p+i*(W-2*p)/(rows.length-1),H-p-(r.price-lo)/span*(H-2*p)]);
-  const line=points.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ');
-  svg.innerHTML=`<path class="linepath" d="${line}"/><circle class="point" cx="${points.at(-1)[0]}" cy="${points.at(-1)[1]}" r="4"/>`;
+  const W=680,H=260,p=14;
+  const lows=rows.map(r=>Number.isFinite(r.low)?r.low:r.price), highs=rows.map(r=>Number.isFinite(r.high)?r.high:r.price);
+  const lo=Math.min(...lows),hi=Math.max(...highs),span=hi-lo||1;
+  const y=v=>H-p-(v-lo)/span*(H-2*p);
+  if(chartStyle==='candles' && rows.some(r=>[r.open,r.high,r.low,r.close].every(Number.isFinite))){
+    const step=(W-2*p)/Math.max(1,rows.length), body=Math.max(1.3,Math.min(7,step*.58));
+    svg.innerHTML=rows.map((r,i)=>{
+      if(![r.open,r.high,r.low,r.close].every(Number.isFinite))return '';
+      const x=p+(i+.5)*step, up=r.close>=r.open, top=y(Math.max(r.open,r.close)), bottom=y(Math.min(r.open,r.close));
+      return `<g class="candle ${up?'up':'down'}"><line x1="${x}" y1="${y(r.high)}" x2="${x}" y2="${y(r.low)}"/><rect x="${(x-body/2).toFixed(2)}" y="${top.toFixed(2)}" width="${body.toFixed(2)}" height="${Math.max(1,bottom-top).toFixed(2)}"/></g>`;
+    }).join('');
+  } else {
+    const points=rows.map((r,i)=>[rows.length===1?W/2:p+i*(W-2*p)/(rows.length-1),y(r.price)]);
+    const line=points.map((q,i)=>(i?'L':'M')+q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ');
+    svg.innerHTML=`<path class="linepath" d="${line}"/><circle class="point" cx="${points.at(-1)[0]}" cy="${points.at(-1)[1]}" r="4"/>`;
+  }
   setText('#chartRange',`${money(lo,currency)} → ${money(hi,currency)}`);
+}
+async function loadChartRange(days){
+  chartDays=days;
+  $('#chartRanges button').forEach(b=>b.classList.toggle('active',+b.dataset.days===days));
+  setText('#historyPeriod','A carregar…');
+  try{
+    const rows=await bridge(`/api/history?symbol=${encodeURIComponent(state.current)}&days=${days}`);
+    drawChart(rows,state.snap?.currency);
+    setText('#historyPeriod',rows?.length?`${rows[0].label} → ${rows.at(-1).label}`:'—');
+  }catch(e){notify(e.message,true);}
 }
 function renderPosition(s) {
   const p=state.portfolio.find(p=>p.symbol===s.symbol);
@@ -211,7 +234,7 @@ function renderSnapshot(s) {
   const metrics=[['P/E TTM','pe',fixed(s.pe)],['Forward P/E','forwardPE',fixed(s.forwardPE)],['Revenue growth','revenueGrowth',pct(s.revenueGrowth)],['EPS growth','epsGrowth',pct(s.epsGrowth)],['FCF margin','fcfMargin',pct(s.fcfMargin)],['ROE','roe',pct(s.roe)],['Debt / equity','debtToEquity',fixed(s.debtToEquity,2)],['Earnings surprise','earningsSurprise',pct(s.earningsSurprise)],['Estimate revision','estimateRevision',pct(s.estimateRevision)]];
   const row=([label,key,value])=>{const origin=s.metricSources?.[key];return `<div class="financial-row"><span>${esc(label)}${origin?`<small class="provenance">${esc(origin.source)} · ${esc(origin.basis)} · ${esc(origin.period||'período não fornecido')}</small>`:''}</span><b>${esc(value)}</b></div>`;};
   $('#financialTable').innerHTML=metrics.map(row).join('');$('#valuationMetrics').innerHTML=metrics.slice(0,2).map(row).join('');
-  renderPosition(s);drawChart(s.history,s.currency);
+  renderPosition(s);drawChart(s.history,s.currency); if(chartDays!==120) guarded(()=>loadChartRange(chartDays))();
   const warnings=(s.warnings||[]);
   const metricValues=[s.pe,s.forwardPE,s.revenueGrowth,s.epsGrowth,s.fcfMargin,s.roe,s.debtToEquity,s.earningsSurprise,s.estimateRevision];
   const knownMetrics=metricValues.filter(v=>v!=null&&Number.isFinite(v)).length;
@@ -365,6 +388,10 @@ async function refreshStatus() {
   events.emit('status:changed',s);
 }
 function runScreener() {const min=+$('#screenScore').value,zone=$('#screenZone').value;setText('#screenScoreLabel',min);return renderWatch('#screenerResults',s=>s.score!=null&&s.score>=min&&(zone==='all'||s.zone===zone));}
+
+$('#chartRanges button').forEach(b=>b.onclick=()=>loadChartRange(+b.dataset.days));
+$('#chartCandles').onclick=()=>{chartStyle='candles';$('#chartCandles').classList.add('active');$('#chartLine').classList.remove('active');drawChart(chartRows,state.snap?.currency);};
+$('#chartLine').onclick=()=>{chartStyle='line';$('#chartLine').classList.add('active');$('#chartCandles').classList.remove('active');drawChart(chartRows,state.snap?.currency);};
 $('#screenScore').oninput=guarded(runScreener);$('#screenZone').onchange=guarded(runScreener);
 $('#addPosition').onclick=guarded(async()=>{const symbol=prompt('Ticker')?.trim().toUpperCase();if(!symbol)return;if(!validSymbol(symbol))throw new Error('Ticker inválido.');const qty=Number(prompt('Quantidade')),avg=Number(prompt('Preço médio'));let quote=null;try{quote=await snapshot(symbol);}catch{}const currency=prompt('Moeda do preço médio (EUR, USD, …)',quote?.currency||'EUR')?.trim().toUpperCase();if(!Number.isFinite(qty)||qty<=0||!Number.isFinite(avg)||avg<=0||!/^[A-Z]{3}$/.test(currency||''))throw new Error('Quantidade, preço ou moeda inválidos.');state.portfolio.push({symbol,qty,avg,currency});localStorage.setItem('ir_portfolio',JSON.stringify(state.portfolio));await renderPortfolio();});
 $('#addWatch').onclick=()=>{const s=prompt('Ticker')?.trim().toUpperCase();if(!s)return;if(!validSymbol(s)){notify('Ticker inválido.',true);return;}if(!state.watch.includes(s)){state.watch.push(s);localStorage.setItem('ir_watch',JSON.stringify(state.watch));guarded(()=>renderWatch())();}};
