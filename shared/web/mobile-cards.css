@@ -58,3 +58,27 @@ body.has-positions .mobile-empty-portfolio{display:none}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--green)!important;outline-offset:2px!important}
 }
 @media(max-width:370px){.workspace-grid-2{grid-template-columns:1fr!important}.sidebar .nav b{font-size:9px!important}}
+
+@media(max-width:900px){
+.chart-controls{display:grid!important;grid-template-columns:1fr!important;gap:9px!important;margin:0 0 12px!important}
+.range-buttons{display:grid!important;grid-template-columns:repeat(6,1fr)!important;gap:5px!important;overflow:visible!important}
+.style-buttons{display:grid!important;grid-template-columns:1fr 1fr!important}
+.chart-controls button{min-width:0!important;padding:8px 4px!important;font-size:11px!important}
+#asset .chart-card svg{height:250px!important}
+#portfolio .summary-cards{grid-template-columns:1fr 1fr!important}
+#portfolio .summary-cards .stat:nth-child(2){grid-column:1/-1!important;padding:20px!important}
+#portfolio .summary-cards .stat:nth-child(2) strong{font-size:34px!important}
+#portfolio .summary-cards .stat:nth-child(1),#portfolio .summary-cards .stat:nth-child(3){padding:14px!important}
+#portfolioTable .table{min-width:100%!important}
+#portfolioTable table thead{display:none!important}
+#portfolioTable table,#portfolioTable tbody,#portfolioTable tr,#portfolioTable td{display:block!important;width:100%!important}
+#portfolioTable tr{position:relative!important;padding:14px 8px!important;border-bottom:1px solid #294050!important}
+#portfolioTable td{border:0!important;padding:4px 0!important}
+#portfolioTable td:first-child{font-size:18px!important;font-weight:750!important}
+#portfolioTable td:nth-child(2)::before{content:"Qtd  ";color:var(--muted)}
+#portfolioTable td:nth-child(3)::before{content:"Média  ";color:var(--muted)}
+#portfolioTable td:nth-child(4)::before{content:"Preço  ";color:var(--muted)}
+#portfolioTable td:nth-child(5){font-size:18px!important;font-weight:750!important;color:var(--green)}
+#portfolioTable td:nth-child(6){display:none!important}
+#portfolioTable td:last-child{position:absolute!important;right:8px!important;top:12px!important;width:auto!important}
+}
