@@ -62,7 +62,8 @@ class AndroidFlowTest {
     private fun await(label: String, check: () -> Boolean) {
         val end = SystemClock.uptimeMillis() + 90000
         do { if (check()) return; SystemClock.sleep(100) } while (SystemClock.uptimeMillis() < end)
-        fail("Timed out: $label; notice=" + eval("return document.querySelector('#notice')?.textContent;"))
+        capture("failure-"+label.replace(Regex("[^a-zA-Z0-9]+"),"-"))
+        fail("Timed out: $label; state="+eval("return JSON.stringify({portfolio:state.portfolio,watch:state.watch,positionError:document.querySelector('#mobilePositionError')?.textContent});")+"; notice=" + eval("return document.querySelector('#notice')?.textContent;"))
     }
     private fun tap(selector: String) {
         val quoted = JSONObject.quote(selector)
@@ -78,6 +79,14 @@ class AndroidFlowTest {
             assertTrue("Touch injection failed: $selector", instrumentation.uiAutomation.injectInputEvent(event, true)); event.recycle()
         }
         instrumentation.waitForIdleSync()
+    }
+    private fun openWatch() {
+        tap("#addWatch")
+        await("watch editor opened") { truth("return document.querySelector('#mobileWatchDialog').open && document.querySelector('#mobileWatchSymbol').getBoundingClientRect().width>0;") }
+    }
+    private fun openPosition() {
+        tap("#addPosition")
+        await("position editor opened") { truth("return document.querySelector('#mobilePositionDialog').open && document.querySelector('#mobilePositionSymbol').getBoundingClientRect().width>0;") }
     }
     private fun fill(selector: String, value: String) { eval("const e=document.querySelector(${JSONObject.quote(selector)});e.value=${JSONObject.quote(value)};e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));") }
     private fun view(id: String) {
@@ -142,10 +151,10 @@ class AndroidFlowTest {
     }
     @Test fun watchlistFormsAndPersistence() {
         view("watchlist"); await("watch cards") { truth("return document.querySelectorAll('#watchGrid [data-w]').length===6;") }
-        tap("#addWatch"); fill("#mobileWatchSymbol", "BAD SYMBOL"); tap("#mobileWatchSubmit")
-        assertTrue(truth("return !document.querySelector('#mobileWatchError').hidden;"))
+        openWatch(); fill("#mobileWatchSymbol", "BAD SYMBOL"); tap("#mobileWatchSubmit")
+        await("invalid watch ticker rejected"){truth("return !document.querySelector('#mobileWatchError').hidden && state.watch.length===6;")}
         fill("#mobileWatchSymbol", "AIR.PA"); tap("#mobileWatchSubmit")
-        assertTrue(truth("return document.querySelector('#mobileWatchError').textContent.includes('já');"))
+        await("duplicate watch ticker rejected"){truth("return !document.querySelector('#mobileWatchError').hidden && document.querySelector('#mobileWatchError').textContent.includes('já');")}
         fill("#mobileWatchSymbol", "AAPL"); tap("#mobileWatchSubmit")
         await("added ticker") { truth("return document.querySelectorAll('#watchGrid [data-w]').length===7;") }
         tap("#watchGrid [data-w='AAPL']"); await("open added ticker") { truth("return document.querySelector('#assetTicker').textContent==='AAPL' && document.querySelector('#assetName').textContent==='Apple Inc.';") }
@@ -153,16 +162,16 @@ class AndroidFlowTest {
         await("watch persisted after Activity restart") { truth("return !!document.querySelector('#watchGrid [data-w='AAPL']');") }
         tap("#watchGrid [data-w='AAPL'] [data-rw]")
         await("remove ticker") { truth("return !document.querySelector('#watchGrid [data-w='AAPL']') && document.querySelectorAll('#radarWatch [data-w]').length===6;") }
-        tap("#addWatch");back();if(truth("return document.querySelector('#mobileWatchDialog').open;"))back();await("back dismisses editor"){truth("return !document.querySelector('#mobileWatchDialog').open;")}
+        openWatch();back();if(truth("return document.querySelector('#mobileWatchDialog').open;"))back();await("back dismisses editor"){truth("return !document.querySelector('#mobileWatchDialog').open;")}
     }
     @Test fun portfolioValidationTotalsAndPersistence() {
-        view("portfolio"); tap("#addPosition")
+        view("portfolio"); openPosition()
         fill("#mobilePositionSymbol", "AIR.PA"); fill("#mobilePositionQty", "-1"); fill("#mobilePositionAvg", "180,50"); fill("#mobilePositionCurrency", "EUR"); tap("#mobilePositionSubmit")
-        assertTrue(truth("return !document.querySelector('#mobilePositionError').hidden;")); capture("position-validation")
+        await("invalid position rejected"){truth("return !document.querySelector('#mobilePositionError').hidden;")};capture("position-validation")
         fill("#mobilePositionQty", "2,5"); tap("#mobilePositionSubmit")
         await("position saved and valued") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===1 && document.querySelector('#pfCurrent').textContent.includes('470');") }
         assertTrue(truth("return document.querySelector('#pfInvested').textContent.includes('451,25') && document.querySelector('#pfPL').textContent.includes('18,75');"))
-        tap("#addPosition");fill("#mobilePositionSymbol","AIR.PA");fill("#mobilePositionQty","1,5");fill("#mobilePositionAvg","200");fill("#mobilePositionCurrency","EUR");tap("#mobilePositionSubmit")
+        openPosition();fill("#mobilePositionSymbol","AIR.PA");fill("#mobilePositionQty","1,5");fill("#mobilePositionAvg","200");fill("#mobilePositionCurrency","EUR");tap("#mobilePositionSubmit")
         await("multiple lots valued") { truth("return document.querySelectorAll('#portfolioTable .portfolio-row').length===2 && document.querySelector('#pfCurrent').textContent.includes('752');") }
         view("asset");assertTrue(truth("return document.querySelector('#positionTitle').textContent==='4 unidades' && document.querySelector('#positionCurrent').textContent.includes('752');"))
         instrumentation.runOnMainSync { activity.finish() }; start(); view("portfolio")
@@ -211,7 +220,7 @@ class AndroidFlowTest {
         capture("screener-filtered")
     }
     @Test fun rendererTerminationRecoversWithoutLosingWatchlist() {
-        view("watchlist"); tap("#addWatch"); fill("#mobileWatchSymbol","AAPL"); tap("#mobileWatchSubmit")
+        view("watchlist"); openWatch(); fill("#mobileWatchSymbol","AAPL"); tap("#mobileWatchSubmit")
         await("watch saved before renderer termination") { truth("return !!document.querySelector(\"#watchGrid [data-w='AAPL']\");") }
         instrumentation.runOnMainSync {
             if (Build.VERSION.SDK_INT >= 29) assertTrue(web.webViewRenderProcess?.terminate() == true)
@@ -262,7 +271,7 @@ class AndroidFlowTest {
         instrumentation.uiAutomation.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1").use { fd ->
             android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
         }
-        tap("#addWatch"); tap("#mobileWatchSymbol")
+        openWatch(); tap("#mobileWatchSymbol")
         await("software keyboard visible") {
             var visible=false
             instrumentation.runOnMainSync { visible=androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true }

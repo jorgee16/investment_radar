@@ -14,10 +14,12 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
-      - uses: android-actions/setup-android@v3
+          java-version: '21'
       - name: Install pinned Android build tools
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.0.12077973' 'cmake;3.22.1'
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.0.12077973' 'cmake;3.22.1'
       - name: Create a temporary validation signing key
         shell: python
         run: |
@@ -34,7 +36,7 @@ jobs:
               output.write(f'IR_ANDROID_KEYSTORE={path}\nIR_ANDROID_STORE_PASSWORD={password}\n')
       - name: Build Release and instrumentation APKs and run lint
         working-directory: android
-        run: ./gradlew :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease -PirTestBuildType=release --console=plain
+        run: ./gradlew :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease -PirTestBuildType=release --no-daemon --console=plain
       - name: Enable KVM for the emulator
         run: |
           test -c /dev/kvm
