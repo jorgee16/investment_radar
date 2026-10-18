@@ -28,7 +28,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settings: SecureSettings
     private lateinit var cache: ApiCache
     private lateinit var http: HttpClient
-    private val executor = Executors.newSingleThreadExecutor()
+    private val executor = Executors.newFixedThreadPool(4)
     // Called synchronously from JNI on the background request executor, never from WebView JavaScript.
     fun fetchUrl(url: String, bypassCache: Boolean): String = try {
         JSONObject().put("body", http.get(url, bypassCache)).toString()
