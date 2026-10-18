@@ -65,7 +65,7 @@ jobs:
             sleep 3
             adb shell screencap -p /sdcard/ir-asset.png
             adb pull /sdcard/ir-asset.png screenshot-asset.png
-            adb shell input tap 369 860
+            adb shell input tap 369 832
             sleep 2
             adb shell screencap -p /sdcard/ir-more.png
             adb pull /sdcard/ir-more.png screenshot-more.png
