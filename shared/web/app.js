@@ -213,6 +213,18 @@ function renderSnapshot(s) {
   $('#financialTable').innerHTML=metrics.map(row).join('');$('#valuationMetrics').innerHTML=metrics.slice(0,2).map(row).join('');
   renderPosition(s);drawChart(s.history,s.currency);
   const warnings=(s.warnings||[]);
+  const metricValues=[s.pe,s.forwardPE,s.revenueGrowth,s.epsGrowth,s.fcfMargin,s.roe,s.debtToEquity,s.earningsSurprise,s.estimateRevision];
+  const knownMetrics=metricValues.filter(v=>v!=null&&Number.isFinite(v)).length;
+  const statusBox=$('#fundamentalsStatus');
+  if(statusBox){
+    if(knownMetrics===0){
+      statusBox.hidden=false;
+      statusBox.innerHTML='<strong>Sem fundamentais para '+esc(s.symbol)+'</strong><span>Há cotação, mas nenhum provider configurado devolveu métricas utilizáveis para este ticker/plano. Vai a Providers e executa o teste completo em '+esc(s.symbol)+' para veres capability a capability.</span>';
+    } else {
+      statusBox.hidden=false;
+      statusBox.innerHTML='<strong>'+knownMetrics+'/9 métricas disponíveis</strong><span>As restantes dependem da cobertura e do plano de cada provider. A origem aparece em cada métrica quando disponível.</span>';
+    }
+  }
   const nonBlocking=warnings.filter(w=>s.price!=null&&(/Fundamentais indisponíveis/i.test(w)||/plano ou as permissões/i.test(w)));
   const blocking=warnings.filter(w=>!nonBlocking.includes(w));
   notify(blocking.join(' '),!s.available);
@@ -301,7 +313,14 @@ function renderProviderCards() {
     const r=providerTests.get(p.id),connected=r?r.connected:p.connected;
     const tested=r?.testedAt||p.testedAt;
     const status=r?.message||p.status;
-    return `<article class="card provider-card"><div class="provider-top"><div><h3>${esc(p.name)}</h3><p class="note">${esc(status)}</p></div><span class="provider-status ${connected?'on':''}">${p.id==='demo'?'DEMO':connected?'Cotação validada':r?'Teste: '+esc(r.code):p.enabled?'Por testar':'Sem chave'}</span></div><div class="caps">${p.capabilities.map(c=>`<span>${esc(c)}</span>`).join('')}</div>${tested?`<p class="note">${esc(new Date(tested*1000).toLocaleString('pt-PT'))} · ${esc(r?.symbol||p.testedSymbol)}${r?.price!=null?' · '+esc(money(r.price,r.currency)):''}</p>`:''}${p.id!=='demo'?`<button data-test-provider="${p.id}" ${providersTesting?'disabled':''}>Testar ${esc(p.name)}</button>`:''}</article>`;
+    const capabilityCodes=r?.capabilities||{};
+    const capabilityBadges=p.capabilities.map(cap=>{
+      const code=capabilityCodes[cap];
+      const cls=code==='ok'?'ok':code&&code!=='unsupported'?'bad':'';
+      const label=code?cap+': '+code:cap;
+      return `<span class="${cls}">${esc(label)}</span>`;
+    }).join('');
+    return `<article class="card provider-card"><div class="provider-top"><div><h3>${esc(p.name)}</h3><p class="note">${esc(status)}</p></div><span class="provider-status ${connected?'on':''}">${p.id==='demo'?'DEMO':r?'Teste completo':p.enabled?'Por testar':'Sem chave'}</span></div><div class="caps">${capabilityBadges}</div>${tested?`<p class="note">${esc(new Date(tested*1000).toLocaleString('pt-PT'))} · ${esc(r?.symbol||p.testedSymbol)}${r?.price!=null?' · '+esc(money(r.price,r.currency)):''}</p>`:''}${p.id!=='demo'?`<button data-test-provider="${p.id}" ${providersTesting?'disabled':''}>Testar ${esc(p.name)}</button>`:''}</article>`;
   }).join('');
   $$('[data-test-provider]').forEach(b=>b.onclick=guarded(()=>testProviders(b.dataset.testProvider)));
 }
@@ -311,7 +330,7 @@ async function testProviders(provider) {
   if(!validSymbol(symbol))throw new Error('Ticker de teste inválido.');
   const buttons=$$('[data-test-provider], #testAllProviders, #saveProviderKeys, #saveRouting');
   providersTesting=true;buttons.forEach(b=>b.disabled=true);
-  setText('#providerTestSummary','A pedir cotações diretamente aos providers…');
+  setText('#providerTestSummary','A testar quotes, fundamentals, estimates, history, earnings e news para este ticker…');
   try {
     const reports=await bridge('/api/providers/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol,provider})});
     reports.forEach(r=>providerTests.set(r.id,r));renderProviderCards();
