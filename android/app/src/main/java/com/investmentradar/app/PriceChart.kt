@@ -80,8 +80,9 @@ internal fun percent(value: Double?): String = if (value == null) "—" else (if
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun ChartControls(state: RadarState, model: RadarViewModel, candle: Boolean, onCandle: (Boolean) -> Unit, onExpand: () -> Unit) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         listOf(30 to "1M", 90 to "3M", 180 to "6M", 365 to "1A", 1825 to "5A").forEach { (days, label) ->
             FilterChip(state.days == days, { model.setRange(days) }, { Text(label) }, modifier = Modifier.testTag("range-$days"))
         }

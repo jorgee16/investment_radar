@@ -54,13 +54,18 @@ class AndroidFlowTest {
         if (::scenario.isInitialized) { scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }; scenario.close() }
     }
     private fun await(label: String, predicate: () -> Boolean) {
-        try { ui.waitUntil(90000, predicate) } catch (e: AssertionError) { capture("failure-" + label.replace(Regex("[^a-zA-Z0-9]+"), "-")); throw e }
+        try { ui.waitUntil(90000, predicate) } catch (e: Exception) {
+            runCatching { capture("failure-" + label.replace(Regex("[^a-zA-Z0-9]+"), "-")) }
+            val s = state()
+            throw AssertionError("$label; page=${s.page}; symbol=${s.symbol}; days=${s.days}; history=${s.history.size}; loading=${s.loading}/${s.historyLoading}; error=${s.error}", e)
+        }
     }
     private fun click(tag: String) {
         val node = ui.onNodeWithTag(tag)
         // Scroll only when offscreen; dialog and navigation nodes have no scroll parent.
         runCatching { node.assertIsDisplayed() }.onFailure { node.performScrollTo() }
-        node.performClick()
+        node.assertIsDisplayed().performClick()
+        ui.waitForIdle()
     }
     private fun fill(tag: String, value: String) { ui.onNodeWithTag(tag).performTextReplacement(value) }
     private fun page(page: Page) {
@@ -69,11 +74,18 @@ class AndroidFlowTest {
         ui.onNodeWithTag("screen-${page.name}").assertIsDisplayed()
         assertEquals(page, state().page)
     }
-    private fun back() { instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK); instrumentation.waitForIdleSync() }
+    private fun back() { ui.waitForIdle(); instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK); instrumentation.waitForIdleSync(); ui.waitForIdle() }
     private fun restart() { scenario.close(); start() }
     private fun search(value: String) { click("open-search"); fill("search-input", value); click("search-submit") }
     private fun capture(name: String) {
+        ui.waitForIdle()
+        val frames = CountDownLatch(1)
+        instrumentation.runOnMainSync {
+            activity.window.decorView.postOnAnimation { activity.window.decorView.postOnAnimation { frames.countDown() } }
+        }
+        assertTrue("Screenshot requires completed display frames", frames.await(15, TimeUnit.SECONDS))
         instrumentation.waitForIdleSync()
+        SystemClock.sleep(300) // Allow SurfaceFlinger to present the committed Compose frame.
         val image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
         if (Build.VERSION.SDK_INT >= 29) {
             val resolver = context.contentResolver; val folder = "Pictures/InvestmentRadarValidation/"
@@ -97,7 +109,7 @@ class AndroidFlowTest {
             assertTrue(JSONObject(core.nativeRequest("/api/snapshot", "<script>", "{}")).has("error"))
         } finally { core.close() }
         ui.onNodeWithTag("native-app").assertExists(); capture("01-home")
-        page(Page.Markets); ui.onNodeWithTag("asset-price").assertTextContains("188")
+        page(Page.Markets); ui.onNodeWithTag("asset-price").assertTextContains("188", substring = true)
         ui.onNodeWithTag("price-chart").performScrollTo().assertIsDisplayed(); capture("02-asset-summary")
         var webCount = 0
         instrumentation.runOnMainSync {
@@ -122,7 +134,7 @@ class AndroidFlowTest {
     @Test fun watchlistFormsAndPersistence() {
         page(Page.Watchlist); click("add-watch"); fill("watch-input", "<bad>"); click("watch-submit")
         ui.onNodeWithTag("form-error").assertIsDisplayed(); assertEquals(6, state().watch.size)
-        fill("watch-input", "AIR.PA"); click("watch-submit"); ui.onNodeWithTag("form-error").assertTextContains("já")
+        fill("watch-input", "AIR.PA"); click("watch-submit"); ui.onNodeWithTag("form-error").assertTextContains("já", substring = true)
         fill("watch-input", "aapl"); click("watch-submit"); await("watch added") { "AAPL" in state().watch }
         ui.onNodeWithTag("quote-AAPL").performScrollTo().performClick(); await("AAPL loaded") { state().snapshot?.text("symbol") == "AAPL" }
         restart(); assertTrue("AAPL" in state().watch)
@@ -131,7 +143,7 @@ class AndroidFlowTest {
     }
     @Test fun portfolioValidationMultiLotAndPersistence() {
         page(Page.Portfolio); click("add-position"); fill("position-qty", "-1"); fill("position-avg", "180,50"); click("position-submit")
-        ui.onNodeWithTag("form-error").assertIsDisplayed(); assertTrue(state().positions.isEmpty())
+        ui.onNodeWithTag("form-error").assertIsDisplayed(); assertTrue(state().positions.isEmpty()); capture("position-validation-error")
         fill("position-qty", "2,5"); click("position-submit"); await("first lot saved") { state().positions.size == 1 }
         click("add-position"); fill("position-qty", "1,5"); fill("position-avg", "200"); click("position-submit")
         await("second lot saved") { state().positions.size == 2 && state().quotes["AIR.PA"]?.number("price") != null }
@@ -247,7 +259,7 @@ class AndroidFlowTest {
     @Test fun rapidAssetChangesNeverReplaceLatestSelection() {
         search("JPM"); search("AAPL"); search("TSM")
         await("latest selection completes") { !state().loading && state().snapshot?.text("symbol") == "TSM" }
-        ui.onNodeWithTag("asset-price").assertTextContains("330"); assertEquals("TSM", state().symbol)
+        ui.onNodeWithTag("asset-price").assertTextContains("330", substring = true); assertEquals("TSM", state().symbol)
         click("asset-tab-4"); search("AIR.PA"); await("new asset clears old news") { state().snapshot?.text("symbol") == "AIR.PA" }
         assertTrue(state().news.isEmpty()); assertEquals(0, state().tab)
     }

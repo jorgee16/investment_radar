@@ -46,7 +46,10 @@ import org.json.JSONObject
     val focus = LocalFocusManager.current
     val context = LocalContext.current
     val keyboard = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    BackHandler(enabled = state.page != Page.Home || state.tab != 0) { focus.clearFocus(); model.back() }
+    BackHandler(enabled = more || search || addWatch || addPosition || state.page != Page.Home || state.tab != 0) {
+        focus.clearFocus()
+        when { more -> more = false; search -> search = false; addWatch -> addWatch = false; addPosition -> addPosition = false; else -> model.back() }
+    }
     Scaffold(modifier = Modifier.fillMaxSize().testTag("native-app").imePadding(), containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column(Modifier.background(MaterialTheme.colorScheme.surface).statusBarsPadding()) {
@@ -76,7 +79,7 @@ import org.json.JSONObject
                 if (state.page == Page.Markets) {
                     ScrollableTabRow(state.tab, edgePadding = 16.dp, containerColor = MaterialTheme.colorScheme.surface, divider = { HorizontalDivider() }) {
                         listOf("Resumo", "Análises", "Dados financeiros", "Resultados", "Notícias").forEachIndexed { index, title ->
-                            Tab(state.tab == index, { focus.clearFocus(); model.setTab(index) }, Modifier.testTag("asset-tab-$index"), text = { Text(title, fontWeight = FontWeight.SemiBold) })
+                            Tab(state.tab == index, { focus.clearFocus(); model.setTab(index) }, Modifier.testTag("asset-tab-$index"), selectedContentColor = MaterialTheme.colorScheme.primary, unselectedContentColor = MaterialTheme.colorScheme.onSurface, text = { Text(title, fontWeight = FontWeight.SemiBold) })
                         }
                     }
                 }
@@ -87,10 +90,10 @@ import org.json.JSONObject
                 val navigationScope = this
                 listOf(Page.Home to Icons.Default.Home, Page.Markets to Icons.AutoMirrored.Filled.List, Page.Portfolio to Icons.Default.AccountCircle).forEach { (page, icon) ->
                     NavigationBarItem(selected = state.page == page, onClick = { focus.clearFocus(); model.navigate(page) },
-                        icon = { Icon(icon, null) }, label = { Text(if (page == Page.Home) "Início" else page.label, maxLines = 1) }, modifier = Modifier.testTag("nav-${page.name}"))
+                        colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surface, selectedIconColor = MaterialTheme.colorScheme.secondary, selectedTextColor = MaterialTheme.colorScheme.secondary), icon = { if (page == Page.Markets) MarketIcon() else if (page == Page.Portfolio) WalletIcon() else Icon(icon, null) }, label = { Text(if (page == Page.Home) "Início" else page.label, maxLines = 1) }, modifier = Modifier.testTag("nav-${page.name}"))
                 }
                 Box(Modifier.weight(1f)) {
-                    navigationScope.NavigationBarItem(selected = state.page !in listOf(Page.Home, Page.Markets, Page.Portfolio), onClick = { focus.clearFocus(); more = true }, icon = { Icon(Icons.Default.MoreVert, null) }, label = { Text("Mais") }, modifier = Modifier.testTag("nav-More"))
+                    navigationScope.NavigationBarItem(selected = state.page !in listOf(Page.Home, Page.Markets, Page.Portfolio), onClick = { focus.clearFocus(); more = true }, colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surface, selectedIconColor = MaterialTheme.colorScheme.secondary, selectedTextColor = MaterialTheme.colorScheme.secondary), icon = { Icon(Icons.Default.MoreVert, null) }, label = { Text("Mais") }, modifier = Modifier.testTag("nav-More"))
                     DropdownMenu(more, { more = false }) {
                         listOf(Page.Watchlist, Page.Screener, Page.Calendar, Page.Providers, Page.Settings).forEach { page ->
                             DropdownMenuItem(text = { Text(page.label) }, onClick = { more = false; model.navigate(page) }, modifier = Modifier.testTag("menu-${page.name}"))
@@ -149,7 +152,7 @@ import org.json.JSONObject
     Surface(shape = RoundedCornerShape(12.dp), color = if (state.demo) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(if (state.demo) "DEMO · Dados sintéticos" else "LIVE · Dados dos providers", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("data-mode"))
-            Text(if (state.demo) "Demonstração; os valores apresentados não são cotações reais." else "Cotações podem ser diferidas. A cobertura depende do plano de cada provider.", style = MaterialTheme.typography.bodySmall)
+            if (state.page != Page.Markets) Text(if (state.demo) "Demonstração; os valores apresentados não são cotações reais." else "Cotações podem ser diferidas. A cobertura depende do plano de cada provider.", style = MaterialTheme.typography.bodySmall)
             if (!state.demo && state.configured.isEmpty()) TextButton({ model.navigate(Page.Providers) }, contentPadding = PaddingValues(0.dp)) { Text("Configurar chaves de API") }
         }
     }
@@ -210,11 +213,13 @@ import org.json.JSONObject
 @Composable internal fun PositionDialog(initial: String, dismiss: () -> Unit, submit: (String, String, String, String) -> String?) {
     var ticker by rememberSaveable { mutableStateOf(initial) }; var qty by rememberSaveable { mutableStateOf("") }; var avg by rememberSaveable { mutableStateOf("") }; var currency by rememberSaveable { mutableStateOf("EUR") }; var error by rememberSaveable { mutableStateOf<String?>(null) }
     AlertDialog(onDismissRequest = dismiss, title = { Text("Adicionar investimento") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(ticker, { ticker = it.take(32) }, label = { Text("Ticker") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("position-symbol"))
             OutlinedTextField(qty, { qty = it }, label = { Text("Quantidade") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().testTag("position-qty"))
             OutlinedTextField(avg, { avg = it }, label = { Text("Preço médio por unidade") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().testTag("position-avg"))
             OutlinedTextField(currency, { currency = it.take(3) }, label = { Text("Moeda do preço médio") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("position-currency"))
+            }
             if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("form-error"))
         }
     }, confirmButton = { TextButton({ error = submit(ticker, qty, avg, currency) }, Modifier.testTag("position-submit")) { Text("Guardar") } }, dismissButton = { TextButton(dismiss) { Text("Cancelar") } })

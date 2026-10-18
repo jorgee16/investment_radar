@@ -49,9 +49,11 @@ import org.json.JSONObject
     val currency = snapshot.text("currency")
     FinanceCard {
         Text(snapshot.text("name").ifBlank { state.symbol }, fontWeight = FontWeight.SemiBold, fontSize = 25.sp)
-        Text(money(snapshot.number("price"), currency), fontWeight = FontWeight.Bold, fontSize = 38.sp, modifier = Modifier.testTag("asset-price"))
-        val change = snapshot.number("changePct")
-        Text(percent(change), color = if (change == null) MaterialTheme.colorScheme.onSurfaceVariant else if (change >= 0) FinanceGreen else FinanceRed, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(money(snapshot.number("price"), currency), fontWeight = FontWeight.Bold, fontSize = 38.sp, modifier = Modifier.testTag("asset-price"))
+            val change = snapshot.number("changePct")
+            Text(percent(change), color = if (change == null) MaterialTheme.colorScheme.onSurfaceVariant else if (change >= 0) FinanceGreen else FinanceRed, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
         val source = snapshot.optJSONObject("sources")?.text("quote").orEmpty()
         val timestamp = snapshot.number("timestamp")?.takeIf { it > 0 }?.let { java.time.Instant.ofEpochSecond(it.toLong()).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm z")) }
         Text("${state.symbol} · ${currency.ifBlank { "moeda desconhecida" }} · ${if (source == "none") "Sem cotação" else source}${timestamp?.let { "\n$it" }.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)

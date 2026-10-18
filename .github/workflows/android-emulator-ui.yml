@@ -16,10 +16,16 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Install pinned Android build tools
+        shell: bash
         run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          test -x "$SDKMANAGER"
-          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.0.12077973' 'cmake;3.22.1'
+          # Pin CLI 19 to the same JDK 21-compatible toolchain tested locally.
+          # Hosted "latest" command-line tools can require a newer Java runtime.
+          archive="$RUNNER_TEMP/android-cli-19.zip"
+          curl --fail --location --retry 2 https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -o "$archive"
+          echo "7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee  $archive" | sha256sum --check
+          unzip -q "$archive" -d "$RUNNER_TEMP/android-cli-19"
+          SDKMANAGER="$RUNNER_TEMP/android-cli-19/cmdline-tools/bin/sdkmanager"
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.0.12077973' 'cmake;3.22.1'
       - name: Create a temporary validation signing key
         shell: python
         run: |
@@ -36,7 +42,7 @@ jobs:
               output.write(f'IR_ANDROID_KEYSTORE={path}\nIR_ANDROID_STORE_PASSWORD={password}\n')
       - name: Build Release and instrumentation APKs and run lint
         working-directory: android
-        run: ./gradlew :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease -PirTestBuildType=release --no-daemon --console=plain
+        run: ./gradlew :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease :app:testReleaseUnitTest -PirTestBuildType=release --no-daemon --console=plain
       - name: Enable KVM for the emulator
         run: |
           test -c /dev/kvm
@@ -77,3 +83,4 @@ jobs:
             dist/android-validation/result.json
             dist/android-validation/screenshots/
             android/app/build/reports/lint-results-release.*
+            android/app/build/test-results/testReleaseUnitTest/
