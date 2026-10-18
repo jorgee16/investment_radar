@@ -85,6 +85,22 @@ class MainActivity : AppCompatActivity() {
         val loader = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this)).build()
         web.settings.apply { javaScriptEnabled = true; domStorageEnabled = true; allowFileAccess = false; allowContentAccess = false; setSupportMultipleWindows(false) }
         web.webViewClient = object : WebViewClientCompat() {
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
+                if (url != "https://appassets.androidplatform.net/assets/index.html") return
+                // Load the phone-specific presentation without changing desktop assets or native APIs.
+                view.evaluateJavascript(
+                    """(function(){
+                      if(document.getElementById('mobile-nav-js'))return;
+                      for(const name of ['mobile.css','mobile-cards.css','mobile-dialogs.css']){
+                        const link=document.createElement('link');link.rel='stylesheet';link.href=name;document.head.appendChild(link);
+                      }
+                      for(const name of ['mobile-nav.js','mobile-position.js','mobile-watch.js']){
+                        const script=document.createElement('script');script.id=name.replace('.','-');script.src=name;script.async=false;document.body.appendChild(script);
+                      }
+                    })();""".trimIndent(), null
+                )
+            }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val uri = request.url
                 if (uri.scheme == "https" && uri.host == "appassets.androidplatform.net" &&
