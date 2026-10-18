@@ -5,43 +5,12 @@ concurrency:
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
-  actions: read
 jobs:
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Diagnose the previous Android 15 failure
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
-        run: |
-          import os, re, urllib.request, urllib.error
-          class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self, *args):
-                  return None
-          endpoint = 'https://api.github.com/repos/jorgee16/investment_radar/actions/jobs/117797727142/logs'
-          request = urllib.request.Request(endpoint, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
-          try:
-              response = urllib.request.build_opener(NoRedirect()).open(request, timeout=30)
-          except urllib.error.HTTPError as error:
-              if error.code not in (302, 307):
-                  print('::warning::Previous log unavailable; HTTP ' + str(error.code))
-                  raise SystemExit(0)
-              # GitHub redirects to a signed download; never forward the token.
-              response = urllib.request.urlopen(error.headers['Location'], timeout=30)
-          log = response.read(8 * 1024 * 1024).decode(errors='replace')
-          log = re.sub(r'(?m)^\d{4}-\d\d-\d\dT\S+Z ', '', log)
-          failures = re.findall(r'INSTRUMENTATION_STATUS: stack=(.*?)(?=\nINSTRUMENTATION_STATUS: stream=)', log, re.S)
-          if not failures:
-              failures = ['\n'.join(line for line in log.splitlines()[-180:] if re.search(r'(?i)error|failed|exception|instrumentation|tests run|failures', line))]
-          for failure in failures:
-              detail = '\n'.join(failure.splitlines()[:30])
-              detail = re.sub(r'https?://\S+', '[URL omitted]', detail)
-              detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-              print('::notice title=Previous Android 15 failure::' + detail)
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -63,6 +32,7 @@ jobs:
           import os, pathlib, secrets, subprocess
           path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'radar-validation.jks'
           password = secrets.token_urlsafe(36)
+          print('::add-mask::' + password)
           child = dict(os.environ, IR_ANDROID_STORE_PASSWORD=password)
           subprocess.run(['keytool', '-genkeypair', '-keystore', str(path),
               '-storepass:env', 'IR_ANDROID_STORE_PASSWORD', '-keypass:env', 'IR_ANDROID_STORE_PASSWORD',
@@ -91,6 +61,14 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -accel on
           script: python3 scripts/test_android_apk.py android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk --serial emulator-5554 --output dist/android-validation --test-class com.investmentradar.app.AndroidFlowTest
+      - name: Record emulator readiness
+        if: always()
+        shell: python
+        run: |
+          import pathlib
+          path = pathlib.Path('dist/android-validation/emulator-readiness.json')
+          if path.exists():
+              print('::notice title=Emulator readiness::' + path.read_text().replace('\n', '%0A'))
       - name: Surface instrumentation failures in job annotations
         if: failure()
         shell: python
@@ -128,6 +106,7 @@ jobs:
           path: |
             dist/android-validation/instrumentation.txt
             dist/android-validation/result.json
+            dist/android-validation/emulator-readiness.json
             dist/android-validation/screenshots/
             android/app/build/reports/lint-results-release.*
             android/app/build/test-results/testReleaseUnitTest/

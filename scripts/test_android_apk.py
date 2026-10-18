@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+from android_emulator_ready import prepare
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('apk', type=Path)
@@ -25,6 +26,8 @@ for package in (args.apk, args.test_apk):
     if not package.is_file():
         raise SystemExit(f'APK missing: {package}')
     subprocess.run([*adb, 'install', '--no-streaming', '-r', '-t', str(package.resolve())], check=True)
+# OS readiness is separate from app validation. Never suppress app ANRs.
+prepare(adb, args.output)
 # Evidence belongs to this run, never to an earlier installation.
 subprocess.run([*adb, 'shell', 'rm', '-rf', '/sdcard/Pictures/InvestmentRadarValidation'], check=True)
 command = [*adb, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', args.test_class,
