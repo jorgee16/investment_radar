@@ -405,12 +405,14 @@ int main() {
             return R"({"close":205,"currency":"USD","name":"Apple Inc.","timestamp":1770000000})";
         });
         auto test = service.test_providers("AAPL", "eodhd");
-        CHECK(calls == 1 && test.size() == 1);
+        CHECK(calls == 6 && test.size() == 1);
         CHECK(test[0]["connected"] == true && test[0]["price"] == 205);
+        CHECK(test[0]["capabilities"]["quotes"] == "ok");
+        CHECK(test[0]["capabilities"]["fundamentals"] == "no_data");
         CHECK(service.providers()[0]["connected"] == true);
         CHECK(service.status()["live"] == false);
         CHECK(service.quote("AIR.PA")["price"] == 188);
-        CHECK(calls == 1);
+        CHECK(calls == 6);
     });
     test("failed retest clears success and errors never disclose credentials", [] {
         ir::ResearchConfig config;
