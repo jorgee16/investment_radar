@@ -47,6 +47,10 @@ class MainActivity : AppCompatActivity() {
                     val operation = uri.path ?: ""
                     require(operation in setOf("/api/status", "/api/providers", "/api/settings", "/api/quote", "/api/snapshot", "/api/history", "/api/earnings", "/api/news", "/api/providers/test"))
                     var symbol = uri.getQueryParameter("symbol") ?: ""
+                    if (operation == "/api/history") {
+                        val days = uri.getQueryParameter("days")?.toIntOrNull()?.coerceIn(1, 5000) ?: 120
+                        symbol = JSONObject().put("symbol", symbol).put("days", days).toString()
+                    }
                     if (operation == "/api/settings" && method == "POST") {
                         val update = JSONObject(body)
                         update.keys().forEach { key -> current.put(key, update.get(key)) }
