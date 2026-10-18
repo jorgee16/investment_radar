@@ -257,6 +257,8 @@ class AndroidFlowTest {
         page(Page.Settings); click("dark-theme"); assertTrue(state().dark); capture("dark-settings")
         page(Page.Markets); click("asset-tab-2"); scenario.recreate(); scenario.onActivity { activity = it }
         ui.onNodeWithTag("screen-Markets").assertIsDisplayed(); assertEquals(2, state().tab); assertTrue(state().dark); capture("dark-financials")
+        page(Page.Home); back()
+        await("Home back finishes after an asset secondary tab") { scenario.state == androidx.lifecycle.Lifecycle.State.DESTROYED }
         restart(); assertTrue(state().dark)
     }
     @Test fun sqliteCacheAndTransportPolicy() {

@@ -46,7 +46,7 @@ import org.json.JSONObject
     val focus = LocalFocusManager.current
     val context = LocalContext.current
     val keyboard = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    BackHandler(enabled = more || search || addWatch || addPosition || state.page != Page.Home || state.tab != 0) {
+    BackHandler(enabled = more || search || addWatch || addPosition || state.page != Page.Home) {
         focus.clearFocus()
         when { more -> more = false; search -> search = false; addWatch -> addWatch = false; addPosition -> addPosition = false; else -> model.back() }
     }
