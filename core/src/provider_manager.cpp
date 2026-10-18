@@ -28,6 +28,18 @@ std::vector<ProviderDescriptor> ProviderManager::catalog() const {
 }
 std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &symbol,
                                                              const std::string &provider) {
+    auto date_offset = [](int days) {
+        std::time_t t = std::time(nullptr) + static_cast<long long>(days) * 86400LL;
+        std::tm tm{};
+#ifdef _WIN32
+        gmtime_s(&tm, &t);
+#else
+        gmtime_r(&t, &tm);
+#endif
+        char b[16];
+        std::strftime(b, sizeof(b), "%Y-%m-%d", &tm);
+        return std::string(b);
+    };
     std::vector<ProviderProbe> out;
     bool found = provider == "all";
     for (const auto &p : providers_) {
@@ -40,28 +52,64 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
         r.name = d.name;
         r.symbol = symbol;
         r.code = d.enabled ? "no_data" : "missing_key";
-        if (d.enabled) {
-            try {
-                r.quote = p->quote(symbol);
-                if (r.quote && std::isfinite(r.quote->price) && r.quote->price > 0)
-                    r.code = "ok";
-                else
-                    r.quote.reset();
-            } catch (const ProviderError &e) {
-                r.code = e.code;
-                r.http_status = e.http_status;
-                record_failure(p, DataCapability::Quotes, e);
-            } catch (...) {
-                r.code = "invalid_response";
+
+        auto probe = [&](DataCapability cap, auto call) {
+            const auto name = capability_name(cap);
+            if (!supports(d, cap)) {
+                r.capability_codes[name] = "unsupported";
+                return;
             }
-        }
+            if (!d.enabled) {
+                r.capability_codes[name] = "missing_key";
+                return;
+            }
+            try {
+                const bool ok = call();
+                r.capability_codes[name] = ok ? "ok" : "no_data";
+            } catch (const ProviderError &e) {
+                r.capability_codes[name] = e.code;
+                if (!r.http_status)
+                    r.http_status = e.http_status;
+                record_failure(p, cap, e);
+            } catch (...) {
+                r.capability_codes[name] = "invalid_response";
+            }
+        };
+
+        probe(DataCapability::Quotes, [&] {
+            r.quote = p->quote(symbol);
+            const bool ok = r.quote && std::isfinite(r.quote->price) && r.quote->price > 0;
+            if (!ok)
+                r.quote.reset();
+            return ok;
+        });
+        probe(DataCapability::Fundamentals, [&] { return bool(p->fundamentals(symbol)); });
+        probe(DataCapability::Estimates, [&] { return bool(p->estimates(symbol)); });
+        probe(DataCapability::History, [&] { return !p->history(symbol, 45).empty(); });
+        probe(DataCapability::Earnings, [&] {
+            return !p->earnings(symbol, date_offset(-30), date_offset(120)).empty();
+        });
+        probe(DataCapability::News, [&] { return !p->news(symbol, 3).empty(); });
+
+        const auto quote_it = r.capability_codes.find("quotes");
+        r.code = quote_it != r.capability_codes.end() ? quote_it->second : r.code;
         if (r.code == "ok") {
             cooldowns_.erase(d.id);
             cooldowns_.erase(d.id + ":quotes");
         }
+        int ok_count = 0, tested_count = 0;
+        for (const auto &[_, code] : r.capability_codes) {
+            if (code == "unsupported")
+                continue;
+            ++tested_count;
+            if (code == "ok")
+                ++ok_count;
+        }
         r.tested_at = std::time(nullptr);
-        r.message = r.code == "ok" ? "Cotação recebida; outras permissões dependem do plano."
-                                   : provider_error_message(r.code);
+        r.message = d.enabled
+                        ? std::to_string(ok_count) + "/" + std::to_string(tested_count) +
+                              " capabilities returned data for " + symbol + "."
+                        : provider_error_message("missing_key");
         health_[d.id] = r;
         out.push_back(std::move(r));
     }
