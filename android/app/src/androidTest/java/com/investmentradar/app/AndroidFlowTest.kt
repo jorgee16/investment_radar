@@ -108,6 +108,73 @@ class AndroidFlowTest {
         }
         image.recycle()
     }
+    /** Cached HTTP fixtures exercise the real JNI/provider pipeline without an account or network. */
+    private fun liveFixture(etf: Boolean) {
+        scenario.close()
+        val key = if (etf) "fixture-etf-profile" else "fixture-permission-denied"
+        LocalPortfolio(context).write(listOf("VUAA.DE"), emptyList(), true)
+        val quote = """{"close":132.8,"currency":"EUR","name":"VUAA.DE"}"""
+        val denied = """{"status":"error","code":403}"""
+        val profile = """{"General":{"Type":"ETF","Name":"Vanguard S&P 500 UCITS ETF","ISIN":"IE00BFMXXD54"},"ETF_Data":{"Company_Name":"Vanguard","Domicile":"Ireland","Index_Name":"S&P 500"}}"""
+        val cache = ApiCache(context)
+        val root = "https://eodhd.com/api/"
+        cache.put(root + "real-time/VUAA.XETRA?api_token=$key&fmt=json", quote)
+        cache.put(root + "search/VUAA.DE?api_token=$key&fmt=json&limit=5", "[]")
+        val url = root + "v1.1/fundamentals/VUAA.XETRA?api_token=$key&fmt=json"
+        cache.put(url, if (etf) profile else denied)
+        cache.put("$url&filter=General", if (etf) """{"Type":"ETF"}""" else denied)
+        cache.put("$url&filter=Earnings", denied)
+        val history = """[{"date":"2026-06-16","close":100},{"date":"2026-07-16","close":95},{"date":"2026-10-16","close":132.8}]"""
+        for (range in listOf(30L, 90L, 120L)) for (offset in -1L..1L) {
+            val date = java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(range).plusDays(offset)
+            cache.put(root + "eod/VUAA.XETRA?api_token=$key&fmt=json&period=d&from=$date", history)
+        }
+        cache.put(root + "real-time/AIR.PA?api_token=$key&fmt=json", """{"close":188,"currency":"EUR","name":"Airbus"}""")
+        val air = root + "v1.1/fundamentals/AIR.PA?api_token=$key&fmt=json"
+        cache.put(air, "{}"); cache.put("$air&filter=Earnings", "{}"); cache.put("$air&filter=General", "{}")
+        for (range in listOf(90L, 120L)) for (offset in -1L..1L) {
+            val date = java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(range).plusDays(offset)
+            cache.put(root + "eod/AIR.PA?api_token=$key&fmt=json&period=d&from=$date", "[]")
+        }
+        cache.close()
+        SecureSettings(context).save(JSONObject().put("demo", false).put("eodhdKey", key))
+        start()
+        search("VUAA.DE")
+        await("fixture loaded") { !state().loading && !state().historyLoading && state().snapshot?.text("symbol") == "VUAA.DE" }
+        assertFalse(state().demo)
+    }
+    @Test fun missingFundamentalsExplainPermissionsAndKeepPriceAnalysis() {
+        liveFixture(false)
+        assertEquals(132.8, state().snapshot!!.getDouble("price"), .001)
+        click("asset-tab-1")
+        ui.onAllNodesWithText("EODHD: O plano ou as permissões não permitem este pedido.").onFirst().performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("Componentes do score").assertDoesNotExist()
+        capture("live-permission-analysis")
+        ui.onNodeWithText("Comportamento do preço").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("+32,80%").assertExists()
+        capture("live-price-analysis")
+        click("asset-tab-2")
+        ui.onNodeWithText("P/E").assertDoesNotExist()
+        capture("live-permission-financials")
+        click("availability-providers")
+        assertEquals(Page.Providers, state().page)
+    }
+    @Test fun etfProfileAndAnalysisUseFundDataInsteadOfCorporateScore() {
+        liveFixture(true)
+        assertEquals("etf", state().snapshot!!.text("instrumentType"))
+        click("asset-tab-1")
+        capture("live-etf-analysis-top")
+        ui.onNodeWithText("Análise de ETF / fundo").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("Score heurístico").assertDoesNotExist()
+        ui.onNodeWithText("Intervalo de valor justo").assertDoesNotExist()
+        capture("live-etf-analysis")
+        click("asset-tab-2")
+        ui.onNodeWithText("Perfil do ETF / fundo").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("IE00BFMXXD54").assertExists()
+        ui.onNodeWithText("S&P 500").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("Retorno sobre o capital (ROE)").assertDoesNotExist()
+        capture("live-etf-profile")
+    }
     @Test fun nativeCoreAndNativePresentation() {
         val core = NativeCore(context)
         try {
@@ -193,7 +260,9 @@ class AndroidFlowTest {
         click("clear-key-eodhd"); await("key removed") { state().configured.isEmpty() && !state().saving }
         click("test-providers"); await("five missing key reports") { state().reports.size == 5 && !state().testing }
         assertTrue(state().reports.all { it.text("code") == "missing_key" && !it.optBoolean("connected") })
-        ui.onNodeWithTag("report-eodhd").performScrollTo().assertIsDisplayed(); capture("providers-test-results")
+        ui.onNodeWithTag("report-eodhd").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("capability-eodhd-fundamentals").assertExists()
+        capture("providers-test-results")
         restart(); assertTrue(state().configured.isEmpty())
     }
     @Test fun searchScreenerAndBack() {

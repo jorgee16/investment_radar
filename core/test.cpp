@@ -282,11 +282,11 @@ int main() {
         CHECK(f->metrics.at("roe").source == "b");
     });
     test("config supports Alpha Vantage and Finnhub routing", [] {
-        auto c = ir::parse_config({{"alphaKey", "a"},
-                                   {"finnhubKey", "f"},
-                                   {"demo", false},
-                                   {"routing", {{"fundamentals", "alpha"},
-                                                {"estimates", "finnhub"}}}});
+        auto c =
+            ir::parse_config({{"alphaKey", "a"},
+                              {"finnhubKey", "f"},
+                              {"demo", false},
+                              {"routing", {{"fundamentals", "alpha"}, {"estimates", "finnhub"}}}});
         CHECK(c.alpha_key == "a");
         CHECK(c.finnhub_key == "f");
         CHECK(c.routing.fundamentals == "alpha");
@@ -322,6 +322,98 @@ int main() {
         auto j = s.snapshot("VUAA.DE");
         CHECK(j["roe"].is_null());
         CHECK(j["score"].is_null());
+    });
+    test("ETF profile survives adapter aggregation without corporate metrics", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "fixture";
+        int estimate_calls = 0;
+        ir::ResearchService service(c, [&](const std::string &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":132.8,"currency":"EUR","name":"Vanguard"})";
+            if (url.find("filter=Earnings") != url.npos) {
+                ++estimate_calls;
+                return "{}";
+            }
+            if (url.find("fundamentals") != url.npos)
+                return R"({"General":{"Type":"ETF","Name":"Vanguard S&P 500 UCITS ETF","ISIN":"IE00BFMXXD54"},"ETF_Data":{"Company_Name":"Vanguard","Domicile":"Ireland","Index_Name":"S&P 500","Inception_Date":"2019-05-14"},"Highlights":{"PERatio":25,"ReturnOnEquityTTM":0.2}})";
+            return R"([{"date":"2026-10-16","close":132.8},{"date":"2026-06-16","close":100},{"date":"2026-07-16","close":95}])";
+        });
+        auto j = service.snapshot("VUAA.DE");
+        CHECK(j["instrumentType"] == "etf");
+        CHECK(j["analysisApplicable"] == false);
+        CHECK(j["fund"]["isin"] == "IE00BFMXXD54");
+        CHECK(j["fund"]["index"] == "S&P 500");
+        CHECK(j["metricSources"]["index"]["source"] == "EODHD");
+        CHECK(j["pe"].is_null());
+        CHECK(j["score"].is_null());
+        CHECK(j["fairLow"].is_null());
+        CHECK(j["breakdown"]["valuation"].is_null());
+        CHECK(estimate_calls == 0);
+        CHECK(j["availability"]["estimates"]["status"] == "not_applicable");
+        CHECK(j["priceStatistics"]["low"] == 95);
+        CHECK(j["priceStatistics"]["high"] == 132.8);
+        CHECK(std::abs(j["priceStatistics"]["changePct"].get<double>() - 32.8) < .001);
+    });
+    test("ETF classification works without any profile fields or company ratios", [] {
+        ir::EodhdProvider p("fixture", [](auto &) { return R"({"General":{"Type":"ETF"}})"; });
+        auto f = p.fundamentals("TEST.DE");
+        CHECK(f);
+        CHECK(f->instrument_type == "etf");
+        CHECK(f->fund.isin.empty());
+        CHECK(!f->pe);
+    });
+    test("free plan failure remains distinct from successful quote and history", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "fixture";
+        ir::ResearchService service(c, [](const std::string &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":132.8,"currency":"EUR","name":"VUAA.DE"})";
+            if (url.find("fundamentals") != url.npos)
+                throw ir::ProviderError("subscription", 403);
+            return "[]";
+        });
+        for (int i = 0; i < 2; ++i) { // Subscription cooldown must keep the explanation on refresh.
+            auto j = service.snapshot("VUAA.DE");
+            CHECK(j["price"] == 132.8);
+            CHECK(j["score"].is_null());
+            CHECK(j["instrumentType"] == "unknown"); // Never infer an ETF from its ticker.
+            CHECK(j["availability"]["quotes"]["status"] == "available");
+            CHECK(j["availability"]["fundamentals"]["status"] == "unavailable");
+            CHECK(j["availability"]["fundamentals"]["issues"][0]["code"] == "subscription");
+            CHECK(j["availability"]["estimates"]["issues"][0]["code"] == "subscription");
+            CHECK(j.dump().find("fixture") == std::string::npos);
+        }
+    });
+    test("EODHD search requires the exact exchange before accepting metadata", [] {
+        ir::EodhdProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":100,"currency":"EUR"})";
+            return R"([{"Code":"VUAA","Exchange":"LSE","Name":"Wrong listing","Type":"Common Stock"},{"Code":"VUAA","Exchange":"XETRA","Name":"Correct listing","Type":"ETF"}])";
+        });
+        auto q = p.quote("VUAA.DE");
+        CHECK(q);
+        CHECK(q->name == "Correct listing");
+        CHECK(q->instrument_type == "etf");
+        auto other = p.quote("OTHER.DE");
+        CHECK(other);
+        CHECK(other->name == "OTHER.DE");
+        CHECK(other->instrument_type == "unknown");
+    });
+    test("metadata-only equity does not imply a working fundamentals subscription", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "fixture";
+        ir::ResearchService service(c, [](const std::string &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":100,"currency":"EUR","name":"Stock","type":"Common Stock"})";
+            return "{}";
+        });
+        auto j = service.snapshot("TEST.DE");
+        CHECK(j["instrumentType"] == "equity");
+        CHECK(j["availability"]["fundamentals"]["status"] == "unavailable");
+        CHECK(j["priceStatistics"].is_null());
     });
     test("live without keys never fabricates data", [] {
         ir::ResearchConfig c;

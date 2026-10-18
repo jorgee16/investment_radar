@@ -86,9 +86,8 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
         probe(DataCapability::Fundamentals, [&] { return bool(p->fundamentals(symbol)); });
         probe(DataCapability::Estimates, [&] { return bool(p->estimates(symbol)); });
         probe(DataCapability::History, [&] { return !p->history(symbol, 45).empty(); });
-        probe(DataCapability::Earnings, [&] {
-            return !p->earnings(symbol, date_offset(-30), date_offset(120)).empty();
-        });
+        probe(DataCapability::Earnings,
+              [&] { return !p->earnings(symbol, date_offset(-30), date_offset(120)).empty(); });
         probe(DataCapability::News, [&] { return !p->news(symbol, 3).empty(); });
 
         const auto quote_it = r.capability_codes.find("quotes");
@@ -106,10 +105,9 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
                 ++ok_count;
         }
         r.tested_at = std::time(nullptr);
-        r.message = d.enabled
-                        ? std::to_string(ok_count) + "/" + std::to_string(tested_count) +
-                              " capabilities returned data for " + symbol + "."
-                        : provider_error_message("missing_key");
+        r.message = d.enabled ? std::to_string(ok_count) + "/" + std::to_string(tested_count) +
+                                    " capabilities returned data for " + symbol + "."
+                              : provider_error_message("missing_key");
         health_[d.id] = r;
         out.push_back(std::move(r));
     }
@@ -139,6 +137,7 @@ std::vector<std::shared_ptr<IMarketDataProvider>> ProviderManager::ordered(const
         for (const auto &key : {d.id, d.id + ":" + capability_name(cap)}) {
             auto it = cooldowns_.find(key);
             if (it != cooldowns_.end() && it->second.first > std::time(nullptr)) {
+                issues_.push_back({d.name, it->second.second, cap});
                 auto warning = d.name + ": " + provider_error_message(it->second.second);
                 if (std::find(diagnostics_.begin(), diagnostics_.end(), warning) ==
                     diagnostics_.end())
@@ -152,6 +151,7 @@ std::vector<std::shared_ptr<IMarketDataProvider>> ProviderManager::ordered(const
 }
 void ProviderManager::record_failure(const std::shared_ptr<IMarketDataProvider> &p,
                                      DataCapability cap, const ProviderError &e) {
+    issues_.push_back({p->descriptor().name, e.code, cap});
     diagnostics_.push_back(p->descriptor().name + ": " + e.what());
     const auto id = p->descriptor().id;
     if (e.code == "authentication" || e.code == "rate_limit" || e.code == "network")
@@ -206,6 +206,23 @@ std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) 
             m.currency = v.currency;
             contributed = true;
         }
+        if (m.instrument_type == "unknown" && v.instrument_type != "unknown") {
+            m.instrument_type = v.instrument_type;
+            contributed = true;
+            m.metrics["instrumentType"] = {v.source, "", "provider classification"};
+        }
+        auto copy_text = [&](std::string &dst, const std::string &src, const char *key) {
+            if (dst.empty() && !src.empty()) {
+                dst = src;
+                contributed = true;
+                m.metrics[key] = {v.source, "", "fund profile"};
+            }
+        };
+        copy_text(m.fund.isin, v.fund.isin, "isin");
+        copy_text(m.fund.issuer, v.fund.issuer, "issuer");
+        copy_text(m.fund.domicile, v.fund.domicile, "domicile");
+        copy_text(m.fund.index, v.fund.index, "index");
+        copy_text(m.fund.inception_date, v.fund.inception_date, "inceptionDate");
         copy_metric(m.pe, v.pe, "pe");
         copy_metric(m.forward_pe, v.forward_pe, "forwardPE");
         copy_metric(m.revenue_growth_pct, v.revenue_growth_pct, "revenueGrowth");
@@ -239,9 +256,9 @@ std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) 
     if (!merged)
         return {};
     const auto &m = *merged;
-    if (m.name.empty() && m.sector.empty() && m.currency.empty() && !m.pe && !m.forward_pe &&
-        !m.revenue_growth_pct && !m.eps_growth_pct && !m.fcf_margin_pct && !m.roe_pct &&
-        !m.debt_to_equity && !m.eps_ttm)
+    if (m.instrument_type == "unknown" && m.name.empty() && m.sector.empty() &&
+        m.currency.empty() && !m.pe && !m.forward_pe && !m.revenue_growth_pct &&
+        !m.eps_growth_pct && !m.fcf_margin_pct && !m.roe_pct && !m.debt_to_equity && !m.eps_ttm)
         return {};
     return merged;
 }

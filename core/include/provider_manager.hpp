@@ -16,6 +16,11 @@ struct ProviderProbe {
     std::unordered_map<std::string, std::string> capability_codes;
 };
 
+struct ProviderIssue {
+    std::string provider, code;
+    DataCapability capability;
+};
+
 class ProviderManager {
   public:
     void add(std::shared_ptr<IMarketDataProvider> provider);
@@ -31,9 +36,14 @@ class ProviderManager {
     }
     void clear_diagnostics() {
         diagnostics_.clear();
+        issues_.clear();
     }
     const std::vector<std::string> &diagnostics() const {
         return diagnostics_;
+    }
+
+    const std::vector<ProviderIssue> &issues() const {
+        return issues_;
     }
 
     std::optional<Quote> quote(const std::string &symbol);
@@ -53,6 +63,7 @@ class ProviderManager {
     std::vector<std::shared_ptr<IMarketDataProvider>> providers_;
     ProviderRouting routing_;
     std::vector<std::string> diagnostics_;
+    std::vector<ProviderIssue> issues_;
     std::unordered_map<std::string, ProviderProbe> health_;
     std::unordered_map<std::string, std::pair<long long, std::string>> cooldowns_;
 };

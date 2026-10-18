@@ -51,7 +51,7 @@ import org.json.JSONObject
         Text("EODHD gratuito: uma cotação bem-sucedida não confirma acesso a fundamentais. Histórico, bolsas europeias e estimativas dependem do plano. Quotas gratuitas dos restantes providers também são limitadas.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     FinanceCard(title = "Testar ligação") {
-        Text("Guarda primeiro as chaves. O teste pede uma cotação real mesmo em Demo; não valida todos os endpoints do plano.", style = MaterialTheme.typography.bodySmall)
+        Text("Guarda primeiro as chaves. O teste consulta cotações, fundamentais, estimativas, histórico, resultados e notícias para este símbolo, mesmo em Demo. Pode consumir vários pedidos da quota.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(testSymbol, { testSymbol = it.take(32); testError = null }, label = { Text("Ticker de teste") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("test-symbol"))
         Button({ testError = model.testProviders(testSymbol) }, enabled = !state.testing && !state.saving, modifier = Modifier.testTag("test-providers")) { Text(if (state.testing) "A testar…" else "Testar todos") }
         if (testError != null) Text(testError!!, color = MaterialTheme.colorScheme.error)
@@ -61,6 +61,21 @@ import org.json.JSONObject
             Text(report.text("message"), modifier = Modifier.testTag("report-${report.text("id")}"), color = if (report.optBoolean("connected")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error)
             Text("${report.text("symbol")} · ${report.text("code")}", style = MaterialTheme.typography.labelSmall)
             if (report.number("price") != null) Text(money(report.number("price"), report.text("currency")))
+            val results = report.optJSONObject("capabilities")
+            capabilities.forEach { (capability, label) ->
+                val code = results?.text(capability).orEmpty()
+                if (code.isNotBlank()) MetricRow(label, when (code) {
+                    "ok" -> "Dados recebidos"
+                    "missing_key" -> "Chave em falta"
+                    "subscription" -> "Sem permissão no plano"
+                    "authentication" -> "Chave inválida / expirada"
+                    "rate_limit" -> "Quota atingida"
+                    "no_data" -> "Sem dados para este símbolo"
+                    "unsupported" -> "Não suportado"
+                    "network" -> "Falha de ligação"
+                    else -> "Pedido sem sucesso"
+                }, modifier = Modifier.testTag("capability-${report.text("id")}-$capability"))
+            }
         }
     }
     FinanceCard(title = "Fonte preferida por tipo de dados") {

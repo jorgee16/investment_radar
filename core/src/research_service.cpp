@@ -3,6 +3,7 @@
 #include "json_utils.hpp"
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <stdexcept>
 using json = nlohmann::json;
 namespace ir {
@@ -85,6 +86,7 @@ class DemoProvider final : public IMarketDataProvider {
             return {};
         Fundamentals f{s,      d->name, d->sector, d->currency, d->pe,  d->fpe, d->rev,
                        d->eps, d->fcf,  d->roe,    d->debt,     "Demo", {}};
+        f.instrument_type = f.sector == "ETF" ? "etf" : "equity";
         if (f.sector == "ETF") {
             f.revenue_growth_pct.reset();
             f.eps_growth_pct.reset();
@@ -149,8 +151,8 @@ ResearchConfig parse_config(const json &j) {
     auto r = j.value("routing", json::object());
     auto route = [&](const char *k) {
         auto v = r.value(k, "auto");
-        if (v != "auto" && v != "eodhd" && v != "fmp" && v != "twelve" &&
-            v != "alpha" && v != "finnhub")
+        if (v != "auto" && v != "eodhd" && v != "fmp" && v != "twelve" && v != "alpha" &&
+            v != "finnhub")
             throw std::invalid_argument("Invalid provider routing");
         return v;
     };
@@ -159,12 +161,9 @@ ResearchConfig parse_config(const json &j) {
     return c;
 }
 json config_json(const ResearchConfig &c) {
-    return {{"eodhdKey", c.eodhd_key},
-            {"fmpKey", c.fmp_key},
-            {"twelveKey", c.twelve_key},
-            {"alphaKey", c.alpha_key},
-            {"finnhubKey", c.finnhub_key},
-            {"demo", c.demo},
+    return {{"eodhdKey", c.eodhd_key},           {"fmpKey", c.fmp_key},
+            {"twelveKey", c.twelve_key},         {"alphaKey", c.alpha_key},
+            {"finnhubKey", c.finnhub_key},       {"demo", c.demo},
             {"routing", routing_json(c.routing)}};
 }
 ResearchService::ResearchService(const ResearchConfig &c, HttpGet get) : config_(c) {
@@ -220,9 +219,9 @@ json ResearchService::status() const {
             {"live", !config_.demo &&
                          std::any_of(manager_.health().begin(), manager_.health().end(),
                                      [](const auto &entry) { return entry.second.code == "ok"; })},
-            {"configured",
-             !config_.eodhd_key.empty() || !config_.fmp_key.empty() || !config_.twelve_key.empty() ||
-                 !config_.alpha_key.empty() || !config_.finnhub_key.empty()},
+            {"configured", !config_.eodhd_key.empty() || !config_.fmp_key.empty() ||
+                               !config_.twelve_key.empty() || !config_.alpha_key.empty() ||
+                               !config_.finnhub_key.empty()},
             {"provider", config_.demo ? "demo" : "multi-provider"},
             {"engine", "C++20"},
             {"routing", routing_json(config_.routing)}};
@@ -275,7 +274,11 @@ json ResearchService::snapshot(const std::string &s) {
     active().clear_diagnostics();
     auto q = active().quote(s);
     auto f = active().fundamentals(s);
-    auto e = active().estimates(s);
+    const auto type = f && f->instrument_type != "unknown" ? f->instrument_type
+                      : q                                  ? q->instrument_type
+                                                           : "unknown";
+    const bool fund = type == "etf" || type == "fund";
+    auto e = fund ? std::optional<EstimateSnapshot>{} : active().estimates(s);
     auto h = active().history(s, 120);
     Metrics m;
     if (q)
@@ -307,7 +310,12 @@ json ResearchService::snapshot(const std::string &s) {
         if (f)
             f->metrics["forwardPE"] = {"Investment Radar", "", "price / forward EPS estimate"};
     }
+    if (fund)
+        m = {}; // Never evaluate a fund with the corporate earnings model.
     auto ev = json::parse(evaluation_json(evaluate(m)));
+    if (fund)
+        ev["thesis"] =
+            "O modelo de score e valor justo de empresas não se aplica a ETFs ou fundos.";
     json hist = json::array();
     for (auto &x : h)
         hist.push_back({{"label", x.label},
@@ -327,6 +335,8 @@ json ResearchService::snapshot(const std::string &s) {
     if (e)
         append(e->metrics);
     if (q)
+        append(q->metrics);
+    if (q)
         metadata["price"] = {{"source", q->source}, {"timestamp", q->timestamp}};
     json warnings = active().diagnostics();
     if (config_.demo)
@@ -335,17 +345,66 @@ json ResearchService::snapshot(const std::string &s) {
         warnings.push_back("Cotação indisponível.");
     if (!f)
         warnings.push_back("Fundamentais indisponíveis.");
-    if (q && f && (q->currency.empty() || f->currency.empty() || q->currency != f->currency)) {
+    if (!fund && q && f &&
+        (q->currency.empty() || f->currency.empty() || q->currency != f->currency)) {
         m.price.reset();
         m.forward_eps.reset();
         ev = json::parse(evaluation_json(evaluate(m)));
         warnings.push_back(
             "Moedas desconhecidas ou incompatíveis; valuation monetário indisponível.");
     }
+    json availability = json::object();
+    auto describe = [&](DataCapability cap, bool available, bool applicable = true) {
+        json issues = json::array();
+        for (const auto &issue : active().issues())
+            if (issue.capability == cap)
+                issues.push_back({{"provider", issue.provider},
+                                  {"code", issue.code},
+                                  {"message", provider_error_message(issue.code)}});
+        const auto catalog = active().catalog();
+        const bool configured = std::any_of(catalog.begin(), catalog.end(), [&](const auto &d) {
+            return d.enabled && std::find(d.capabilities.begin(), d.capabilities.end(), cap) !=
+                                    d.capabilities.end();
+        });
+        availability[capability_name(cap)] = {{"status", !applicable   ? "not_applicable"
+                                                         : available   ? "available"
+                                                         : !configured ? "missing_key"
+                                                                       : "unavailable"},
+                                              {"issues", issues}};
+    };
+    describe(DataCapability::Quotes, bool(q));
+    describe(DataCapability::Fundamentals, bool(f));
+    describe(DataCapability::Estimates, bool(e), !fund);
+    describe(DataCapability::History, !h.empty());
+    // Descriptive observations, not a score, recommendation or dividend-inclusive return.
+    json price_stats = nullptr;
+    std::erase_if(h, [](const auto &bar) { return !std::isfinite(bar.price) || bar.price <= 0; });
+    std::sort(h.begin(), h.end(), [](const auto &a, const auto &b) { return a.label < b.label; });
+    if (h.size() >= 2 && h.front().label != h.back().label) {
+        const auto [low, high] = std::minmax_element(
+            h.begin(), h.end(), [](const auto &a, const auto &b) { return a.price < b.price; });
+        price_stats = {{"from", h.front().label},
+                       {"to", h.back().label},
+                       {"observations", h.size()},
+                       {"changePct", (h.back().price / h.front().price - 1) * 100},
+                       {"low", low->price},
+                       {"high", high->price},
+                       {"source", h.front().source}};
+    }
     return {{"symbol", s},
             {"name", f && !f->name.empty() && f->name != s ? f->name
                      : q                                   ? q->name
                                                            : s},
+            {"instrumentType", type},
+            {"analysisApplicable", !fund},
+            {"availability", availability},
+            {"priceStatistics", price_stats},
+            {"fund",
+             {{"isin", f ? f->fund.isin : ""},
+              {"issuer", f ? f->fund.issuer : ""},
+              {"domicile", f ? f->fund.domicile : ""},
+              {"index", f ? f->fund.index : ""},
+              {"inceptionDate", f ? f->fund.inception_date : ""}}},
             {"sector", f ? f->sector : ""},
             {"currency", q ? q->currency : ""},
             {"reportingCurrency", f ? f->currency : ""},

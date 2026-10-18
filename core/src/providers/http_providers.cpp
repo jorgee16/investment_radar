@@ -18,9 +18,9 @@ json checked_provider_payload(const std::string &body) {
     }
     if (!j.is_object() && !j.is_array())
         throw ProviderError("invalid_response");
-    if (j.is_object() && (j.contains("Error Message") || j.contains("error") ||
-                          j.contains("Note") || j.contains("Information") ||
-                          (j.contains("status") && j["status"] == "error"))) {
+    if (j.is_object() &&
+        (j.contains("Error Message") || j.contains("error") || j.contains("Note") ||
+         j.contains("Information") || (j.contains("status") && j["status"] == "error"))) {
         int status = j.contains("code") && j["code"].is_number_integer() ? j["code"].get<int>() : 0;
         auto code = status ? provider_error_code(status) : "http_error";
         // Text is used only for classification; it is never returned or logged.
@@ -94,6 +94,17 @@ std::string str(const json &j, const char *k, const std::string &d = "") {
 }
 json object(const json &j, const char *k) {
     return j.is_object() && j.contains(k) && j[k].is_object() ? j[k] : json::object();
+}
+std::string instrument_type(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (value == "etf")
+        return "etf";
+    if (value == "fund" || value == "mutual fund")
+        return "fund";
+    if (value == "common stock" || value == "equity")
+        return "equity";
+    return "unknown";
 }
 std::string date_ago(int days) {
     std::time_t t = std::time(nullptr) - days * 86400LL;
@@ -217,6 +228,7 @@ std::optional<Quote> EodhdProvider::quote(const std::string &s) {
     if (!p || *p <= 0)
         return {};
     auto currency = str(j, "currency"), name = str(j, "name", s);
+    auto type = instrument_type(str(j, "type"));
     if (currency.empty()) {
         auto general =
             optional_request(get_, "https://eodhd.com/api/v1.1/fundamentals/" + enc(eod_symbol(s)) +
@@ -226,13 +238,13 @@ std::optional<Quote> EodhdProvider::quote(const std::string &s) {
         // General.CurrencyCode is explicitly the listing currency, not reporting currency.
         currency = str(general, "CurrencyCode");
         name = str(general, "Name", name);
+        type = instrument_type(str(general, "Type"));
     }
     if (currency.empty())
         currency = listing_currency_hint(s);
     if (name.empty() || name == s) {
-        auto search = optional_request(
-            get_, "https://eodhd.com/api/search/" + enc(s) +
-                      "?api_token=" + enc(key_) + "&fmt=json&limit=5");
+        auto search = optional_request(get_, "https://eodhd.com/api/search/" + enc(s) +
+                                                 "?api_token=" + enc(key_) + "&fmt=json&limit=5");
         if (search.is_array()) {
             const auto wanted = eod_symbol(s);
             for (const auto &row : search) {
@@ -241,25 +253,22 @@ std::optional<Quote> EodhdProvider::quote(const std::string &s) {
                 auto candidate = code;
                 if (!exchange.empty())
                     candidate += "." + exchange;
-                if (candidate == wanted || code == s || code == s.substr(0, s.find('.'))) {
+                if (candidate == wanted) {
                     name = str(row, "Name", name);
+                    type = instrument_type(str(row, "Type"));
                     if (currency.empty())
                         currency = str(row, "Currency", currency);
                     break;
                 }
             }
-            if ((name.empty() || name == s) && !search.empty())
-                name = str(search[0], "Name", name);
         }
     }
-    Quote q{s,
-            name,
-            currency,
-            *p,
-            num(j, "change_p"),
-            (long long)num(j, "timestamp").value_or(0),
-            "EODHD",
-            {}};
+    Quote q{
+        s,       name, currency, *p, num(j, "change_p"), (long long)num(j, "timestamp").value_or(0),
+        "EODHD", {}};
+    q.instrument_type = type;
+    if (type != "unknown")
+        q.metrics["instrumentType"] = {"EODHD", "", "listing classification"};
     if (!currency.empty())
         q.metrics["currency"] = {"EODHD", "", "listing currency"};
     return q;
@@ -275,6 +284,16 @@ std::optional<Fundamentals> EodhdProvider::fundamentals(const std::string &s) {
     auto g = object(j, "General"), h = object(j, "Highlights"), v = object(j, "Valuation");
     f.name = str(g, "Name", s);
     f.sector = str(g, "Sector");
+    f.instrument_type = instrument_type(str(g, "Type"));
+    if (j.contains("ETF_Data") && j["ETF_Data"].is_object() && !j["ETF_Data"].empty())
+        f.instrument_type = "etf";
+    if (f.instrument_type == "etf" || f.instrument_type == "fund") {
+        auto data = object(j, "ETF_Data");
+        f.fund = {str(g, "ISIN"), str(data, "Company_Name"), str(data, "Domicile"),
+                  str(data, "Index_Name"), str(data, "Inception_Date")};
+        f.metrics["instrumentType"] = {f.source, "", "General.Type / ETF_Data"};
+        return f; // Company earnings ratios are not an ETF valuation model.
+    }
     f.currency = str(object(object(j, "Financials"), "Income_Statement"), "currency_symbol");
     f.pe = first(h, "PERatio", "TrailingPE");
     if (!f.pe)
@@ -608,9 +627,9 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
         return {};
     const auto symbol = alpha_symbol(s);
     auto fetch = [&](const char *fn) {
-        return optional_request(get_, "https://www.alphavantage.co/query?function=" +
-                                          std::string(fn) + "&symbol=" + enc(symbol) +
-                                          "&apikey=" + enc(key_));
+        return optional_request(get_,
+                                "https://www.alphavantage.co/query?function=" + std::string(fn) +
+                                    "&symbol=" + enc(symbol) + "&apikey=" + enc(key_));
     };
     auto income = fetch("INCOME_STATEMENT");
     auto balance = fetch("BALANCE_SHEET");
@@ -643,8 +662,9 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
     auto eps_ttm = sum_field(qEarn, "reportedEPS", 4);
     if (eps_ttm) {
         f.eps_ttm = eps_ttm;
-        f.metrics["epsTTM"] = {f.source, str(qEarn.empty() ? json::object() : qEarn[0], "fiscalDateEnding"),
-                                "sum of latest four reported quarters"};
+        f.metrics["epsTTM"] = {f.source,
+                               str(qEarn.empty() ? json::object() : qEarn[0], "fiscalDateEnding"),
+                               "sum of latest four reported quarters"};
     }
 
     if (revenue_ttm && ocf_ttm && capex_ttm && *revenue_ttm != 0) {
@@ -702,7 +722,7 @@ std::optional<EstimateSnapshot> AlphaVantageProvider::estimates(const std::strin
         if (actual && estimated && *estimated != 0) {
             e.earnings_surprise_pct = growth(actual, estimated);
             e.metrics["earningsSurprise"] = {e.source, str(row, "fiscalDateEnding"),
-                                              "reported vs estimated EPS"};
+                                             "reported vs estimated EPS"};
             break;
         }
     }
@@ -723,8 +743,14 @@ std::vector<EarningsEvent> AlphaVantageProvider::earnings(const std::string &s,
         auto date = str(row, "reportedDate", str(row, "fiscalDateEnding"));
         if (date < from || date > to)
             continue;
-        out.push_back({date, s, "Earnings", "Reported EPS vs estimate", num(row, "reportedEPS"),
-                       num(row, "estimatedEPS"), "Alpha Vantage", {}});
+        out.push_back({date,
+                       s,
+                       "Earnings",
+                       "Reported EPS vs estimate",
+                       num(row, "reportedEPS"),
+                       num(row, "estimatedEPS"),
+                       "Alpha Vantage",
+                       {}});
     }
     return out;
 }
@@ -741,23 +767,28 @@ ProviderDescriptor FinnhubProvider::descriptor() const {
 std::optional<Quote> FinnhubProvider::quote(const std::string &s) {
     if (key_.empty())
         return {};
-    auto j = request(get_, "https://finnhub.io/api/v1/quote?symbol=" + enc(s) +
-                               "&token=" + enc(key_));
+    auto j =
+        request(get_, "https://finnhub.io/api/v1/quote?symbol=" + enc(s) + "&token=" + enc(key_));
     auto p = num(j, "c");
     if (!p || *p <= 0)
         return {};
-    return Quote{s, s, listing_currency_hint(s), *p, num(j, "dp"),
-                 (long long)num(j, "t").value_or(0), "Finnhub", {}};
+    return Quote{s,
+                 s,
+                 listing_currency_hint(s),
+                 *p,
+                 num(j, "dp"),
+                 (long long)num(j, "t").value_or(0),
+                 "Finnhub",
+                 {}};
 }
 std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) {
     if (key_.empty())
         return {};
     auto profile = optional_request(
-        get_, "https://finnhub.io/api/v1/stock/profile2?symbol=" + enc(s) +
-                  "&token=" + enc(key_));
-    auto metrics = optional_request(
-        get_, "https://finnhub.io/api/v1/stock/metric?symbol=" + enc(s) +
-                  "&metric=all&token=" + enc(key_));
+        get_, "https://finnhub.io/api/v1/stock/profile2?symbol=" + enc(s) + "&token=" + enc(key_));
+    auto metrics =
+        optional_request(get_, "https://finnhub.io/api/v1/stock/metric?symbol=" + enc(s) +
+                                   "&metric=all&token=" + enc(key_));
     auto m = object(metrics, "metric");
     Fundamentals f;
     f.symbol = s;
@@ -769,8 +800,7 @@ std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) 
     f.forward_pe = metric_num(m, {"forwardPE", "forwardPe"});
     f.revenue_growth_pct =
         metric_num(m, {"revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy", "revenueGrowth3Y"});
-    f.eps_growth_pct =
-        metric_num(m, {"epsGrowthTTMYoy", "epsGrowthQuarterlyYoy", "epsGrowth3Y"});
+    f.eps_growth_pct = metric_num(m, {"epsGrowthTTMYoy", "epsGrowthQuarterlyYoy", "epsGrowth3Y"});
     f.roe_pct = metric_num(m, {"roeTTM", "roeRfy", "roeAnnual"});
     f.debt_to_equity = metric_num(m, {"totalDebt/totalEquityAnnual", "totalDebtToEquity",
                                       "debtEquityAnnual", "debtEquityTTM"});
@@ -787,9 +817,8 @@ std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) 
 std::optional<EstimateSnapshot> FinnhubProvider::estimates(const std::string &s) {
     if (key_.empty())
         return {};
-    auto rows = optional_request(
-        get_, "https://finnhub.io/api/v1/stock/earnings?symbol=" + enc(s) +
-                  "&limit=4&token=" + enc(key_));
+    auto rows = optional_request(get_, "https://finnhub.io/api/v1/stock/earnings?symbol=" + enc(s) +
+                                           "&limit=4&token=" + enc(key_));
     EstimateSnapshot e;
     e.source = "Finnhub";
     if (rows.is_array())
@@ -797,16 +826,16 @@ std::optional<EstimateSnapshot> FinnhubProvider::estimates(const std::string &s)
             auto actual = num(row, "actual"), estimate = num(row, "estimate");
             if (actual && estimate && *estimate != 0) {
                 e.earnings_surprise_pct =
-                    num(row, "surprisePercent").value_or((*actual - *estimate) / std::abs(*estimate) * 100.0);
+                    num(row, "surprisePercent")
+                        .value_or((*actual - *estimate) / std::abs(*estimate) * 100.0);
                 e.metrics["earningsSurprise"] = {e.source, str(row, "period"),
-                                                  "reported vs consensus"};
+                                                 "reported vs consensus"};
                 break;
             }
         }
     return e.earnings_surprise_pct ? std::optional<EstimateSnapshot>(e) : std::nullopt;
 }
-std::vector<EarningsEvent> FinnhubProvider::earnings(const std::string &s,
-                                                     const std::string &from,
+std::vector<EarningsEvent> FinnhubProvider::earnings(const std::string &s, const std::string &from,
                                                      const std::string &to) {
     if (key_.empty())
         return {};
@@ -822,8 +851,14 @@ std::vector<EarningsEvent> FinnhubProvider::earnings(const std::string &s,
         auto date = str(row, "date");
         if ((!s.empty() && symbol != s) || date < from || date > to)
             continue;
-        out.push_back({date, symbol, "Earnings", "EPS actual vs estimate", num(row, "epsActual"),
-                       num(row, "epsEstimate"), "Finnhub", {}});
+        out.push_back({date,
+                       symbol,
+                       "Earnings",
+                       "EPS actual vs estimate",
+                       num(row, "epsActual"),
+                       num(row, "epsEstimate"),
+                       "Finnhub",
+                       {}});
     }
     return out;
 }

@@ -22,6 +22,10 @@ struct MetricOrigin {
 };
 using Provenance = std::map<std::string, MetricOrigin>;
 
+struct FundProfile {
+    std::string isin, issuer, domicile, index, inception_date;
+};
+
 struct Quote {
     std::string symbol;
     std::string name;
@@ -31,6 +35,7 @@ struct Quote {
     long long timestamp = 0;
     std::string source;
     Provenance metrics;
+    std::string instrument_type = "unknown";
 };
 
 struct Fundamentals {
@@ -50,6 +55,8 @@ struct Fundamentals {
     // Raw normalized input used by the C++ aggregation layer to derive P/E when
     // the provider exposes statements/earnings but not a ready-made ratio.
     std::optional<double> eps_ttm;
+    std::string instrument_type = "unknown";
+    FundProfile fund;
 };
 
 struct EstimateSnapshot {
