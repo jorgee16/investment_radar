@@ -1,0 +1,2 @@
+/* Investment Radar mobile-only layout layer */
+@media(max-width:900px){.portfolio-chart-empty{display:none!important}}
