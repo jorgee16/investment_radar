@@ -41,5 +41,5 @@
   more.addEventListener('click',()=>{const opening=panel.hidden;panel.hidden=!opening;backdrop.hidden=!opening;more.setAttribute('aria-expanded',String(opening));});
   backdrop.addEventListener('click',close);closeButton.addEventListener('click',close);
   const iconModule=document.createElement('script');iconModule.src='mobile-icons.js';document.body.appendChild(iconModule);
-  events.on('route:changed',({view})=>{more.classList.toggle('active',['screener','calendar','providers','settings'].includes(view));close();});
+  events.on('route:changed',({view,symbol})=>{more.classList.toggle('active',['screener','calendar','providers','settings'].includes(view));close();if(view==='asset'&&!symbol&&(!state.snap||state.snap.symbol!==state.current))guarded(()=>loadSnapshot(state.current))();});
 })();
