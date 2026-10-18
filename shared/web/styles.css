@@ -290,3 +290,12 @@ main{max-width:none;margin:0;padding:0 22px 40px;min-width:0}
 .data-status span{font-size:10px;line-height:1.5;color:var(--muted)}
 .caps span.ok{border-color:#28533f;background:#10251b;color:var(--green)}
 .caps span.bad{border-color:#50303a;background:#25151a;color:var(--red)}
+
+.chart-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:-4px 0 12px}
+.range-buttons,.style-buttons{display:flex;gap:6px;overflow-x:auto}
+.chart-controls button{border:1px solid var(--border);background:#0b131b;color:var(--muted);border-radius:8px;padding:7px 9px;font:inherit;font-size:10px;cursor:pointer}
+.chart-controls button.active{color:var(--green);border-color:#2f6e5a;background:#10261f}
+.candle line{stroke-width:1;vector-effect:non-scaling-stroke}
+.candle rect{vector-effect:non-scaling-stroke}
+.candle.up line,.candle.up rect{stroke:var(--green);fill:#1b9f72}
+.candle.down line,.candle.down rect{stroke:var(--red);fill:#c65462}
