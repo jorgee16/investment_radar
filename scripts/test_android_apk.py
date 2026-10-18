@@ -29,10 +29,15 @@ for package in (args.apk, args.test_apk):
 subprocess.run([*adb, 'shell', 'rm', '-rf', '/sdcard/Pictures/InvestmentRadarValidation'], check=True)
 command = [*adb, 'shell', 'am', 'instrument', '-w', '-r', '-e', 'class', args.test_class,
            'com.investmentradar.app.test/androidx.test.runner.AndroidJUnitRunner']
-result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-log = result.stdout
-(args.output / 'instrumentation.txt').write_text(log, encoding='utf-8')
-print(log)
+# Stream progress while preserving the instrumentation process exit status.
+with (args.output / 'instrumentation.txt').open('w', encoding='utf-8') as output:
+    result = subprocess.Popen(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    for line in result.stdout:
+        output.write(line)
+        output.flush()
+        print(line, end='', flush=True)
+    result.wait()
+log = (args.output / 'instrumentation.txt').read_text(encoding='utf-8')
 match = re.search(r'^OK \((\d+) tests?\)', log, re.MULTILINE)
 passed = hashlib.sha256(args.apk.read_bytes()).hexdigest() == apk_hash and result.returncode == 0 and match is not None and int(match[1]) > 0 and not any(
     error in log for error in ('FAILURES!!!', 'Process crashed', 'INSTRUMENTATION_FAILED',

@@ -114,23 +114,47 @@ O helper mantém caches antigos `x64-windows` e checkouts existentes; novos
 checkouts são criados fora de OneDrive, em LOCALAPPDATA. Alteração validada por
 sintaxe/configuração nesta máquina Linux; não há medição Windows do ganho.
 
-## Correções Android em validação
+## Android nativo — 0.6.0
 
-Formulários locais substituem prompts JavaScript; menu Mais torna screener,
-providers e definições acessíveis no telemóvel. Botão Voltar, insets do sistema,
-rotação e recuperação após término do renderer são tratados no host Kotlin.
-A UI evita sintaxe/APIs ausentes no WebView 83 e fornece alternativa aos diálogos.
-Carteira, radar e análise atualizam os estados relacionados após alterações.
+A UI Android foi migrada para Jetpack Compose, ViewModel/StateFlow e gráficos
+Canvas, seguindo as referências visuais Yahoo Finance fornecidas. O core C++,
+os cinco providers, o routing por capacidade, SQLite e Android Keystore foram
+preservados. O desktop Compose e o fallback web não foram substituídos.
 
-`AndroidFlowTest` cobre dez fluxos no APK instalado; `WebViewSanityTest` isola
-problemas do motor Android. `scripts/test_android_apk.py` exige testes efetivos,
-rejeita crashes/erros mesmo se adb terminar com zero, regista SHA-256 e recolhe
-screenshots. O workflow Android usa KVM e só gera um artifact candidato depois
-de onze testes verdes e screenshots; estes ainda precisam de revisão visual.
-Chaves de assinatura de validação são locais/efémeras e não são publicadas.
+A navegação inclui Início, Mercados, carteira, watchlist, screener, calendário,
+providers e definições; o ativo tem Resumo, Análises, Dados financeiros,
+Resultados e Notícias. Os formulários aceitam vírgula decimal e apresentam os
+erros de validação mesmo com o teclado aberto. Múltiplas compras são agregadas
+por moeda e cotações ausentes/incompatíveis não são transformadas em zero.
+O gráfico tem seleção por toque/arrasto, períodos e ampliação; velas só são
+ativadas com OHLC. Back, rotação, insets e restauro são tratados nativamente.
+A migração real de carteira/watchlist do antigo localStorage foi testada.
 
-A base remota foi sincronizada antes da validação final, preservando o novo
-workspace de ativos, cinco providers, histórico OHLC e UI específica Android.
-Corrigidos seletores únicos usados como listas no arranque, carteiras e comandos
-do gráfico. Pedidos tardios não substituem a análise completa nem o histórico
-do novo ticker/período. O core normalizado e a UI Compose desktop foram mantidos.
+Validação em 18/10/2026, código funcional `71ef29c`:
+
+- Release universal arm64-v8a/x86_64, min API26/target35: build e assinatura válidos.
+- Lint Release: zero erros e zero avisos. Testes JVM: 3/3.
+- C++: ambos os alvos CTest passaram. Contratos web preservados: 4/4.
+- Emulador Android11: 14/14 fluxos instrumentados, zero falhas; 29 screenshots
+  recolhidos do mesmo run, com SHA-256 do APK registado.
+- Passagem adicional local Android15 após recuperar o System UI: 6/6 fluxos
+  passaram no mesmo APK e num viewport maior.
+- Android15 com KVM no GitHub Actions: os mesmos 14 fluxos passaram e o gate de
+  screenshots/empacotamento da candidata passou. Run:
+  https://github.com/jorgee16/investment_radar/actions/runs/39162424868
+
+A primeira passagem expôs testes com comparações de texto demasiado estritas,
+um menu que não fechava consistentemente com Voltar, controlos de períodos com
+scroll aninhado e um erro de formulário fora da área visível. Foram corrigidos
+e a suíte completa foi repetida. As capturas esperam os frames Compose antes
+de recolher a imagem. As capturas de rotação foram reforçadas com espera pela
+orientação efetiva da janela/display e verificação das dimensões do bitmap,
+para evitar imagens da transição do sistema. O emulador Android15 sem KVM teve ANR do System UI durante
+o arranque; essa passagem não foi usada como validação e o controlo completo de
+Android15 foi executado com KVM. O CI usa CLI19 verificado e compatível com JDK21.
+
+Os testes de dados de mercado usam Demo explícito ou os estados sem chaves.
+Sem contas/chaves próprias não foi validado o acesso autenticado nem as
+permissões dos planos dos providers. Isto não é simulado como sucesso.
+As chaves de assinatura de validação são privadas/locais ou efémeras no CI e não
+são publicadas. Ver [arquitetura Android](ANDROID_COMPOSE.md).

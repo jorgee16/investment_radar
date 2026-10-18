@@ -186,7 +186,7 @@ internal class RadarViewModel(application: Application, private val saved: Saved
             try {
                 val config = repository.save(update)
                 generation++; assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel(); quotesJob?.cancel(); screeningJob?.cancel()
-                mutable.update { it.copy(demo = config.optBoolean("demo", true), configured = configured(config), snapshot = null, history = emptyList(), quotes = emptyMap(), screening = emptyMap(), reports = emptyList(), events = emptyList(), news = emptyList(), screeningBusy = false) }
+                mutable.update { it.copy(demo = config.optBoolean("demo", true), configured = configured(config), snapshot = null, history = emptyList(), quotes = emptyMap(), screening = emptyMap(), reports = emptyList(), events = emptyList(), news = emptyList(), screeningBusy = false, testing = false) }
                 val status = repository.request("/api/status") as JSONObject
                 mutable.update { it.copy(routing = routes(status), saving = false, notice = "Configuração guardada no dispositivo.") }
                 loadCatalog(); refresh()
@@ -197,12 +197,13 @@ internal class RadarViewModel(application: Application, private val saved: Saved
         val selected = symbol(raw)
         if (!validSymbol(selected)) return "Ticker de teste inválido."
         if (state.value.testing) return null
+        val epoch = generation
         mutable.update { it.copy(testing = true, reports = emptyList(), error = null) }
         viewModelScope.launch {
             try {
                 val reports = (repository.request("/api/providers/test", JSONObject().put("symbol", selected).put("provider", provider).toString()) as JSONArray).objects()
-                mutable.update { it.copy(reports = reports, testing = false) }
-            } catch (e: CancellationException) { throw e } catch (_: Exception) { mutable.update { it.copy(testing = false, error = "Não foi possível testar a ligação.") } }
+                if (generation == epoch) mutable.update { it.copy(reports = reports, testing = false) }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { if (generation == epoch) mutable.update { it.copy(testing = false, error = "Não foi possível testar a ligação.") } }
         }
         return null
     }

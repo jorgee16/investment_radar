@@ -54,7 +54,7 @@ class AndroidFlowTest {
         if (::scenario.isInitialized) { scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }; scenario.close() }
     }
     private fun await(label: String, predicate: () -> Boolean) {
-        try { ui.waitUntil(90000, predicate) } catch (e: Exception) {
+        try { ui.waitUntil(90000, predicate) } catch (e: Throwable) {
             runCatching { capture("failure-" + label.replace(Regex("[^a-zA-Z0-9]+"), "-")) }
             val s = state()
             throw AssertionError("$label; page=${s.page}; symbol=${s.symbol}; days=${s.days}; history=${s.history.size}; loading=${s.loading}/${s.historyLoading}; error=${s.error}", e)
@@ -77,7 +77,7 @@ class AndroidFlowTest {
     private fun back() { ui.waitForIdle(); instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK); instrumentation.waitForIdleSync(); ui.waitForIdle() }
     private fun restart() { scenario.close(); start() }
     private fun search(value: String) { click("open-search"); fill("search-input", value); click("search-submit") }
-    private fun capture(name: String) {
+    private fun capture(name: String, expectLandscape: Boolean? = null) {
         ui.waitForIdle()
         val frames = CountDownLatch(1)
         instrumentation.runOnMainSync {
@@ -86,7 +86,15 @@ class AndroidFlowTest {
         assertTrue("Screenshot requires completed display frames", frames.await(15, TimeUnit.SECONDS))
         instrumentation.waitForIdleSync()
         SystemClock.sleep(300) // Allow SurfaceFlinger to present the committed Compose frame.
-        val image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        var image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        if (expectLandscape != null) {
+            val deadline = SystemClock.uptimeMillis() + 10000
+            while ((image.width > image.height) != expectLandscape && SystemClock.uptimeMillis() < deadline) {
+                image.recycle(); SystemClock.sleep(300)
+                image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+            }
+            assertEquals("Screenshot must show the committed display orientation", expectLandscape, image.width > image.height)
+        }
         if (Build.VERSION.SDK_INT >= 29) {
             val resolver = context.contentResolver; val folder = "Pictures/InvestmentRadarValidation/"
             resolver.delete(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "${MediaStore.Images.Media.DISPLAY_NAME}=? AND ${MediaStore.Images.Media.RELATIVE_PATH}=?", arrayOf("$name.png", folder))
@@ -205,14 +213,29 @@ class AndroidFlowTest {
         ui.onNodeWithTag("close-chart").assertIsDisplayed(); capture("chart-expanded"); back(); ui.onNodeWithTag("close-chart").assertDoesNotExist()
         click("range-30"); await("one month history") { !state().historyLoading && state().days == 30 }
     }
+    private fun orient(orientation: Int) {
+        scenario.onActivity { it.requestedOrientation = orientation }
+        val landscape = orientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        await("committed viewport orientation") {
+            var matches = false
+            instrumentation.runOnMainSync {
+                val decor = activity.window.decorView
+                val size = android.graphics.Point()
+                @Suppress("DEPRECATION")
+                activity.windowManager.defaultDisplay.getRealSize(size)
+                matches = decor.width > 0 && decor.height > 0 && (decor.width > decor.height) == landscape && (size.x > size.y) == landscape
+            }
+            matches
+        }
+        // Resource configuration changes before the OS rotation animation commits.
+        SystemClock.sleep(1500)
+    }
     @Test fun rotationKeyboardAndDialog() {
         page(Page.Watchlist)
-        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-        await("landscape") { activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE }
-        ui.onNodeWithTag("screen-Watchlist").assertIsDisplayed(); capture("landscape-watchlist")
-        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
-        await("portrait") { activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT }
-        capture("portrait-watchlist")
+        orient(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
+        ui.onNodeWithTag("screen-Watchlist").assertIsDisplayed(); capture("landscape-watchlist", true)
+        orient(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+        capture("portrait-watchlist", false)
         instrumentation.uiAutomation.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1").use { fd -> android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() } }
         click("add-watch"); click("watch-input")
         await("keyboard visible") {
