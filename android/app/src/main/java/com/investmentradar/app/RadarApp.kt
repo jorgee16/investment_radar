@@ -52,7 +52,7 @@ import org.json.JSONObject
     }
     Scaffold(modifier = Modifier.fillMaxSize().testTag("native-app").imePadding(), containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Column(Modifier.background(MaterialTheme.colorScheme.surface).statusBarsPadding()) {
+            Column(Modifier.background(MaterialTheme.colorScheme.surface).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (state.page == Page.Markets) {
                         IconButton({ model.back() }, Modifier.testTag("back")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") }

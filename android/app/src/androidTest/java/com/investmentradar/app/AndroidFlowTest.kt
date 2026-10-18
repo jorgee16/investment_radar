@@ -229,6 +229,15 @@ class AndroidFlowTest {
         }
         // Resource configuration changes before the OS rotation animation commits.
         SystemClock.sleep(1500)
+        ui.waitForIdle()
+        var safeLeft = 0; var safeRight = 0
+        instrumentation.runOnMainSync {
+            val decor = activity.window.decorView
+            val insets = ViewCompat.getRootWindowInsets(decor)?.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            safeLeft = insets?.left ?: 0; safeRight = decor.width - (insets?.right ?: 0)
+        }
+        val refresh = ui.onNodeWithTag("refresh").fetchSemanticsNode().boundsInRoot
+        assertTrue("Toolbar action must remain outside side navigation bars/cutouts", refresh.left >= safeLeft - 1 && refresh.right <= safeRight + 1)
     }
     @Test fun rotationKeyboardAndDialog() {
         page(Page.Watchlist)
