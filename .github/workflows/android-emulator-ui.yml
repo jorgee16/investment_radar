@@ -60,6 +60,22 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -accel on
           script: python3 scripts/test_android_apk.py android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk --serial emulator-5554 --output dist/android-validation --test-class com.investmentradar.app.AndroidFlowTest
+      - name: Surface instrumentation failures in job annotations
+        if: failure()
+        shell: python
+        run: |
+          import pathlib, re
+          path = pathlib.Path('dist/android-validation/instrumentation.txt')
+          if not path.exists():
+              print('::error title=Android validation::The emulator step stopped before producing an instrumentation report.')
+          else:
+              log = path.read_text(errors='replace')
+              failures = re.findall(r'INSTRUMENTATION_STATUS: stack=(.*?)(?=\nINSTRUMENTATION_STATUS: stream=)', log, re.S)
+              for failure in failures or [log[-4000:]]:
+                  detail = '\n'.join(failure.splitlines()[:24])
+                  detail = re.sub(r'https?://\S+', '[URL omitted]', detail)
+                  detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print('::error title=Android instrumentation::' + detail)
       - name: Require successful tests and screenshots before packaging candidate
         shell: python
         run: |
