@@ -254,10 +254,51 @@ function renderSnapshot(s) {
 }
 async function loadSnapshot(symbol) {
   symbol=symbol.trim().toUpperCase(); if(!validSymbol(symbol)){notify('Ticker inválido.',true);return;}
-  const request=++state.request;notify('A carregar dados…');$('#asset').setAttribute('aria-busy','true');
-  try { const s=await snapshot(symbol);if(request!==state.request)return;renderSnapshot(s);await renderPortfolioSummary(); }
-  catch(e){if(request===state.request){state.snap=null;renderSnapshot({symbol,name:symbol,zone:'N/A',history:[],coverage:0,breakdown:{},warnings:[e.message],available:false});}}
-  finally{if(request===state.request)$('#asset').setAttribute('aria-busy','false');}
+  const request=++state.request;
+  $('#asset').setAttribute('aria-busy','true');
+  notify('');
+
+  // Fast path: render quote + chart independently. Slow fundamentals/estimates must never
+  // block opening an asset, especially on free provider plans.
+  const cachedQuote=cache.get(`quote:${symbol}`)?.data;
+  if(cachedQuote){
+    renderSnapshot({
+      symbol,name:cachedQuote.name||symbol,sector:'',currency:cachedQuote.currency||'',
+      price:cachedQuote.price,changePct:cachedQuote.changePct,timestamp:cachedQuote.timestamp,
+      score:null,zone:'N/A',coverage:0,history:[],breakdown:{},reasons:[],warnings:[],
+      available:true,sources:{quote:cachedQuote.source||'cache',history:'none'}
+    });
+  }
+
+  const quick=Promise.allSettled([
+    quote(symbol),
+    bridge(`/api/history?symbol=${encodeURIComponent(symbol)}&days=${chartDays}`)
+  ]).then(results=>{
+    if(request!==state.request)return;
+    const q=results[0].status==='fulfilled'?results[0].value:null;
+    const h=results[1].status==='fulfilled'?results[1].value:[];
+    if(q){
+      renderSnapshot({
+        symbol,name:q.name||symbol,sector:'',currency:q.currency||'',
+        price:q.price,changePct:q.changePct,timestamp:q.timestamp,
+        score:null,zone:'N/A',coverage:0,history:h,breakdown:{},reasons:[],warnings:[],
+        available:true,sources:{quote:q.source||'none',history:h?.[0]?.source||'none'}
+      });
+      setText('#historyPeriod',h?.length?`${h[0].label} → ${h.at(-1).label}`:'—');
+    } else if(h?.length) {
+      drawChart(h,state.snap?.currency||'');
+    }
+  });
+
+  const analysis=snapshot(symbol).then(async s=>{
+    if(request!==state.request)return;
+    renderSnapshot(s);
+    await renderPortfolioSummary();
+  });
+
+  try { await Promise.allSettled([quick,analysis]); }
+  catch(e){ if(request===state.request) notify(e.message,true); }
+  finally{ if(request===state.request) $('#asset').setAttribute('aria-busy','false'); }
 }
 async function positions() {
   const rows=[];
