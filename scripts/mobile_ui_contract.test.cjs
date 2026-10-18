@@ -73,3 +73,5 @@ test('Android edge-to-edge system bars use a dark background and explicit insets
   assert.match(activity,/container\.setBackgroundColor\(background\)/);
   assert.match(activity,/WindowInsetsCompat\.Type\.systemBars/);
 });
+
+test('Android mobile assets are included',()=>{for(const n of ['mobile.css','mobile-nav.js','mobile-position.js','mobile-watch.js'])assert.ok(fs.existsSync(path.join(root,'shared/web',n)));});
