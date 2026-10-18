@@ -64,7 +64,7 @@ import org.json.JSONObject
         }
     }
     FinanceCard(title = "Fonte preferida por tipo de dados") {
-        Text("Automático tenta os providers configurados com a capacidade necessária. O routing é aplicado no core C++.", style = MaterialTheme.typography.bodySmall)
+        Text("Automático tenta os providers configurados com a capacidade necessária.", style = MaterialTheme.typography.bodySmall)
         capabilities.forEach { (capability, title) ->
             var expanded by remember { mutableStateOf(false) }
             val supported = state.providers.filter { it.optJSONArray("capabilities")?.strings()?.contains(capability) == true }.map { it.text("id") }

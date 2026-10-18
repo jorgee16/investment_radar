@@ -121,7 +121,7 @@ import org.json.JSONObject
         MetricRow("Valor justo — limite inferior", money(snapshot.number("fairLow"), currency))
         MetricRow("Valor justo — limite superior", money(snapshot.number("fairHigh"), currency))
         MetricRow("Acima de (cenário caro)", money(snapshot.number("expensiveAbove"), currency))
-        Text("Modelo de múltiplos de resultados calculado no core C++. Valores ausentes permanecem indisponíveis; não são preços-alvo de analistas.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Modelo de múltiplos de resultados. Valores ausentes permanecem indisponíveis; não são preços-alvo de analistas.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     val reasons = snapshot.optJSONArray("reasons")?.objects().orEmpty()
     if (reasons.isNotEmpty()) FinanceCard(title = "O que explica a análise") { reasons.forEach { reason ->

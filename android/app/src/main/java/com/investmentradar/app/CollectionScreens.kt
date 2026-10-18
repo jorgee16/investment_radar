@@ -87,7 +87,7 @@ import androidx.compose.ui.unit.sp
         Text("As chaves são cifradas com Android Keystore. A carteira e a watchlist ficam no dispositivo. Os backups da aplicação estão desativados.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     FinanceCard(title = "Investment Radar · 0.6.0") {
-        Text("Interface Android nativa em Jetpack Compose. Análise e providers no motor C++20.")
+        Text("Acompanha mercados e investimentos, com fontes identificadas e uma carteira guardada neste dispositivo.")
         Text("Score e valuation são modelos heurísticos para investigação, não aconselhamento financeiro. Confirma sempre a fonte, a moeda e a data dos dados.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
