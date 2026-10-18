@@ -221,7 +221,7 @@ function renderSnapshot(s) {
   for(const [id,value] of Object.entries({assetName:s.name,assetTicker:s.symbol,assetSector:s.sector||'—',assetCurrency:s.currency||'—',assetPrice:money(s.price,s.currency),assetChange:pct(s.changePct),assetScore:s.score,assetZone:s.zone,decisionZone:s.zone,assetAvatar:(s.name||s.symbol)[0],decisionText:s.thesis,valuationPill:s.zone})) setText('#'+id,value);
   $('#assetChange').className=s.changePct==null?'':s.changePct>=0?'positive':'negative';
   const quoteTime=s.timestamp?new Date(s.timestamp*1000).toLocaleString('pt-PT',{timeZone:'UTC'})+' UTC':'hora não fornecida';
-   const quoteStale=s.timestamp && Date.now()/1000-s.timestamp>86400?' · STALE':'';
+   const quoteStale=s.timestamp && Date.now()/1000-s.timestamp>259200?' · STALE':'';
    setText('#assetQuoteSource',(s.sources?.quote||'none')+' · '+quoteTime+quoteStale+(s.mode==='demo'?' · DEMO':''));
    setText('#historySource',s.sources?.history==='Demo'?'Histórico sintético':s.sources?.history==='none'?'Sem histórico':s.sources?.history);
   setText('#historyPeriod',s.history?.length?`${s.history[0].label} → ${s.history.at(-1).label}`:'—');
@@ -436,6 +436,20 @@ $('#chartLine').onclick=()=>{chartStyle='line';$('#chartLine').classList.add('ac
 $('#screenScore').oninput=guarded(runScreener);$('#screenZone').onchange=guarded(runScreener);
 $('#addPosition').onclick=guarded(async()=>{const symbol=prompt('Ticker')?.trim().toUpperCase();if(!symbol)return;if(!validSymbol(symbol))throw new Error('Ticker inválido.');const qty=Number(prompt('Quantidade')),avg=Number(prompt('Preço médio'));let quote=null;try{quote=await snapshot(symbol);}catch{}const currency=prompt('Moeda do preço médio (EUR, USD, …)',quote?.currency||'EUR')?.trim().toUpperCase();if(!Number.isFinite(qty)||qty<=0||!Number.isFinite(avg)||avg<=0||!/^[A-Z]{3}$/.test(currency||''))throw new Error('Quantidade, preço ou moeda inválidos.');state.portfolio.push({symbol,qty,avg,currency});localStorage.setItem('ir_portfolio',JSON.stringify(state.portfolio));await renderPortfolio();});
 $('#addWatch').onclick=()=>{const s=prompt('Ticker')?.trim().toUpperCase();if(!s)return;if(!validSymbol(s)){notify('Ticker inválido.',true);return;}if(!state.watch.includes(s)){state.watch.push(s);localStorage.setItem('ir_watch',JSON.stringify(state.watch));guarded(()=>renderWatch())();}};
+let foregroundTimer=null;
+function refreshForegroundMarket(){
+  if(uiContext.router?.current!=='asset'||!state.current)return;
+  quote(state.current).then(q=>{
+    if(!q||state.current!==q.symbol)return;
+    const current=state.snap||{symbol:q.symbol,name:q.name||q.symbol,history:chartRows,breakdown:{},reasons:[],warnings:[],coverage:0,zone:'N/A',sources:{}};
+    const merged={...current,name:current.name||q.name,price:q.price,currency:q.currency||current.currency,changePct:q.changePct,timestamp:q.timestamp,available:true,sources:{...(current.sources||{}),quote:q.source||'none'}};
+    renderSnapshot(merged);
+  }).catch(()=>{});
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'){refreshForegroundMarket();guarded(()=>loadChartRange(chartDays))();}
+});
+foregroundTimer=setInterval(refreshForegroundMarket,60000);
 const app=new AppWidget(document.body,uiContext);
 app.mount();
 guarded(async()=>{
