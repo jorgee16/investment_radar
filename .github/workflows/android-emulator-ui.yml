@@ -5,12 +5,43 @@ concurrency:
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
+  actions: read
 jobs:
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Diagnose the previous Android 15 failure
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os, re, urllib.request, urllib.error
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args):
+                  return None
+          endpoint = 'https://api.github.com/repos/jorgee16/investment_radar/actions/jobs/117797727142/logs'
+          request = urllib.request.Request(endpoint, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          try:
+              response = urllib.request.build_opener(NoRedirect()).open(request, timeout=30)
+          except urllib.error.HTTPError as error:
+              if error.code not in (302, 307):
+                  print('::warning::Previous log unavailable; HTTP ' + str(error.code))
+                  raise SystemExit(0)
+              # GitHub redirects to a signed download; never forward the token.
+              response = urllib.request.urlopen(error.headers['Location'], timeout=30)
+          log = response.read(8 * 1024 * 1024).decode(errors='replace')
+          log = re.sub(r'(?m)^\d{4}-\d\d-\d\dT\S+Z ', '', log)
+          failures = re.findall(r'INSTRUMENTATION_STATUS: stack=(.*?)(?=\nINSTRUMENTATION_STATUS: stream=)', log, re.S)
+          if not failures:
+              failures = ['\n'.join(line for line in log.splitlines()[-180:] if re.search(r'(?i)error|failed|exception|instrumentation|tests run|failures', line))]
+          for failure in failures:
+              detail = '\n'.join(failure.splitlines()[:30])
+              detail = re.sub(r'https?://\S+', '[URL omitted]', detail)
+              detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::notice title=Previous Android 15 failure::' + detail)
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
