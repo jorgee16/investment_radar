@@ -90,7 +90,7 @@ jobs:
         run: |
           import json, pathlib, shutil
           report = json.loads(pathlib.Path('dist/android-validation/result.json').read_text())
-          assert report['passed'] and report['tests'] == 16, report
+          assert report['passed'] and report['tests'] == 17, report
           assert len(list(pathlib.Path('dist/android-validation/screenshots').rglob('*.png'))) >= 15
           shutil.copy2('android/app/build/outputs/apk/release/app-release.apk', 'dist/android-validation/investment-radar-candidate.apk')
       - uses: actions/upload-artifact@v4

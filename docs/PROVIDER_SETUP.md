@@ -77,10 +77,33 @@ as tuas posições e a moeda do preço médio. Não somamos moedas sem conversã
 | Rede (`network`) | Verificar Internet, TLS e acesso ao domínio do provider. |
 | Resposta inválida (`invalid_response`) | Repetir mais tarde; se persistir, rever contrato do endpoint sem partilhar chave ou URL autenticado. |
 
-O teste ignora a cache e valida **cotações**. Não certifica todas as permissões,
-a atualidade em tempo real nem a qualidade financeira dos dados. Cada resultado
+O teste ignora a cache e pede separadamente **cotações, fundamentais, estimativas,
+histórico, resultados e notícias**, nas capacidades suportadas por cada adapter.
+Cada capacidade tem o seu próprio resultado; uma cotação validada não confirma
+acesso aos fundamentais. Não certifica a atualidade em tempo real nem a qualidade
+financeira dos dados. Cada resultado
 mostra símbolo e hora do teste; um novo teste falhado substitui o sucesso anterior.
 Erros e respostas brutas que possam conter credenciais não são mostrados.
+
+### P/E ausente numa ação, por exemplo AIR.PA
+
+Em **Providers**, usa o símbolo exato e consulta o resultado de **Fundamentais**.
+Se indicar plano/permissões, a chave não permite obter esse conjunto de dados;
+o sucesso da cotação ou do gráfico não resolve essa restrição. É necessário acesso
+a fundamentais desse ativo num provider configurado. Não é garantido que adicionar
+outra chave gratuita dê acesso a ações europeias.
+
+O P/E pode ser fornecido diretamente pelo provider. Quando o EODHD disponibiliza
+`Highlights.DilutedEpsTTM`, a aplicação também pode calcular preço / EPS dos últimos
+12 meses, preservando a origem e o período. Este cálculo exige EPS positivo e moeda
+de reporte conhecida e igual à moeda da cotação. A moeda da bolsa não substitui a
+moeda do EPS. Não usamos EPS de um ADR, de outra listagem ou de um ano isolado para
+preencher o P/E de AIR.PA.
+
+O P/E estimado exige dados prospetivos comparáveis: não é obtido do EPS histórico.
+Uma resposta de fundamentais bloqueada pelo plano continua sem P/E; nunca é
+substituída por dados Demo. Os testes com respostas simuladas verificam a aplicação,
+sem comprovar a cobertura de uma conta real.
 
 ## Chaves no Windows, Android e nuvem
 

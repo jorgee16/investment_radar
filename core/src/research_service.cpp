@@ -298,11 +298,17 @@ json ResearchService::snapshot(const std::string &s) {
         m.forward_eps = e->estimated_eps;
     }
     // Cross-provider derivation: price may come from EODHD while EPS/estimates come
-    // from another free provider. Ratios are computed only when units are compatible.
-    if (!m.pe && q && f && f->eps_ttm && *f->eps_ttm > 0 &&
-        (f->currency.empty() || q->currency.empty() || f->currency == q->currency)) {
-        m.pe = q->price / *f->eps_ttm;
-        f->metrics["pe"] = {"Investment Radar", "", "price / aggregated TTM EPS"};
+    // from another configured provider. Ratios are computed only when units are compatible.
+    if (!m.pe && q && f && f->eps_ttm && *f->eps_ttm > 0 && !q->currency.empty() &&
+        f->eps_currency == q->currency) {
+        const auto derived = q->price / *f->eps_ttm;
+        if (std::isfinite(derived)) {
+            m.pe = derived;
+            const auto origin = f->metrics.find("epsTTM");
+            f->metrics["pe"] = {"Investment Radar",
+                                origin == f->metrics.end() ? "" : origin->second.period,
+                                "listing price / TTM EPS; same currency"};
+        }
     }
     if (!m.forward_pe && q && e && e->estimated_eps && *e->estimated_eps > 0 &&
         (!f || f->currency.empty() || q->currency.empty() || f->currency == q->currency)) {

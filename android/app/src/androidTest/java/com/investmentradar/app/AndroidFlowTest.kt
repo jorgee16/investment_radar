@@ -193,6 +193,32 @@ class AndroidFlowTest {
         }
         assertEquals("Financial screens must be native Compose", 0, webCount)
     }
+    @Test fun trailingEpsProducesPeInSummaryAndFinancials() {
+        scenario.close()
+        val key = "fixture-trailing-eps"
+        val root = "https://eodhd.com/api/"
+        val url = root + "v1.1/fundamentals/AIR.PA?api_token=$key&fmt=json"
+        val cache = ApiCache(context)
+        cache.put(root + "real-time/AIR.PA?api_token=$key&fmt=json", """{"close":188,"currency":"EUR","name":"Airbus"}""")
+        cache.put(url, """{"General":{"Type":"Common Stock","Name":"Airbus"},"Highlights":{"DilutedEpsTTM":5,"MostRecentQuarter":"2026-06-30"},"Financials":{"Income_Statement":{"currency_symbol":"EUR"}}}""")
+        cache.put("$url&filter=Earnings", "{}")
+        for (range in listOf(90L, 120L)) for (offset in -1L..1L) {
+            val date = java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(range).plusDays(offset)
+            cache.put(root + "eod/AIR.PA?api_token=$key&fmt=json&period=d&from=$date", "[]")
+        }
+        cache.close()
+        SecureSettings(context).save(JSONObject().put("demo", false).put("eodhdKey", key))
+        start()
+        page(Page.Markets)
+        assertFalse(state().demo)
+        assertEquals(37.6, state().snapshot!!.getDouble("pe"), .001)
+        assertTrue(state().snapshot!!.isNull("forwardPE"))
+        ui.onNodeWithText("37,60").performScrollTo().assertIsDisplayed()
+        capture("live-trailing-pe-summary-fixture")
+        click("asset-tab-2")
+        ui.onNodeWithText("37,60").performScrollTo().assertIsDisplayed()
+        capture("live-trailing-pe-financials-fixture")
+    }
     @Test fun allNavigationAndAssetTabs() {
         for (target in listOf(Page.Portfolio, Page.Watchlist, Page.Screener, Page.Calendar, Page.Providers, Page.Settings)) {
             page(target); capture("nav-${target.name}")

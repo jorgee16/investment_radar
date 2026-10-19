@@ -204,7 +204,7 @@ void tag(Fundamentals &f, const char *key, const std::optional<double> &v,
 }
 bool useful(const Fundamentals &f) {
     return f.pe || f.forward_pe || f.revenue_growth_pct || f.eps_growth_pct || f.fcf_margin_pct ||
-           f.roe_pct || f.debt_to_equity;
+           f.roe_pct || f.debt_to_equity || f.eps_ttm;
 }
 void sort_bars(std::vector<PriceBar> &v) {
     std::sort(v.begin(), v.end(), [](auto &a, auto &b) { return a.label < b.label; });
@@ -295,6 +295,10 @@ std::optional<Fundamentals> EodhdProvider::fundamentals(const std::string &s) {
         return f; // Company earnings ratios are not an ETF valuation model.
     }
     f.currency = str(object(object(j, "Financials"), "Income_Statement"), "currency_symbol");
+    // Only the explicitly trailing diluted EPS is comparable to a trailing P/E.
+    // General.CurrencyCode describes the listing, not the earnings reporting unit.
+    f.eps_ttm = num(h, "DilutedEpsTTM");
+    f.eps_currency = f.currency;
     f.pe = first(h, "PERatio", "TrailingPE");
     if (!f.pe)
         f.pe = num(v, "TrailingPE");
@@ -339,6 +343,7 @@ std::optional<Fundamentals> EodhdProvider::fundamentals(const std::string &s) {
     if (n == 4 && revenue > 0)
         f.fcf_margin_pct = cash / revenue * 100;
     auto period = str(h, "MostRecentQuarter");
+    tag(f, "epsTTM", f.eps_ttm, period, "reported diluted TTM EPS");
     tag(f, "pe", f.pe, period, "TTM");
     tag(f, "forwardPE", f.forward_pe, period, "forward");
     tag(f, "roe", f.roe_pct, period, "TTM");

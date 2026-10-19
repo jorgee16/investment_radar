@@ -55,6 +55,9 @@ struct Fundamentals {
     // Raw normalized input used by the C++ aggregation layer to derive P/E when
     // the provider exposes statements/earnings but not a ready-made ratio.
     std::optional<double> eps_ttm;
+    // Keep the EPS unit attached to its provider when complementary metrics merge.
+    // It must not inherit another provider's reporting currency.
+    std::string eps_currency;
     std::string instrument_type = "unknown";
     FundProfile fund;
 };

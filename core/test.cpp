@@ -146,6 +146,66 @@ int main() {
         CHECK(f->debt_to_equity == .5);
         CHECK(f->fcf_margin_pct == 10);
     });
+    test("EODHD trailing EPS alone remains usable with its period and currency", [] {
+        ir::EodhdProvider p("fixture", [](auto &) {
+            return R"({"General":{"CurrencyCode":"USD"},"Highlights":{"DilutedEpsTTM":"5","MostRecentQuarter":"2026-06-30"},"Financials":{"Income_Statement":{"currency_symbol":"EUR"}}})";
+        });
+        const auto f = p.fundamentals("AIR.PA");
+        CHECK(f && f->eps_ttm == 5);
+        CHECK(f->eps_currency == "EUR");
+        CHECK(!f->pe);
+        CHECK(f->metrics.at("epsTTM").period == "2026-06-30");
+    });
+    test("snapshot derives trailing PE only from positive EPS in the quote currency", [] {
+        for (const auto &currency : {"EUR", "USD", ""}) {
+            for (const auto &eps : {json(5), json(0), json(-5), json(), json("NaN")}) {
+                ir::ResearchConfig c;
+                c.demo = false;
+                c.eodhd_key = "fixture";
+                ir::ResearchService service(c, [&](const std::string &url) -> std::string {
+                    if (url.find("real-time") != url.npos)
+                        return R"({"close":188,"currency":"EUR","name":"Airbus"})";
+                    if (url.find("filter=") != url.npos)
+                        return "{}";
+                    if (url.find("fundamentals") != url.npos)
+                        return json(
+                                   {{"Highlights",
+                                     {{"DilutedEpsTTM", eps}, {"MostRecentQuarter", "2026-06-30"}}},
+                                    {"Financials",
+                                     {{"Income_Statement", {{"currency_symbol", currency}}}}}})
+                            .dump();
+                    return "[]";
+                });
+                const auto snapshot = service.snapshot("AIR.PA");
+                if (std::string(currency) == "EUR" && eps == json(5)) {
+                    CHECK(std::abs(snapshot["pe"].get<double>() - 37.6) < .001);
+                    CHECK(snapshot["metricSources"]["pe"]["period"] == "2026-06-30");
+                    CHECK(snapshot["metricSources"]["epsTTM"]["source"] == "EODHD");
+                } else {
+                    CHECK(snapshot["pe"].is_null());
+                }
+                CHECK(snapshot["forwardPE"].is_null());
+                CHECK(snapshot["mode"] == "live");
+            }
+        }
+    });
+    test("reported PE takes precedence over a derived trailing ratio", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "fixture";
+        ir::ResearchService service(c, [](const std::string &url) -> std::string {
+            if (url.find("real-time") != url.npos)
+                return R"({"close":188,"currency":"EUR","name":"Airbus"})";
+            if (url.find("filter=") != url.npos)
+                return "{}";
+            if (url.find("fundamentals") != url.npos)
+                return R"({"Highlights":{"PERatio":24,"DilutedEpsTTM":5},"Financials":{"Income_Statement":{"currency_symbol":"EUR"}}})";
+            return "[]";
+        });
+        const auto snapshot = service.snapshot("AIR.PA");
+        CHECK(snapshot["pe"] == 24);
+        CHECK(snapshot["metricSources"]["pe"]["source"] == "EODHD");
+    });
     test("EODHD chooses latest completed earnings; growth is not revision", [] {
         ir::EodhdProvider p("fixture", [](auto &) {
             return R"({"History":{"2024-03-31":{"epsActual":1,"epsEstimate":1},"2025-03-31":{"epsActual":1.2,"epsEstimate":1},"2099-03-31":{"epsActual":99,"epsEstimate":1}},"Trend":{"Annual":{"2027":{"earningsEstimateGrowth":0.9}}}})";
@@ -277,9 +337,23 @@ int main() {
         CHECK(f->revenue_growth_pct == 12);
         CHECK(f->roe_pct == 18);
         CHECK(f->eps_ttm == 8);
+        CHECK(f->eps_currency.empty()); // It cannot inherit provider a's EUR unit.
         CHECK(f->source == "Aggregated");
         CHECK(f->metrics.at("revenueGrowth").source == "a");
         CHECK(f->metrics.at("roe").source == "b");
+    });
+    test("aggregated EPS keeps its own currency despite another provider's reporting unit", [] {
+        ir::ProviderManager m;
+        auto a = std::make_shared<FundStub>("a"), b = std::make_shared<FundStub>("b");
+        a->value.currency = "EUR";
+        a->value.revenue_growth_pct = 12;
+        b->value.currency = "USD";
+        b->value.eps_ttm = 5;
+        m.add(a);
+        m.add(b);
+        const auto f = m.fundamentals("AIR.PA");
+        CHECK(f && f->currency == "EUR");
+        CHECK(f->eps_currency == "USD");
     });
     test("config supports Alpha Vantage and Finnhub routing", [] {
         auto c =

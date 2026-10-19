@@ -232,6 +232,7 @@ std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) 
         copy_metric(m.debt_to_equity, v.debt_to_equity, "debtToEquity");
         if (!m.eps_ttm && v.eps_ttm) {
             m.eps_ttm = v.eps_ttm;
+            m.eps_currency = v.eps_currency.empty() ? v.currency : v.eps_currency;
             contributed = true;
             if (auto it = v.metrics.find("epsTTM"); it != v.metrics.end())
                 m.metrics["epsTTM"] = it->second;
