@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -40,20 +41,22 @@ internal fun percent(value: Double?): String = if (value == null) "—" else (if
     val spread = (maximum - minimum).takeIf { it > 0 } ?: (kotlin.math.abs(minimum) * .02).coerceAtLeast(1.0)
     val low = minimum - spread * .12; val high = maximum + spread * .12
     val selected = points.getOrNull(selection)
+    fun indexAt(x: Float, width: Float): Int = (if (candle) (x / width * points.size).toInt()
+        else (x / width * (points.size - 1)).roundToInt()).coerceIn(0, points.lastIndex)
     Column(Modifier.testTag("price-chart")) {
         Text(if (selected == null) "Toca ou arrasta no gráfico para explorar" else "${selected.text("label")} · ${money(selected.number("price"), currency)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
         Row(Modifier.fillMaxWidth()) {
             val grid = MaterialTheme.colorScheme.outlineVariant
-            Canvas(Modifier.weight(1f).height(height.dp)
+            Canvas(Modifier.weight(1f).height(height.dp).clipToBounds()
                 .semantics { contentDescription = "Gráfico de preços com ${points.size} observações, de ${decimal(minimum)} a ${decimal(maximum)}. ${if (candle) "Velas OHLC" else "Linha"}." }
-                .pointerInput(points) { detectTapGestures { p -> selection = (p.x / size.width * (points.size - 1)).roundToInt().coerceIn(0, points.lastIndex) } }
-                .pointerInput(points) { detectDragGestures(onDragStart = { p -> selection = (p.x / size.width * (points.size - 1)).roundToInt().coerceIn(0, points.lastIndex) }) { change, _ -> change.consume(); selection = (change.position.x / size.width * (points.size - 1)).roundToInt().coerceIn(0, points.lastIndex) } }
+                .pointerInput(points, candle) { detectTapGestures { p -> selection = indexAt(p.x, size.width.toFloat()) } }
+                .pointerInput(points, candle) { detectDragGestures(onDragStart = { p -> selection = indexAt(p.x, size.width.toFloat()) }) { change, _ -> change.consume(); selection = indexAt(change.position.x, size.width.toFloat()) } }
             ) {
-                fun x(i: Int) = if (points.size == 1) size.width / 2 else i.toFloat() / (points.size - 1) * size.width
+                fun x(i: Int) = if (candle) (i + .5f) / points.size * size.width else if (points.size == 1) size.width / 2 else i.toFloat() / (points.size - 1) * size.width
                 fun y(v: Double) = (size.height * (1 - (v - low) / (high - low))).toFloat()
                 for (line in 0..3) { val yy = size.height * line / 3; drawLine(grid, Offset(0f, yy), Offset(size.width, yy), 1f) }
                 if (candle) {
-                    val width = (size.width / points.size * .65f).coerceAtLeast(1f)
+                    val width = (size.width / points.size * .65f).coerceIn(1f, 16.dp.toPx())
                     points.forEachIndexed { i, p ->
                         val open = p.number("open") ?: return@forEachIndexed; val close = p.number("close") ?: return@forEachIndexed
                         val ink = if (close >= open) FinanceGreen else FinanceRed

@@ -12,6 +12,7 @@ import android.view.KeyEvent
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.ui.test.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -273,6 +274,8 @@ class AndroidFlowTest {
         ui.onNodeWithText("Velas").performScrollTo().assertIsEnabled().performClick()
         ui.onNodeWithContentDescription("Gráfico de preços com 2 observações, de 45,00 a 350,00. Velas OHLC.").assertExists()
         ui.onNodeWithTag("price-chart").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithContentDescription("Gráfico de preços com 2 observações, de 45,00 a 350,00. Velas OHLC.").performTouchInput { click(Offset(width * .75f, height * .5f)) }
+        ui.onNodeWithText("2026-10-16 · 343,46 USD").assertExists()
         capture("live-combined-candles-fixture")
         ui.onNodeWithText("30,00").performScrollTo().assertIsDisplayed(); capture("live-combined-pe-summary-fixture")
         click("asset-tab-1"); ui.onNodeWithText("Score heurístico").assertExists(); capture("live-combined-analysis-fixture")

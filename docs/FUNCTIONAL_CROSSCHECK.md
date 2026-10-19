@@ -34,6 +34,9 @@ revisões comparáveis e novas previsões não são fabricadas para completar o 
 - Crescimento Finnhub de três anos podia entrar no lugar de crescimento anual.
 - A linha podia usar fecho ajustado enquanto as velas usavam OHLC bruto. Ambos
   usam agora a mesma base; OHLC incompleto/incoerente não ativa velas.
+- A revisão dos screenshots encontrou velas demasiado largas a invadir a escala
+  quando havia poucos pontos. O desenho fica limitado ao gráfico, as velas têm
+  largura máxima e centros interiores; o toque seleciona a barra correspondente.
 
 O relatório de Providers mostra os valores de P/E e P/E estimado efetivamente
 devolvidos. Um P/E fornecido diretamente tem prioridade sobre uma derivação.

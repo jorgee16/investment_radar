@@ -903,7 +903,9 @@ std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) 
     f.roe_pct = metric_num(m, {"roeTTM", "roeRfy", "roeAnnual"});
     f.debt_to_equity = metric_num(m, {"totalDebt/totalEquityAnnual", "totalDebtToEquity",
                                       "debtEquityAnnual", "debtEquityTTM"});
-    auto period = date_ago(0);
+    // Retrieval date is not a financial reporting period. The metric response
+    // does not supply one, so keep it unknown rather than inventing today's date.
+    const std::string period;
     tag(f, "pe", f.pe, period, "provider metric");
     tag(f, "forwardPE", f.forward_pe, period, "provider metric");
     tag(f, "revenueGrowth", f.revenue_growth_pct, period, "provider metric");

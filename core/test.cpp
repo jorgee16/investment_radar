@@ -291,6 +291,7 @@ int main() {
         CHECK(f->sector == "Aerospace & Defense");
         CHECK(f->currency == "EUR");
         CHECK(f->pe == 22.5);
+        CHECK(f->metrics.at("pe").period.empty());
         CHECK(f->revenue_growth_pct == 8.2);
         CHECK(f->eps_growth_pct == 10.3);
         CHECK(f->roe_pct == 17.5);
