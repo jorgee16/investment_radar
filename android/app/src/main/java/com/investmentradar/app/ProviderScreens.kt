@@ -2,20 +2,26 @@ package com.investmentradar.app
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 
 @Composable internal fun ProvidersScreen(state: RadarState, model: RadarViewModel) {
     val context = LocalContext.current
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     var testSymbol by rememberSaveable { mutableStateOf("AAPL") }
     var testError by remember { mutableStateOf<String?>(null) }
     val drafts = remember { mutableStateMapOf<String, String>() } // Deliberately absent from saved-instance state.
@@ -35,7 +41,9 @@ import org.json.JSONObject
             Text(providerNames.getValue(id), fontWeight = FontWeight.Bold)
             Text(if (id in state.configured) "Chave guardada · Android Keystore" else "Sem chave configurada", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("key-status-$id"))
             OutlinedTextField(drafts[id].orEmpty(), { drafts[id] = it }, label = { Text(if (id in state.configured) "Substituir chave" else "Introduzir chave") },
-                visualTransformation = PasswordVisualTransformation(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+                visualTransformation = PasswordVisualTransformation(), singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); keyboard?.hide() }),
                 modifier = Modifier.fillMaxWidth().testTag("key-$id"))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 TextButton({ openArticle(context, providerLinks.getValue(id)) }) { Text("Obter chave ↗") }
@@ -44,6 +52,7 @@ import org.json.JSONObject
             HorizontalDivider()
         }
         Button({
+            focus.clearFocus(); keyboard?.hide()
             val update = JSONObject()
             drafts.forEach { (id, value) -> if (value.isNotBlank()) update.put(providerKeys.getValue(id), value.trim()) }
             drafts.clear(); model.saveSettings(update)

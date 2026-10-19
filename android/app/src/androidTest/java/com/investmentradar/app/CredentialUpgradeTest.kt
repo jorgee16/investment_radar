@@ -20,6 +20,7 @@ class CredentialUpgradeTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
     private val fields = listOf("eodhdKey", "fmpKey", "twelveKey", "alphaKey", "finnhubKey")
+    private val position = Position("upgrade-fixture-position", "AIR.PA", 2.5, 188.0, "EUR")
     private fun fixture(field: String) = "upgrade-fixture-only-$field"
     private fun cipherHash(): String {
         val encoded = context.getSharedPreferences("secure_providers", Context.MODE_PRIVATE).getString("config", null)
@@ -44,7 +45,7 @@ class CredentialUpgradeTest {
                 store.save(config)
                 assertCredentials(store.load())
                 assertTrue(evidence.edit().putString("cipherHash", cipherHash()).putInt("uid", context.applicationInfo.uid).commit())
-                LocalPortfolio(context).write(listOf("AAPL", "AIR.PA"), emptyList(), true)
+                LocalPortfolio(context).write(listOf("AAPL", "AIR.PA"), listOf(position), true)
             }
             "verify" -> {
                 assertTrue("The old installation's evidence was lost", evidence.contains("cipherHash"))
@@ -54,6 +55,7 @@ class CredentialUpgradeTest {
                 assertCredentials(loaded) // Also proves that the original Android Keystore key survived.
                 assertEquals("finnhub", loaded.getJSONObject("routing").getString("quotes"))
                 assertEquals(listOf("AAPL", "AIR.PA"), LocalPortfolio(context).watch())
+                assertEquals(listOf(position), LocalPortfolio(context).positions())
                 val repository = ResearchRepository(context)
                 try {
                     runBlocking {

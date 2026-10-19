@@ -1,6 +1,8 @@
 package com.investmentradar.app
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -10,8 +12,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -51,12 +56,17 @@ import androidx.compose.ui.unit.sp
     }
 }
 @Composable internal fun ScreenerScreen(state: RadarState, model: RadarViewModel) {
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     var minimum by rememberSaveable { mutableFloatStateOf(0f) }; var filter by rememberSaveable { mutableStateOf("") }
     ModeBanner(state, model)
     FinanceCard(title = "Comparar a tua watchlist") {
         Text("Analisa os ativos guardados com o mesmo modelo. Em Live, cada análise pode consumir pedidos do teu plano.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(model::screenWatch, Modifier.testTag("run-screener"), enabled = !state.screeningBusy && state.watch.isNotEmpty()) { Text(if (state.screeningBusy) "A analisar…" else "Analisar ativos") }
-        OutlinedTextField(filter, { filter = it }, label = { Text("Filtrar ticker ou empresa") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("screener-filter"))
+        OutlinedTextField(filter, { filter = it }, label = { Text("Filtrar ticker ou empresa") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); keyboard?.hide() }),
+            modifier = Modifier.fillMaxWidth().testTag("screener-filter"))
         Text("Score mínimo: ${minimum.toInt()}")
         Slider(minimum, { minimum = it }, valueRange = 0f..100f, steps = 19, modifier = Modifier.testTag("screener-minimum"))
         if (state.screeningBusy) LinearProgressIndicator(Modifier.fillMaxWidth())

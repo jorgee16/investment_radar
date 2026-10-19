@@ -145,21 +145,20 @@ jobs:
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
       - name: Test Android provider policy and build APK with JNI core
         run: ./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug --no-daemon
-      - name: Validate mobile UI contracts and packaged assets
+      - name: Validate shared web UI contracts
+        run: node --test scripts/mobile_ui_contract.test.cjs
+      - name: Verify APK contains native C++ core and Compose UI
+        shell: python
         run: |
-          node --test scripts/mobile_ui_contract.test.cjs
-          APK=android/app/build/outputs/apk/debug/app-debug.apk
-          for asset in index.html app.js styles.css; do
-            unzip -p "$APK" "assets/$asset" | cmp - "shared/web/$asset"
-          done
-      - name: Verify APK contains native C++ core and bundled UI
-        run: |
-          APK=android/app/build/outputs/apk/debug/app-debug.apk
-          test -s "$APK"
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libinvestment_radar.so'
-          unzip -l "$APK" | grep -q 'lib/x86_64/libinvestment_radar.so'
-          unzip -l "$APK" | grep -q 'assets/index.html'
-          unzip -l "$APK" | grep -q 'assets/app.js'
+          import zipfile
+          with zipfile.ZipFile('android/app/build/outputs/apk/debug/app-debug.apk') as apk:
+              names = set(apk.namelist())
+              for abi in ('arm64-v8a', 'x86_64'):
+                  assert f'lib/{abi}/libinvestment_radar.so' in names, abi
+              assert 'AndroidManifest.xml' in names
+              dex = [apk.read(name) for name in names if name.startswith('classes') and name.endswith('.dex')]
+              for descriptor in (b'Lcom/investmentradar/app/MainActivity;', b'Lcom/investmentradar/app/RadarAppKt;', b'Landroidx/compose/material3/MaterialTheme;'):
+                  assert any(descriptor in content for content in dex), descriptor
       - uses: actions/upload-artifact@v4
         with:
           name: investment-radar-android-debug-apk

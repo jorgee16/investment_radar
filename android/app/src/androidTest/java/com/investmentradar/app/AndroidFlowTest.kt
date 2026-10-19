@@ -42,6 +42,11 @@ class AndroidFlowTest {
     private lateinit var activity: MainActivity
     private fun state() = activity.model.state.value
     @Before fun launch() {
+        // Exercise the real soft keyboard for every test, independent of the
+        // previous test's orientation/keyboard settings on a hosted emulator.
+        instrumentation.uiAutomation.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1").use { fd ->
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
+        }
         listOf("secure_providers", "providers", "radar_native", "radar_appearance", "quote_polling").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
         ApiCache(context).use { cache -> listOf("quote_values", "quote_budget", "quote_backoff").forEach { cache.writableDatabase.delete(it, null, null) } }
         LocalPortfolio(context).write(defaultWatch, emptyList(), true)
@@ -70,6 +75,18 @@ class AndroidFlowTest {
         ui.waitForIdle()
     }
     private fun fill(tag: String, value: String) { ui.onNodeWithTag(tag).performTextReplacement(value) }
+    private fun finishInput(tag: String) {
+        ui.onNodeWithTag(tag).performImeAction()
+        await("IME finished for $tag") {
+            var closed = false
+            instrumentation.runOnMainSync {
+                closed = ViewCompat.getRootWindowInsets(activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) != true
+            }
+            closed
+        }
+        ui.waitForIdle()
+        ui.onNodeWithTag(tag).assertIsNotFocused()
+    }
     private fun page(page: Page) {
         if (page in listOf(Page.Home, Page.Markets, Page.Portfolio)) click("nav-${page.name}")
         else { click("nav-More"); click("menu-${page.name}") }
@@ -403,12 +420,16 @@ class AndroidFlowTest {
         page(Page.Providers); click("mode-demo"); await("demo restored") { state().demo && state().snapshot?.number("price") == 188.0 }
     }
     @Test fun encryptedCredentialsAndFiveProviderReports() {
-        page(Page.Providers); fill("key-eodhd", "instrumentation-fixture-only"); click("save-keys")
+        page(Page.Providers); fill("key-eodhd", "instrumentation-fixture-only")
+        finishInput("key-eodhd"); click("save-keys")
         await("key stored") { "eodhd" in state().configured && !state().saving }
         val stored = context.getSharedPreferences("secure_providers", 0).getString("config", "")!!
         assertFalse(stored.contains("instrumentation-fixture-only"))
         val actual = SecureSettings(context).load(); assertEquals("instrumentation-fixture-only", actual.getString("eodhdKey"))
-        ui.onNodeWithTag("key-eodhd").assertTextContains("", substring = true)
+        ui.onNodeWithTag("key-eodhd").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("key-eodhd").assert(SemanticsMatcher.expectValue(
+            androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
+        capture("provider-key-saved")
         click("clear-key-eodhd"); await("key removed") { state().configured.isEmpty() && !state().saving }
         click("test-providers"); await("five missing key reports") { state().reports.size == 5 && !state().testing }
         assertTrue(state().reports.all { it.text("code") == "missing_key" && !it.optBoolean("connected") })
@@ -422,7 +443,8 @@ class AndroidFlowTest {
         fill("search-input", "JPM"); ui.onNodeWithTag("search-input").performImeAction()
         await("JPM selected") { state().snapshot?.text("symbol") == "JPM" }; assertEquals(Page.Markets, state().page)
         page(Page.Screener); click("run-screener"); await("screening completed") { !state().screeningBusy && state().screening.size == 6 }
-        fill("screener-filter", "AIR.PA"); ui.onNodeWithTag("screened-AIR.PA").performScrollTo().assertIsDisplayed()
+        fill("screener-filter", "AIR.PA"); finishInput("screener-filter")
+        ui.onNodeWithTag("screened-AIR.PA").performScrollTo().assertIsDisplayed()
         ui.onNodeWithTag("screened-JPM").assertDoesNotExist(); capture("screener-filtered")
         click("quote-AIR.PA"); await("AIR selected") { state().snapshot?.text("symbol") == "AIR.PA" }
     }
