@@ -45,6 +45,7 @@ jobs:
           chmod 600 "$keystore"
           echo "IR_ANDROID_KEYSTORE=$keystore" >> "$GITHUB_ENV"
           echo "IR_ANDROID_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          export IR_ANDROID_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
           keytool -list -keystore "$keystore" -storepass:env IR_ANDROID_STORE_PASSWORD -alias investment-radar >/dev/null
       - name: Build Release and instrumentation APKs and run lint
         working-directory: android
