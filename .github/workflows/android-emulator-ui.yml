@@ -26,21 +26,26 @@ jobs:
           unzip -q "$archive" -d "$RUNNER_TEMP/android-cli-19"
           SDKMANAGER="$RUNNER_TEMP/android-cli-19/cmdline-tools/bin/sdkmanager"
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.0.12077973' 'cmake;3.22.1'
-      - name: Create a temporary validation signing key
-        shell: python
+      # A stable signing identity is mandatory for Android in-place upgrades.
+      # Configure ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD as repository secrets.
+      # Use the ORIGINAL 0.6.3 signing key to preserve installed application data.
+      - name: Restore persistent Android signing key
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          import os, pathlib, secrets, subprocess
-          path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'radar-validation.jks'
-          password = secrets.token_urlsafe(36)
-          print('::add-mask::' + password)
-          child = dict(os.environ, IR_ANDROID_STORE_PASSWORD=password)
-          subprocess.run(['keytool', '-genkeypair', '-keystore', str(path),
-              '-storepass:env', 'IR_ANDROID_STORE_PASSWORD', '-keypass:env', 'IR_ANDROID_STORE_PASSWORD',
-              '-alias', 'investment-radar', '-keyalg', 'RSA', '-keysize', '3072', '-validity', '10000',
-              '-dname', 'CN=Investment Radar Validation,O=Investment Radar,C=PT', '-noprompt'], env=child, check=True)
-          path.chmod(0o600)
-          with open(os.environ['GITHUB_ENV'], 'a') as output:
-              output.write(f'IR_ANDROID_KEYSTORE={path}\nIR_ANDROID_STORE_PASSWORD={password}\n')
+          set -euo pipefail
+          if [[ -z "$ANDROID_KEYSTORE_BASE64" || -z "$ANDROID_KEYSTORE_PASSWORD" ]]; then
+            echo "::error::Stable signing secrets are missing. Refusing to publish a non-upgradeable APK."
+            exit 1
+          fi
+          keystore="$RUNNER_TEMP/investment-radar-signing.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          echo "IR_ANDROID_KEYSTORE=$keystore" >> "$GITHUB_ENV"
+          echo "IR_ANDROID_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          keytool -list -keystore "$keystore" -storepass:env IR_ANDROID_STORE_PASSWORD -alias investment-radar >/dev/null
       - name: Build Release and instrumentation APKs and run lint
         working-directory: android
         run: ./gradlew :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease :app:testReleaseUnitTest -PirTestBuildType=release --no-daemon --console=plain
