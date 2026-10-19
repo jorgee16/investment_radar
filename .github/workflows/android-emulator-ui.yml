@@ -63,20 +63,7 @@ jobs:
           test -c /dev/kvm
           sudo chmod 666 /dev/kvm
       - name: Test installed Release APK on Android 15
-        uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
-        with:
-          api-level: 35
-          target: default
-          arch: x86_64
-          profile: pixel_5
-          cores: 2
-          ram-size: 4096M
-          disable-animations: true
-          emulator-boot-timeout: 900
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -accel on
-          script: |
-            python3 scripts/test_android_apk.py dist/android-inputs/investment-radar-0.6.4.apk dist/android-inputs/instrumentation.apk --serial emulator-5554 --output dist/android-validation --test-class com.investmentradar.app.AndroidFlowTest
-            python3 scripts/test_android_upgrade.py dist/android-inputs/investment-radar-0.6.4.apk dist/android-inputs/upgrade-probe.apk dist/android-inputs/instrumentation.apk --serial emulator-5554 --build-tools "$ANDROID_HOME/build-tools/35.0.0" --output dist/android-validation/future-upgrade --reset-test-device
+        run: python3 scripts/run_android_emulator_ci.py --sdk "$ANDROID_HOME" --cli "$RUNNER_TEMP/android-cli-19/cmdline-tools/bin" --inputs dist/android-inputs --output dist/android-validation
       - name: Record emulator readiness
         if: always()
         shell: python
@@ -143,6 +130,8 @@ jobs:
             dist/android-validation/result.json
             dist/android-validation/emulator-readiness.json
             dist/android-validation/screenshots/
+            dist/android-validation/runner-logs/*.txt
+            dist/android-validation/future-upgrade/
             android/app/build/reports/lint-results-release.*
             android/app/build/test-results/testReleaseUnitTest/
 

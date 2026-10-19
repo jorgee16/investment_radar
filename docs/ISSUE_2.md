@@ -10,6 +10,8 @@ Um teste novo de gráficos tinha adicionalmente uma tentativa de scroll no selet
 
 No workflow geral `39307380450`, Linux, Docker e os dois jobs Windows passaram. O job Android falhou porque ainda exigia `assets/index.html`, `app.js` e `styles.css` dentro da APK nativa Compose. Esses ficheiros pertencem ao frontend web independente e não são inputs do módulo Android. O gate verifica agora o manifesto, as duas bibliotecas JNI e os descritores DEX da Activity, interface nativa e Material3. Os testes web continuam a executar separadamente.
 
+O run `39323214364` parou no runner externo antes de produzir um relatório de instrumentação; os logs desse passo não eram disponibilizados pelo endpoint público. O arranque passou a usar `scripts/run_android_emulator_ci.py`, diretamente com sdkmanager/avdmanager/emulator, KVM e verificação de boot/serviço de pacotes. Cada comando conserva logs e publica um diagnóstico sanitizado em caso de falha. Imagens de disco e dados do dispositivo ficam em armazenamento temporário separado dos artefactos. A publicação continua bloqueada até testes e atualização concluírem com sucesso.
+
 ## Assinatura e distribuição
 
 O workflow conserva a restauração das credenciais persistentes `ANDROID_KEYSTORE_BASE64` e `ANDROID_KEYSTORE_PASSWORD`. O certificado público da APK deve corresponder ao certificado da chave configurada. Nenhum segredo é impresso ou incluído nos artefactos.
