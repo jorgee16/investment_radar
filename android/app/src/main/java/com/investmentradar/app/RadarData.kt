@@ -10,6 +10,7 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 
 internal fun validSymbol(value: String) = value.matches(Regex("[A-Z0-9.^:-]{1,32}"))
 internal fun symbol(value: String) = value.trim().uppercase(Locale.ROOT)
@@ -31,7 +32,7 @@ class NativeCore(context: Context) {
     external fun nativeRequest(path: String, symbol: String, settings: String): String
     @Suppress("unused") // Called synchronously by JNI on a worker thread.
     fun fetchUrl(url: String, bypassCache: Boolean): String = try {
-        JSONObject().put("body", http.get(url, bypassCache)).toString()
+        JSONObject().put("body", http.get(url, bypassCache || (QuoteRequestContext.current.get() != null && ProviderPolicy.isQuoteUrl(url)))).toString()
     } catch (e: ProviderHttpException) {
         JSONObject().put("httpStatus", e.status).toString()
     } catch (_: Exception) { JSONObject().put("error", "network").toString() }
@@ -43,9 +44,12 @@ internal class ResearchRepository(context: Context) {
     private val secure = SecureSettings(context)
     private val configLock = Any()
     private val workers = object : ThreadPoolExecutor(4, 4, 0, TimeUnit.MILLISECONDS, LinkedBlockingQueue<Runnable>()) {
-        override fun terminated() { core.close() }
+        override fun terminated() { core.close(); quoteCache.close() }
     }
     private val dispatcher = workers.asCoroutineDispatcher()
+    private val quoteCache = ApiCache(context)
+    private val pollSettings = QuotePollingSettings(context)
+    private val quoteMutex = quoteRefreshMutex
     private fun decode(raw: String): Any {
         val result = JSONObject(raw)
         check(!result.has("error")) { "Não foi possível obter os dados. Tenta novamente." }
@@ -62,6 +66,39 @@ internal class ResearchRepository(context: Context) {
             val validated = decode(core.nativeRequest("/api/validate", "", current.toString())) as JSONObject
             secure.save(validated)
             decode(core.nativeRequest("/api/settings", "", validated.toString())) as JSONObject
+        }
+    }
+    suspend fun cachedQuotes(symbols: List<String>): Map<String, JSONObject> = withContext(dispatcher) {
+        val config = synchronized(configLock) { secure.load() }
+        quoteCache.readQuotes(quoteCacheScope(config), symbols, pollSettings.intervalMinutes * 60L)
+    }
+    suspend fun refreshQuotes(symbols: List<String>, force: Boolean = false): QuoteRefreshResult = quoteMutex.withLock {
+        withContext(dispatcher) {
+            val config = synchronized(configLock) { secure.load() }
+            val scope = quoteCacheScope(config)
+            val now = java.time.Instant.now().epochSecond
+            val selected = symbols.distinct().filter(::validSymbol)
+            val due = quoteCache.dueQuotes(scope, selected, pollSettings.intervalMinutes * 60L, force)
+            val request = QuoteRequestContext(!force && !config.optBoolean("demo", true), pollSettings.dailyLimit)
+            if (due.isNotEmpty()) {
+                due.forEach { quoteCache.attemptQuote(scope, it, now) }
+                QuoteRequestContext.current.set(request)
+                try {
+                    due.chunked(32).forEach { batch ->
+                        val rows = (decode(core.nativeRequest("/api/quotes", JSONArray(batch).toString(), config.toString())) as JSONArray).objects()
+                        rows.forEach { row ->
+                            if (row.number("price")?.let { it > 0 } == true && row.optBoolean("available") && row.text("mode") == (if (config.optBoolean("demo", true)) "demo" else "live")) quoteCache.saveQuote(scope, row, java.time.Instant.now().epochSecond)
+                            if (!request.budgetReached) row.optJSONArray("issues")?.objects()?.forEach { issue ->
+                                val id = issue.text("providerId")
+                                val key = providerKeys[id]?.let { config.text(it) }.orEmpty()
+                                val host = quoteProviderHosts[id]
+                                if (host != null && key.isNotEmpty() && issue.text("code") in listOf("rate_limit", "authentication", "subscription")) quoteCache.blockQuote(quoteCredentialScope(host, key), issue.text("code"))
+                            }
+                        }
+                    }
+                } finally { QuoteRequestContext.current.remove() }
+            }
+            QuoteRefreshResult(quoteCache.readQuotes(scope, selected, pollSettings.intervalMinutes * 60L), request.budgetReached)
         }
     }
     fun close() { workers.shutdown() }
@@ -103,3 +140,27 @@ internal fun portfolioTotals(positions: List<Position>, quotes: Map<String, JSON
         val known = rows.all { quotes[it.symbol]?.let { q -> q.text("currency") == currency && q.number("price") != null } == true }
         CurrencyTotal(currency, rows.sumOf { it.qty * it.avg }, if (known) rows.sumOf { it.qty * quotes.getValue(it.symbol).number("price")!! } else null)
     }
+
+/** Replace quote fields only: analytical results retain their original provenance. */
+internal fun mergeQuote(previous: JSONObject?, quote: JSONObject): JSONObject {
+    val result = JSONObject((previous?.takeIf { it.text("mode") == quote.text("mode") } ?: JSONObject()).toString())
+    listOf("symbol", "price", "currency", "changePct", "timestamp", "source", "mode", "available", "cacheFetchedAt", "cacheStale").forEach { key ->
+        if (quote.has(key)) result.put(key, quote.get(key))
+    }
+    val name = quote.text("name")
+    if (name.isNotBlank() && (name != quote.text("symbol") || result.text("name").isBlank())) result.put("name", name)
+    if (quote.has("source")) {
+        val sources = JSONObject(result.optJSONObject("sources")?.toString() ?: "{}")
+        result.put("sources", sources.put("quote", quote.get("source")))
+    }
+    return result
+}
+internal fun quoteCacheLabel(quote: JSONObject): String {
+    fun time(key: String) = quote.number(key)?.takeIf { it > 0 }?.let {
+        java.time.Instant.ofEpochSecond(it.toLong()).atZone(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm"))
+    }
+    val stamp = time("timestamp")?.let { "Cotação $it" } ?: "Hora da cotação indisponível"
+    return (if (quote.optBoolean("cacheStale")) "Em cache · " else "") + stamp +
+        (time("cacheFetchedAt")?.let { " · recebida $it" } ?: "")
+}

@@ -172,10 +172,10 @@ void ProviderManager::record_failure(const std::shared_ptr<IMarketDataProvider> 
     else if (e.code == "subscription")
         cooldowns_[id + ":" + capability_name(cap)] = {std::time(nullptr) + 21600, e.code};
 }
-std::optional<Quote> ProviderManager::quote(const std::string &s) {
+std::optional<Quote> ProviderManager::quote(const std::string &s, bool lightweight) {
     for (auto &p : ordered(routing_.quotes, DataCapability::Quotes))
         try {
-            if (auto v = p->quote(s))
+            if (auto v = lightweight ? p->quote_light(s) : p->quote(s))
                 return v;
         } catch (const ProviderError &e) {
             record_failure(p, DataCapability::Quotes, e);

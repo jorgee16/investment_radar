@@ -1,4 +1,4 @@
-# Cross-check funcional — Android 0.6.2
+# Cross-check funcional — Android 0.6.3
 
 ## Acessos observados no dispositivo
 
@@ -63,6 +63,24 @@ Preço / EPS TTM só é permitido com EPS positivo e unidade monetária confirma
 | Tema, recriação, teclado, rotação e insets | `themeAndActivityRestoration`, `rotationKeyboardAndDialog` |
 | Migração de dados antigos WebView → Compose | `legacyWebViewMigrationPreservesData` |
 
+## Atualização de favoritos — 0.6.3
+
+A política de cache, limites e agendamento está documentada em
+[QUOTE_POLLING.md](QUOTE_POLLING.md).
+
+| Funcionalidade | Verificação reproduzível |
+|---|---|
+| Lotes leves, deduplicação, validação antes de pedidos, fallback após quota | Três regressões C++ de lotes de cotações |
+| Migração SQLite v2→v3, isolamento Demo/chaves/routing, frescura e backoff | `quoteCacheMigrationIsolationFreshnessAndBudget` |
+| Limite diário concorrente, reset UTC e ausência de pedidos após esgotamento | Teste anterior e `automaticBudgetStopsRealTransportAndRetainsCachedQuote`, incluindo JNI com limite já esgotado antes do transporte |
+| Preço guardado na lista e Resumo, falha de atualização, recriação e métricas preservadas | `cachedFavoritePriceSurvivesRefreshFailureAndRecreation` |
+| Controlos persistidos, pausa/retoma do primeiro plano, agendamento único e cancelamento | `pollingControlsLifecycleAndBackgroundScheduling` |
+
+Os testes de quota e de cache usam valores controlados e não certificam as quotas
+das contas do utilizador. O teste de agendamento verifica a tarefa WorkManager e
+o seu cancelamento; não garante uma execução pontual em telemóveis físicos sob
+restrições de bateria.
+
 ## Evidência e limites
 
 - As respostas simuladas testam transporte em cache → JNI → adapters C++ →
@@ -76,5 +94,5 @@ Preço / EPS TTM só é permitido com EPS positivo e unidade monetária confirma
 - AIR.PA precisa do teste de fundamentais **desse símbolo** nos providers do
   utilizador. A disponibilidade de AAPL não certifica cobertura europeia.
 - Os relatórios instalados, screenshots e SHA-256 ficam em
-  `dist/android-validation/` e `dist/android/validation-0.6.2.json` após aprovação
+  `dist/android-validation/` e `dist/android/validation-0.6.3.json` após aprovação
   dos gates. Um APK não é promovido quando existe um teste funcional falhado.

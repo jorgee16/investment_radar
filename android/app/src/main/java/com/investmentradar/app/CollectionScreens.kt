@@ -84,6 +84,34 @@ import androidx.compose.ui.unit.sp
             Switch(state.dark, model::setDark, Modifier.testTag("dark-theme"))
         }
     }
+    FinanceCard(title = "Atualização de cotações") {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Atualizar favoritos automaticamente", Modifier.weight(1f))
+            Switch(state.pollingEnabled, { model.savePolling(enabled = it) }, Modifier.testTag("polling-enabled"))
+        }
+        Text("Atualiza cotações dos favoritos e da carteira ao abrir e enquanto a aplicação está ativa. Fundamentais e histórico são carregados à parte.", style = MaterialTheme.typography.bodySmall)
+        var intervalMenu by remember { mutableStateOf(false) }
+        Box {
+            OutlinedButton({ intervalMenu=true }, Modifier.testTag("polling-interval")) { Text("Intervalo: ${state.pollingMinutes} minutos") }
+            DropdownMenu(intervalMenu, { intervalMenu=false }) {
+                listOf(5,15,30,60).forEach { minutes -> DropdownMenuItem(text = { Text("$minutes minutos") }, onClick = { intervalMenu=false; model.savePolling(minutes=minutes) }, modifier = Modifier.testTag("polling-interval-$minutes")) }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Atualizar com a aplicação fechada", Modifier.weight(1f))
+            Switch(state.pollingBackground, { model.savePolling(background=it) }, Modifier.testTag("polling-background"), enabled=state.pollingEnabled)
+        }
+        Text("Opcional: o Android tenta atualizar de hora a hora, com rede e bateria suficiente. Pode adiar os pedidos; não é tempo real.", style = MaterialTheme.typography.bodySmall)
+        var budgetMenu by remember { mutableStateOf(false) }
+        Box {
+            OutlinedButton({ budgetMenu=true }, Modifier.testTag("polling-budget")) { Text("Limite automático: ${state.pollingDailyLimit} pedidos/dia") }
+            DropdownMenu(budgetMenu, { budgetMenu=false }) {
+                listOf(20,50,100,240,500,1000).forEach { limit -> DropdownMenuItem(text = { Text("$limit pedidos/dia") }, onClick = { budgetMenu=false; model.savePolling(dailyLimit=limit) }, modifier = Modifier.testTag("polling-budget-$limit")) }
+            }
+        }
+        Text("O limite conta os pedidos automáticos de cotação, incluindo tentativas de fallback, em todos os providers neste dispositivo (dia UTC). Não substitui as quotas do teu plano; testes e carregamentos manuais usam pedidos adicionais.", style = MaterialTheme.typography.bodySmall)
+        Text("Se o provider recusar pedidos, a aplicação faz uma pausa e mantém o último valor com a respetiva data.", style = MaterialTheme.typography.bodySmall)
+    }
     FinanceCard(title = "Dados e privacidade") {
         Text(if (state.demo) "Modo atual: Demo" else "Modo atual: Live")
         TextButton({ model.navigate(Page.Providers) }, Modifier.testTag("settings-providers")) { Text("Gerir chaves e modo de dados →") }

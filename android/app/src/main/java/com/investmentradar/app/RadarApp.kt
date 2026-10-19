@@ -63,7 +63,7 @@ import org.json.JSONObject
                         }
                         IconButton({ model.toggleWatch() }, Modifier.testTag("toggle-watch")) { Icon(Icons.Default.Star, if (state.symbol in state.watch) "Remover da watchlist" else "Adicionar à watchlist", tint = if (state.symbol in state.watch) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                         IconButton({
-                            val snap = state.snapshot
+                            val snap = state.quotes[state.symbol]?.takeIf { it.has("cacheFetchedAt") }?.let { mergeQuote(state.snapshot,it) } ?: state.snapshot
                             val body = "${snap?.text("name") ?: state.symbol} (${state.symbol}) · ${money(snap?.number("price"), snap?.text("currency").orEmpty())}\nInvestment Radar · ${if (state.demo) "Demonstração: dados sintéticos" else "Dados do provider; confirmar data e fonte"}"
                             runCatching { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, body) }, "Partilhar ativo")) }
                         }) { Icon(Icons.Default.Share, "Partilhar ativo") }
@@ -74,7 +74,7 @@ import org.json.JSONObject
                         }
                         IconButton({ search = true }, Modifier.testTag("open-search")) { Icon(Icons.Default.Search, "Pesquisar ativo") }
                     }
-                    IconButton({ model.refresh() }, Modifier.testTag("refresh"), enabled = state.ready) { Icon(Icons.Default.Refresh, "Atualizar dados") }
+                    IconButton({ model.refresh(forceQuotes = true) }, Modifier.testTag("refresh"), enabled = state.ready) { Icon(Icons.Default.Refresh, "Atualizar dados") }
                 }
                 if (state.page == Page.Markets) {
                     ScrollableTabRow(state.tab, edgePadding = 16.dp, containerColor = MaterialTheme.colorScheme.surface, divider = { HorizontalDivider() }) {
@@ -153,6 +153,8 @@ import org.json.JSONObject
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(if (state.demo) "DEMO · Dados sintéticos" else "LIVE · Dados dos providers", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("data-mode"))
             if (state.page != Page.Markets) Text(if (state.demo) "Demonstração; os valores apresentados não são cotações reais." else "Cotações podem ser diferidas. A cobertura depende do plano de cada provider.", style = MaterialTheme.typography.bodySmall)
+            if (!state.demo && state.page != Page.Markets) Text(if (state.pollingActive) "Favoritos: atualização a cada ${state.pollingMinutes} min" else "Atualização automática pausada", style = MaterialTheme.typography.bodySmall)
+            state.pollingMessage?.takeIf { !state.demo }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (!state.demo && state.configured.isEmpty()) TextButton({ model.navigate(Page.Providers) }, contentPadding = PaddingValues(0.dp)) { Text("Configurar chaves de API") }
         }
     }
@@ -162,6 +164,7 @@ import org.json.JSONObject
         Column(Modifier.weight(1f).padding(end = 8.dp)) {
             Text(ticker, fontWeight = FontWeight.Bold)
             Text(quote?.text("name")?.ifBlank { "Dados indisponíveis" } ?: "A carregar…", maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (quote?.number("cacheFetchedAt") != null && quote.text("mode") != "demo") Text(quoteCacheLabel(quote), maxLines = 2, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(money(quote?.number("price"), quote?.text("currency").orEmpty()), fontWeight = FontWeight.SemiBold)

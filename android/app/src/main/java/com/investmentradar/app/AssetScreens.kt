@@ -20,13 +20,19 @@ import org.json.JSONObject
     val snapshot = state.snapshot
     ModeBanner(state, model)
     if (state.loading) { LinearProgressIndicator(Modifier.fillMaxWidth().testTag("asset-loading")); Text("A carregar ${state.symbol}…") }
+    val cached = state.quotes[state.symbol]?.takeIf { it.number("cacheFetchedAt") != null && it.number("price") != null }
     if (snapshot == null) {
+        if (cached != null) FinanceCard(title = state.symbol) {
+            Text(money(cached.number("price"), cached.text("currency")), fontSize = 38.sp, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("cached-asset-price"))
+            Text(quoteCacheLabel(cached), style = MaterialTheme.typography.bodySmall)
+            Text("A análise completa é carregada separadamente.", style = MaterialTheme.typography.bodySmall)
+        }
         if (!state.loading) EmptyState("Análise indisponível", "Atualiza os dados ou verifica a configuração dos providers.")
         return
     }
     if (state.tab in 1..2) DataAvailability(snapshot) { model.navigate(Page.Providers) }
     when (state.tab) {
-        0 -> OverviewScreen(state, model, snapshot, addPosition)
+        0 -> OverviewScreen(state, model, cached?.let { mergeQuote(snapshot, it) } ?: snapshot, addPosition)
         1 -> AnalysisScreen(snapshot)
         2 -> FinancialsScreen(snapshot)
         3 -> EventsList(state.events, state.auxiliaryLoading) { model.selectAsset(it) }
@@ -58,6 +64,7 @@ import org.json.JSONObject
         val source = snapshot.optJSONObject("sources")?.text("quote").orEmpty()
         val timestamp = snapshot.number("timestamp")?.takeIf { it > 0 }?.let { java.time.Instant.ofEpochSecond(it.toLong()).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm z")) }
         Text("${state.symbol} · ${currency.ifBlank { "moeda desconhecida" }} · ${if (source == "none") "Sem cotação" else source}${timestamp?.let { "\n$it" }.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        if (snapshot.has("cacheFetchedAt") && !state.demo) Text(quoteCacheLabel(snapshot), style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("asset-cache-time"))
         PriceChart(state.history, currency, state.historyLoading, candle && hasOHLC)
         ChartControls(state, model, candle && hasOHLC, { candle = it }, { expanded = true })
         Text(if (state.demo) "Histórico sintético de demonstração; os períodos não representam negociação real." else "Histórico diário. A disponibilidade de velas e datas depende do provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

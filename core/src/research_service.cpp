@@ -201,12 +201,18 @@ json ResearchService::test_providers(const std::string &symbol, const std::strin
     }
     return out;
 }
-json ResearchService::quote(const std::string &symbol) {
+json ResearchService::quote(const std::string &symbol, bool lightweight) {
     if (!valid_symbol(symbol))
         throw std::invalid_argument("Invalid symbol");
     auto &m = active();
     m.clear_diagnostics();
-    auto q = m.quote(symbol);
+    auto q = m.quote(symbol, lightweight);
+    json issues = json::array();
+    for (const auto &issue : m.issues()) {
+        for (const auto &provider : m.catalog())
+            if (provider.name == issue.provider)
+                issues.push_back({{"providerId", provider.id}, {"code", issue.code}});
+    }
     return {{"symbol", symbol},
             {"name", q ? q->name : symbol},
             {"mode", config_.demo ? "demo" : "live"},
@@ -216,7 +222,21 @@ json ResearchService::quote(const std::string &symbol) {
             {"changePct", q ? nullable(q->change_pct) : json(nullptr)},
             {"timestamp", q && q->timestamp ? json(q->timestamp) : json(nullptr)},
             {"source", q ? q->source : "none"},
+            {"issues", issues},
             {"warnings", m.diagnostics()}};
+}
+json ResearchService::quotes(const std::vector<std::string> &symbols) {
+    if (symbols.size() > 32 ||
+        std::any_of(symbols.begin(), symbols.end(), [](const auto &s) { return !valid_symbol(s); }))
+        throw std::invalid_argument("Invalid quote batch");
+    json out = json::array();
+    std::vector<std::string> seen;
+    for (const auto &s : symbols)
+        if (std::find(seen.begin(), seen.end(), s) == seen.end()) {
+            seen.push_back(s);
+            out.push_back(quote(s, true));
+        }
+    return out;
 }
 json ResearchService::status() const {
     return {{"mode", config_.demo ? "demo" : "live"},

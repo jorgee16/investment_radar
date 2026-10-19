@@ -107,6 +107,9 @@ class IMarketDataProvider {
     virtual std::optional<Quote> quote(const std::string &) {
         return std::nullopt;
     }
+    virtual std::optional<Quote> quote_light(const std::string &symbol) {
+        return quote(symbol);
+    }
     virtual std::optional<Fundamentals> fundamentals(const std::string &) {
         return std::nullopt;
     }

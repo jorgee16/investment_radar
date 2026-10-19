@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -29,18 +31,22 @@ internal data class RadarState(
     val reports: List<JSONObject> = emptyList(), val screening: Map<String, JSONObject> = emptyMap(),
     val loading: Boolean = false, val historyLoading: Boolean = false, val auxiliaryLoading: Boolean = false,
     val saving: Boolean = false, val testing: Boolean = false, val screeningBusy: Boolean = false,
-    val error: String? = null, val notice: String? = null
+    val error: String? = null, val notice: String? = null,
+    val pollingEnabled: Boolean = true, val pollingMinutes: Int = 15, val pollingBackground: Boolean = false,
+    val pollingDailyLimit: Int = 240, val pollingActive: Boolean = false, val pollingMessage: String? = null
 )
 
 internal class RadarViewModel(application: Application, private val saved: SavedStateHandle) : AndroidViewModel(application) {
     private val repository = ResearchRepository(application)
     internal val local = LocalPortfolio(application)
     private val prefs = application.getSharedPreferences("radar_appearance", 0)
+    private val polling = QuotePollingSettings(application)
     private val mutable = MutableStateFlow(RadarState(
         page = runCatching { Page.valueOf(saved.get<String>("page") ?: "Home") }.getOrDefault(Page.Home),
         symbol = saved.get<String>("symbol")?.takeIf(::validSymbol) ?: "AIR.PA",
         tab = (saved.get<Int>("tab") ?: 0).coerceIn(0,4), dark = prefs.getBoolean("dark", false),
-        watch = local.watch(), positions = local.positions()
+        watch = local.watch(), positions = local.positions(), pollingEnabled = polling.enabled,
+        pollingMinutes = polling.intervalMinutes, pollingBackground = polling.background, pollingDailyLimit = polling.dailyLimit
     ))
     val state = mutable.asStateFlow()
     private var generation = 0
@@ -49,6 +55,11 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     private var auxiliaryJob: Job? = null
     private var quotesJob: Job? = null
     private var screeningJob: Job? = null
+    private var pollingJob: Job? = null
+    private var foreground = false
+    private var quotesPending = false
+    private var forcePending = false
+    private val assetCache = mutableMapOf<String, JSONObject>()
     private val backStack = ArrayDeque<Page>()
     init { if (local.migrated || !application.getDir("webview", 0).resolve("Default/Local Storage").exists()) completeMigration(JSONObject()) }
     fun completeMigration(raw: JSONObject) {
@@ -60,7 +71,7 @@ internal class RadarViewModel(application: Application, private val saved: Saved
                     val config = repository.request("/api/settings") as JSONObject
                     val status = repository.request("/api/status") as JSONObject
                     mutable.update { it.copy(demo = config.optBoolean("demo", true), configured = configured(config), routing = routes(status)) }
-                    loadCatalog(); refresh()
+                    loadCatalog(); refresh(); updatePolling()
                 }
             }
         } catch (_: Exception) { mutable.update { it.copy(error = "Não foi possível migrar os dados guardados. Reabre a aplicação para tentar novamente.") } }
@@ -102,16 +113,43 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     }
     fun setTab(tab: Int) { saved["tab"] = tab; mutable.update { it.copy(tab = tab) }; if (tab >= 3) loadAuxiliary() }
     fun dismissMessage() { mutable.update { it.copy(error = null, notice = null) } }
-    fun refresh() { loadAsset(); loadQuotes(); if (state.value.page == Page.Calendar || state.value.tab >= 3) loadAuxiliary() }
+    fun refresh(forceQuotes: Boolean = false) { loadAsset(); loadQuotes(forceQuotes); if (state.value.page == Page.Calendar || state.value.tab >= 3) loadAuxiliary() }
+    fun setForeground(active: Boolean) {
+        foreground = active
+        if (!active) { pollingJob?.cancel(); pollingJob = null; quotesJob?.cancel(); quotesPending=false; forcePending=false }
+        else if (state.value.ready && !state.value.demo) loadQuotes()
+        updatePolling()
+    }
+    private fun updatePolling() {
+        val active = foreground && state.value.ready && !state.value.demo && polling.enabled
+        mutable.update { it.copy(pollingActive = active) }
+        QuotePollingWorker.schedule(getApplication(), state.value.ready && !state.value.demo)
+        if (!active) { pollingJob?.cancel(); pollingJob=null; return }
+        if (pollingJob?.isActive == true) return
+        pollingJob = viewModelScope.launch {
+            while (isActive) { delay(polling.intervalMinutes * 60_000L); loadQuotes() }
+        }
+    }
+    fun savePolling(enabled: Boolean = polling.enabled, minutes: Int = polling.intervalMinutes, background: Boolean = polling.background, dailyLimit: Int = polling.dailyLimit) {
+        polling.enabled = enabled; polling.intervalMinutes = minutes; polling.background = background; polling.dailyLimit = dailyLimit
+        mutable.update { it.copy(pollingEnabled=enabled, pollingMinutes=minutes, pollingBackground=background, pollingDailyLimit=dailyLimit) }
+        pollingJob?.cancel(); pollingJob=null; updatePolling()
+        if (foreground && enabled) loadQuotes()
+    }
     private fun loadAsset() {
         assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel()
         val selected = state.value.symbol; val epoch = generation
-        mutable.update { it.copy(snapshot = null, history = emptyList(), news = emptyList(), events = emptyList(), loading = true, historyLoading = false, auxiliaryLoading = false) }
+        mutable.update { it.copy(snapshot = assetCache[selected], history = emptyList(), news = emptyList(), events = emptyList(), loading = true, historyLoading = false, auxiliaryLoading = false) }
         assetJob = viewModelScope.launch {
             try {
+                val cached = repository.cachedQuotes(listOf(selected))
+                if (generation == epoch && state.value.symbol == selected) mutable.update { current ->
+                    current.copy(quotes = current.quotes.toMutableMap().apply { cached.forEach { (s, q) -> put(s, mergeQuote(get(s), q)) } })
+                }
                 val result = repository.request("/api/snapshot", selected) as JSONObject
                 if (generation == epoch && state.value.symbol == selected) {
-                    mutable.update { it.copy(snapshot = result, loading = false, quotes = it.quotes + (selected to result)) }
+                    assetCache[selected] = result
+                    mutable.update { it.copy(snapshot = result, loading = false, quotes = it.quotes + (selected to (it.quotes[selected]?.takeIf { q -> q.number("cacheFetchedAt") != null } ?: result))) }
                     if (state.value.days == 120) mutable.update { it.copy(history = result.optJSONArray("history")?.objects().orEmpty()) }
                     else setRange(state.value.days)
                     if (state.value.tab >= 3) loadAuxiliary()
@@ -133,16 +171,34 @@ internal class RadarViewModel(application: Application, private val saved: Saved
             }
         }
     }
-    private fun loadQuotes() {
-        quotesJob?.cancel(); val epoch = generation
+    private fun loadQuotes(force: Boolean = false) {
+        if (quotesJob?.isActive == true) { quotesPending=true; forcePending=forcePending || force; return }
+        val epoch = generation
         val symbols = (state.value.watch + state.value.positions.map { it.symbol }).distinct()
         quotesJob = viewModelScope.launch {
-            symbols.forEach { selected -> launch {
-                try {
-                    val quote = repository.request("/api/quote", selected) as JSONObject
-                    if (generation == epoch) mutable.update { it.copy(quotes = it.quotes + (selected to (it.quotes[selected]?.takeIf { old -> old.has("score") } ?: quote))) }
-                } catch (e: CancellationException) { throw e } catch (_: Exception) { /* Unknown prices stay unavailable. */ }
-            } }
+            fun publish(values: Map<String, JSONObject>) {
+                if (generation == epoch) mutable.update { current ->
+                    val updated = current.quotes.toMutableMap()
+                    values.forEach { (ticker, quote) -> updated[ticker] = mergeQuote(updated[ticker], quote) }
+                    current.copy(quotes = updated)
+                }
+            }
+            try {
+                publish(repository.cachedQuotes(symbols))
+                if (force || polling.enabled || state.value.demo) {
+                    val result = repository.refreshQuotes(symbols, force)
+                    publish(result.quotes)
+                    if (generation == epoch) mutable.update { it.copy(pollingMessage = if (result.budgetReached) "Limite diário automático atingido. Os últimos valores continuam em cache." else null) }
+                }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) {
+                if (generation == epoch) mutable.update { it.copy(pollingMessage = "Não foi possível atualizar os favoritos. Conservámos os valores em cache.") }
+            } finally {
+                val ownsJob = generation == epoch && quotesJob == coroutineContext[Job]
+                if (ownsJob) quotesJob = null
+                if (ownsJob && quotesPending && foreground) {
+                    val again = forcePending; quotesPending=false; forcePending=false; loadQuotes(again)
+                }
+            }
         }
     }
     private fun loadAuxiliary() {
@@ -185,11 +241,11 @@ internal class RadarViewModel(application: Application, private val saved: Saved
         viewModelScope.launch {
             try {
                 val config = repository.save(update)
-                generation++; assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel(); quotesJob?.cancel(); screeningJob?.cancel()
+                generation++; quotesPending=false; forcePending=false; assetCache.clear(); assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel(); quotesJob?.cancel(); quotesJob=null; screeningJob?.cancel()
                 mutable.update { it.copy(demo = config.optBoolean("demo", true), configured = configured(config), snapshot = null, history = emptyList(), quotes = emptyMap(), screening = emptyMap(), reports = emptyList(), events = emptyList(), news = emptyList(), screeningBusy = false, testing = false) }
                 val status = repository.request("/api/status") as JSONObject
                 mutable.update { it.copy(routing = routes(status), saving = false, notice = "Configuração guardada no dispositivo.") }
-                loadCatalog(); refresh()
+                loadCatalog(); refresh(); updatePolling()
             } catch (e: CancellationException) { throw e } catch (_: Exception) { mutable.update { it.copy(saving = false, error = "Não foi possível guardar a configuração. Tenta novamente.") } }
         }
     }

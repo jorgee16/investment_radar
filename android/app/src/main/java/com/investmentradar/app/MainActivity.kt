@@ -13,6 +13,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : ComponentActivity() {
     internal val model: RadarViewModel by viewModels()
+    override fun onStart() { super.onStart(); model.setForeground(true) }
+    override fun onStop() { model.setForeground(false); super.onStop() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.auto(android.graphics.Color.WHITE, android.graphics.Color.BLACK), navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.WHITE, android.graphics.Color.BLACK))

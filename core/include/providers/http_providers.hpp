@@ -11,6 +11,9 @@ class EodhdProvider final : public IMarketDataProvider {
     EodhdProvider(std::string key, HttpGet get) : key_(std::move(key)), get_(std::move(get)) {}
     ProviderDescriptor descriptor() const override;
     std::optional<Quote> quote(const std::string &) override;
+    std::optional<Quote> quote_light(const std::string &s) override {
+        return quote_impl(s, false);
+    }
     std::optional<Fundamentals> fundamentals(const std::string &) override;
     std::optional<EstimateSnapshot> estimates(const std::string &) override;
     std::vector<EarningsEvent> earnings(const std::string &, const std::string &,
@@ -19,6 +22,7 @@ class EodhdProvider final : public IMarketDataProvider {
     std::vector<NewsItem> news(const std::string &, int) override;
 
   private:
+    std::optional<Quote> quote_impl(const std::string &, bool metadata);
     std::string key_;
     HttpGet get_;
 };
@@ -28,6 +32,9 @@ class FmpProvider final : public IMarketDataProvider {
     FmpProvider(std::string key, HttpGet get) : key_(std::move(key)), get_(std::move(get)) {}
     ProviderDescriptor descriptor() const override;
     std::optional<Quote> quote(const std::string &) override;
+    std::optional<Quote> quote_light(const std::string &s) override {
+        return quote_impl(s, false);
+    }
     std::optional<Fundamentals> fundamentals(const std::string &) override;
     std::optional<EstimateSnapshot> estimates(const std::string &) override;
     std::vector<EarningsEvent> earnings(const std::string &, const std::string &,
@@ -35,21 +42,27 @@ class FmpProvider final : public IMarketDataProvider {
     std::vector<PriceBar> history(const std::string &, int) override;
 
   private:
+    std::optional<Quote> quote_impl(const std::string &, bool metadata);
     std::string key_;
     HttpGet get_;
 };
 
 class AlphaVantageProvider final : public IMarketDataProvider {
   public:
-    AlphaVantageProvider(std::string key, HttpGet get) : key_(std::move(key)), get_(std::move(get)) {}
+    AlphaVantageProvider(std::string key, HttpGet get)
+        : key_(std::move(key)), get_(std::move(get)) {}
     ProviderDescriptor descriptor() const override;
     std::optional<Quote> quote(const std::string &) override;
+    std::optional<Quote> quote_light(const std::string &s) override {
+        return quote_impl(s, false);
+    }
     std::optional<Fundamentals> fundamentals(const std::string &) override;
     std::optional<EstimateSnapshot> estimates(const std::string &) override;
     std::vector<EarningsEvent> earnings(const std::string &, const std::string &,
                                         const std::string &) override;
 
   private:
+    std::optional<Quote> quote_impl(const std::string &, bool metadata);
     std::string key_;
     HttpGet get_;
 };

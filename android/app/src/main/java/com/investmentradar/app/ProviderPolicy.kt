@@ -8,6 +8,7 @@ import java.util.Locale
  * Deliberately has no Android dependencies so it can be unit-tested on the JVM.
  */
 internal object ProviderPolicy {
+    fun isQuoteUrl(url: String): Boolean = listOf("/real-time/", "/quote?", "function=global_quote").any(url.lowercase(Locale.ROOT)::contains)
     private val providerHosts = setOf(
         "eodhd.com", "financialmodelingprep.com", "api.twelvedata.com",
         "www.alphavantage.co", "finnhub.io"

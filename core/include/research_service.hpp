@@ -12,7 +12,8 @@ struct ResearchConfig {
 class ResearchService {
   public:
     ResearchService(const ResearchConfig &, HttpGet);
-    nlohmann::json quote(const std::string &);
+    nlohmann::json quote(const std::string &, bool lightweight = false);
+    nlohmann::json quotes(const std::vector<std::string> &);
     nlohmann::json test_providers(const std::string &, const std::string &provider = "all");
     nlohmann::json snapshot(const std::string &);
     nlohmann::json history(const std::string &, int days = 120);

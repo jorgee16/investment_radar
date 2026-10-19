@@ -19,12 +19,15 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** Platform transport/storage only. Provider normalization and routing live in C++. */
-class ApiCache(ctx: Context) : SQLiteOpenHelper(ctx, "investment_radar_cache.db", null, 2) {
-    override fun onCreate(db: SQLiteDatabase) { db.execSQL("CREATE TABLE http_cache_v2(cache_key TEXT PRIMARY KEY, body TEXT NOT NULL, fetched_at INTEGER NOT NULL)") }
+class ApiCache(ctx: Context) : SQLiteOpenHelper(ctx, "investment_radar_cache.db", null, 3) {
+    override fun onCreate(db: SQLiteDatabase) { db.execSQL("CREATE TABLE http_cache_v2(cache_key TEXT PRIMARY KEY, body TEXT NOT NULL, fetched_at INTEGER NOT NULL)"); createQuoteTables(db) }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("PRAGMA secure_delete=ON")
-        db.execSQL("DROP TABLE IF EXISTS http_cache")
-        onCreate(db)
+        if (oldVersion < 2) {
+            db.execSQL("PRAGMA secure_delete=ON")
+            db.execSQL("DROP TABLE IF EXISTS http_cache")
+            db.execSQL("CREATE TABLE IF NOT EXISTS http_cache_v2(cache_key TEXT PRIMARY KEY, body TEXT NOT NULL, fetched_at INTEGER NOT NULL)")
+        }
+        createQuoteTables(db)
     }
     private fun key(url: String) = MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
     fun get(url: String, ttl: Int): String? {
@@ -41,12 +44,27 @@ class HttpClient(private val cache: ApiCache) {
         val parsed = URL(url)
         require(ProviderPolicy.allowsProviderUrl(parsed)) { "Unsupported provider URL" }
         if (!bypassCache) cache.get(url, ProviderPolicy.ttlSeconds(url))?.let { return it }
+        val quote = ProviderPolicy.isQuoteUrl(url)
+        val scope = quoteCredentialScope(parsed)
+        val context = QuoteRequestContext.current.get()
+        if (quote && !bypassCache && cache.quoteBlocked(scope)) throw ProviderHttpException(429)
+        // Polling bypasses quote response cache, but never bypasses account backoff.
+        if (quote && context != null) {
+            if (cache.quoteBlocked(scope)) throw ProviderHttpException(429)
+            if (context.automatic && !cache.takeQuoteBudget(context.dailyLimit)) {
+                context.budgetReached = true
+                throw ProviderHttpException(429)
+            }
+        }
         val connection = (parsed.openConnection() as HttpURLConnection).apply {
             connectTimeout = 10000; readTimeout = 20000; instanceFollowRedirects = false
             requestMethod = "GET"; setRequestProperty("Accept", "application/json")
         }
         try {
-            if (connection.responseCode != 200) throw ProviderHttpException(connection.responseCode)
+            if (connection.responseCode != 200) {
+                if (quote && connection.responseCode in listOf(401, 403, 429)) cache.blockQuote(scope, when(connection.responseCode) { 429 -> "rate_limit"; 403 -> "subscription"; else -> "authentication" })
+                throw ProviderHttpException(connection.responseCode)
+            }
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             // Cache only valid successful payloads. Never log credential-bearing URLs.
             val value = if (body.trimStart().startsWith("[")) JSONArray(body) else JSONObject(body)

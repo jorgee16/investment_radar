@@ -42,7 +42,8 @@ class AndroidFlowTest {
     private lateinit var activity: MainActivity
     private fun state() = activity.model.state.value
     @Before fun launch() {
-        listOf("secure_providers", "providers", "radar_native", "radar_appearance").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
+        listOf("secure_providers", "providers", "radar_native", "radar_appearance", "quote_polling").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
+        ApiCache(context).use { cache -> listOf("quote_values", "quote_budget", "quote_backoff").forEach { cache.writableDatabase.delete(it, null, null) } }
         LocalPortfolio(context).write(defaultWatch, emptyList(), true)
         start()
     }
@@ -138,6 +139,7 @@ class AndroidFlowTest {
             cache.put(root + "eod/AIR.PA?api_token=$key&fmt=json&period=d&from=$date", "[]")
         }
         cache.close()
+        QuotePollingSettings(context).enabled = false // Fixtures exercise snapshot HTTP cache; polling requires real transport.
         SecureSettings(context).save(JSONObject().put("demo", false).put("eodhdKey", key))
         start()
         search("VUAA.DE")
@@ -208,6 +210,7 @@ class AndroidFlowTest {
             cache.put(root + "eod/AIR.PA?api_token=$key&fmt=json&period=d&from=$date", "[]")
         }
         cache.close()
+        QuotePollingSettings(context).enabled = false // Fixtures exercise snapshot HTTP cache; polling requires real transport.
         SecureSettings(context).save(JSONObject().put("demo", false).put("eodhdKey", key))
         start()
         page(Page.Markets)
@@ -259,6 +262,7 @@ class AndroidFlowTest {
         }
         cache.put(eod + "news?api_token=$key&fmt=json&s=AAPL.US&limit=10", """[{"date":"$today","title":"Notícia de teste dos providers","link":"https://example.org/investment-radar-fixture"}]""")
         cache.close()
+        QuotePollingSettings(context).enabled = false // Fixtures exercise snapshot HTTP cache; polling requires real transport.
         SecureSettings(context).save(JSONObject().put("demo", false).put("eodhdKey", key).put("finnhubKey", key).put("fmpKey", key))
         start(); search("AAPL")
         await("combined provider data") { !state().loading && !state().historyLoading && state().snapshot?.text("symbol") == "AAPL" && state().history.size == 2 }
@@ -457,5 +461,125 @@ class AndroidFlowTest {
         ui.onNodeWithTag("asset-price").assertTextContains("330", substring = true); assertEquals("TSM", state().symbol)
         click("asset-tab-4"); search("AIR.PA"); await("new asset clears old news") { state().snapshot?.text("symbol") == "AIR.PA" }
         assertTrue(state().news.isEmpty()); assertEquals(0, state().tab)
+    }    @Test fun quoteCacheMigrationIsolationFreshnessAndBudget() {
+        val legacy = android.database.sqlite.SQLiteDatabase.create(null)
+        legacy.execSQL("CREATE TABLE http_cache_v2(cache_key TEXT PRIMARY KEY,body TEXT NOT NULL,fetched_at INTEGER NOT NULL)")
+        legacy.execSQL("INSERT INTO http_cache_v2 VALUES('preserved','body',1)")
+        ApiCache(context).use { it.onUpgrade(legacy, 2, 3) }
+        legacy.rawQuery("SELECT body FROM http_cache_v2", null).use { assertTrue(it.moveToFirst()); assertEquals("body", it.getString(0)) }
+        legacy.rawQuery("SELECT count(*) FROM quote_values", null).use { assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0)) }
+        legacy.close()
+        val now = java.time.Instant.now().epochSecond
+        val live = JSONObject().put("demo", false).put("eodhdKey", "cache-fixture")
+        val scope = quoteCacheScope(live)
+        val quote = JSONObject().put("symbol", "AAPL").put("price", 150).put("currency", "USD").put("mode", "live").put("timestamp", now-86400)
+        ApiCache(context).use { cache ->
+            cache.saveQuote(scope, quote, now-1000)
+            val stale=cache.readQuotes(scope, listOf("AAPL"), 900, now).getValue("AAPL")
+            assertTrue(stale.getBoolean("cacheStale")); assertEquals(now-86400, stale.getLong("timestamp"))
+            assertTrue(quoteCacheLabel(stale).startsWith("Em cache"))
+            assertEquals(listOf("AAPL"), cache.dueQuotes(scope, listOf("AAPL"), 900, false, now))
+            cache.attemptQuote(scope, "AAPL", now)
+            assertTrue(cache.dueQuotes(scope, listOf("AAPL"), 900, true, now+29).isEmpty())
+            assertEquals(listOf("AAPL"), cache.dueQuotes(scope, listOf("AAPL"), 900, true, now+30))
+            assertEquals(150.0, cache.readQuotes(scope, listOf("AAPL"), 900, now).getValue("AAPL").getDouble("price"), .001)
+            val demo=JSONObject(live.toString()).put("demo", true)
+            val newKey=JSONObject(live.toString()).put("eodhdKey", "other-fixture")
+            val route=JSONObject(live.toString()).put("routing", JSONObject().put("quotes", "fmp"))
+            for (different in listOf(demo,newKey,route)) assertTrue(cache.readQuotes(quoteCacheScope(different), listOf("AAPL"),900,now).isEmpty())
+            val workers=java.util.concurrent.Executors.newFixedThreadPool(4)
+            try {
+                val attempts=(1..60).map { workers.submit<Boolean> { cache.takeQuoteBudget(20,now) } }
+                assertEquals(20, attempts.count { it.get(10, TimeUnit.SECONDS) })
+            } finally { workers.shutdownNow() }
+            assertTrue(cache.takeQuoteBudget(20, now+86400))
+            val account=quoteCredentialScope("eodhd.com","cache-fixture")
+            assertEquals(account, quoteCredentialScope(java.net.URL("https://eodhd.com/api/real-time/AAPL.US?api_token=cache-fixture&fmt=json")))
+            cache.blockQuote(account,"rate_limit",now)
+            assertTrue(cache.quoteBlocked(account,now+3599)); assertFalse(cache.quoteBlocked(account,now+3600))
+            cache.blockQuote(account,"rate_limit",now+3600)
+            assertTrue(cache.quoteBlocked(account,now+10799)); assertFalse(cache.quoteBlocked(account,now+10800))
+            assertFalse(cache.quoteBlocked(quoteCredentialScope("eodhd.com","new-fixture"),now))
+        }
     }
+    @Test fun automaticBudgetStopsRealTransportAndRetainsCachedQuote() {
+        scenario.close()
+        val config=JSONObject().put("demo",false)
+        providerKeys.values.forEach { config.put(it,"budget-fixture") }
+        SecureSettings(context).save(config)
+        QuotePollingSettings(context).dailyLimit=20
+        val scope=quoteCacheScope(config); val now=java.time.Instant.now().epochSecond
+        ApiCache(context).use { cache ->
+            cache.saveQuote(scope,JSONObject().put("symbol","AAPL").put("price",150).put("currency","USD").put("mode","live").put("available",true),now-1000)
+            repeat(20) { assertTrue(cache.takeQuoteBudget(20,now)) }
+        }
+        val repository=ResearchRepository(context)
+        try {
+            kotlinx.coroutines.runBlocking {
+                val result=repository.refreshQuotes(listOf("AAPL","AAPL"))
+                assertTrue(result.budgetReached)
+                val quote=result.quotes.getValue("AAPL")
+                assertEquals(150.0,quote.getDouble("price"),.001); assertTrue(quote.getBoolean("cacheStale"))
+                assertEquals(now-1000,quote.getLong("cacheFetchedAt"))
+                assertEquals(150.0,repository.cachedQuotes(listOf("AAPL")).getValue("AAPL").getDouble("price"),.001)
+            }
+            ApiCache(context).use { cache ->
+                cache.readableDatabase.rawQuery("SELECT count(*) FROM quote_backoff",null).use { it.moveToFirst(); assertEquals("App budget must not poison provider backoff",0,it.getInt(0)) }
+            }
+        } finally { repository.close() }
+        // Restore a usable Demo Activity for teardown; all previous values stay in the Live namespace.
+        SecureSettings(context).save(JSONObject().put("demo",true)); start()
+        assertEquals(188.0,state().snapshot!!.getDouble("price"),.001)
+        assertTrue(state().quotes.values.none { it.text("mode")=="live" })
+    }
+    @Test fun cachedFavoritePriceSurvivesRefreshFailureAndRecreation() {
+        liveFixture(false)
+        val config=SecureSettings(context).load(); val now=java.time.Instant.now().epochSecond
+        ApiCache(context).use { cache ->
+            cache.saveQuote(quoteCacheScope(config),JSONObject().put("symbol","VUAA.DE").put("name","Vanguard S&P 500 UCITS ETF").put("price",140).put("currency","EUR").put("mode","live").put("available",true).put("source","EODHD").put("timestamp",now-3600),now-1000)
+            cache.blockQuote(quoteCredentialScope("eodhd.com",config.text("eodhdKey")),"rate_limit",now)
+        }
+        restart()
+        await("persisted favorite hydrated") { state().quotes["VUAA.DE"]?.number("price")==140.0 }
+        ui.onNodeWithTag("quote-VUAA.DE").performScrollTo().assertTextContains("140,00",substring=true)
+        capture("polling-cached-favorite-home")
+        click("quote-VUAA.DE")
+        await("snapshot keeps cached latest price") { !state().loading && state().snapshot?.text("symbol")=="VUAA.DE" }
+        ui.onNodeWithTag("asset-price").assertTextContains("140,00",substring=true)
+        ui.onNodeWithTag("asset-cache-time").assertTextContains("Em cache",substring=true)
+        assertEquals("Fundamental snapshot remains independent",132.8,state().snapshot!!.getDouble("price"),.001)
+        scenario.onActivity { it.model.refresh(forceQuotes=true) }
+        await("manual refresh completed") { !state().loading && state().quotes["VUAA.DE"]?.optBoolean("cacheStale")==true }
+        ui.onNodeWithTag("asset-price").assertTextContains("140,00",substring=true)
+        capture("polling-stale-quote-retained")
+        scenario.recreate(); scenario.onActivity { activity=it }
+        await("cached quote after recreation") { state().ready && !state().loading && state().quotes["VUAA.DE"]?.number("price")==140.0 }
+        ui.onNodeWithTag("asset-price").assertTextContains("140,00",substring=true)
+        val merged=mergeQuote(JSONObject().put("mode","live").put("price",100).put("score",70).put("pe",20).put("name","Company"),JSONObject().put("mode","live").put("symbol","AAPL").put("name","AAPL").put("price",200).put("source","Finnhub"))
+        assertEquals(200,merged.getInt("price")); assertEquals(70,merged.getInt("score")); assertEquals(20,merged.getInt("pe")); assertEquals("Company",merged.text("name"))
+    }
+    @Test fun pollingControlsLifecycleAndBackgroundScheduling() {
+        page(Page.Settings)
+        click("polling-interval"); click("polling-interval-5")
+        click("polling-budget"); click("polling-budget-50")
+        click("polling-background")
+        assertTrue(state().pollingBackground); assertEquals(5,state().pollingMinutes); assertEquals(50,state().pollingDailyLimit)
+        capture("polling-settings")
+        page(Page.Providers); click("mode-live")
+        await("foreground polling Live") { !state().saving && !state().demo && state().pollingActive }
+        val manager=androidx.work.WorkManager.getInstance(context)
+        val work=manager.getWorkInfosForUniqueWork("favorite-quote-polling").get(20,TimeUnit.SECONDS)
+        assertEquals(1,work.count { !it.state.isFinished })
+        scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        assertFalse(state().pollingActive)
+        scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        await("foreground polling resumed") { state().pollingActive }
+        page(Page.Settings); click("polling-enabled")
+        await("polling paused") { !state().pollingActive && !state().pollingEnabled }
+        manager.getWorkInfosForUniqueWork("favorite-quote-polling").get(20,TimeUnit.SECONDS).forEach { assertTrue(it.state.isFinished) }
+        restart()
+        assertFalse(state().pollingEnabled); assertTrue(state().pollingBackground); assertEquals(5,state().pollingMinutes); assertEquals(50,state().pollingDailyLimit)
+        page(Page.Settings); capture("polling-paused-settings")
+    }
+
 }

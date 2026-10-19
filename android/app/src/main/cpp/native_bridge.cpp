@@ -83,6 +83,8 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_investmentradar_app_NativeCore_nat
                       {"finnhub", config.finnhub_key.empty() ? "none" : "local"},
                       {"fmp", config.fmp_key.empty() ? "none" : "local"},
                       {"twelve", config.twelve_key.empty() ? "none" : "local"}}}};
+        else if (op == "/api/quotes")
+            data = service.quotes(json::parse(sym).get<std::vector<std::string>>());
         else if (op == "/api/quote")
             data = service.quote(sym.empty() ? "AIR.PA" : sym);
         else if (op == "/api/snapshot")

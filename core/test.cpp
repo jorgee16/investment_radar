@@ -859,5 +859,81 @@ int main() {
         CHECK(provider.quote("AIR.PA")->currency == "EUR");
         CHECK(provider.fundamentals("AIR.PA")->currency == "USD");
     });
+    test("light quote batches deduplicate and never request metadata", [] {
+        for (const auto &provider : {"eodhd", "fmp", "alpha"}) {
+            ir::ResearchConfig c;
+            c.demo = false;
+            if (std::string(provider) == "eodhd")
+                c.eodhd_key = "fixture";
+            if (std::string(provider) == "fmp")
+                c.fmp_key = "fixture";
+            if (std::string(provider) == "alpha")
+                c.alpha_key = "fixture";
+            int calls = 0;
+            ir::ResearchService service(c, [&](const std::string &url) {
+                ++calls;
+                CHECK(url.find("real-time/") != url.npos || url.find("/quote?") != url.npos ||
+                      url.find("GLOBAL_QUOTE") != url.npos);
+                if (std::string(provider) == "alpha")
+                    return std::string(
+                        R"({"Global Quote":{"05. price":"123","10. change percent":"1%"}})");
+                if (std::string(provider) == "fmp")
+                    return std::string(R"([{"price":123}])");
+                return std::string(R"({"close":123,"price":123})");
+            });
+            auto rows = service.quotes({"AIR.PA", "AAPL", "AIR.PA"});
+            CHECK(calls == 2 && rows.size() == 2);
+            CHECK(rows[0]["price"] == 123 && rows[1]["price"] == 123);
+            CHECK(rows[0]["mode"] == "live");
+        }
+    });
+    test("quote batches validate all inputs before sending requests", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "fixture";
+        int calls = 0;
+        ir::ResearchService service(c, [&](const auto &) {
+            ++calls;
+            return "{}";
+        });
+        for (const auto &symbols : {std::vector<std::string>{"AAPL", "bad/symbol"},
+                                    std::vector<std::string>(33, "AAPL")}) {
+            bool rejected = false;
+            try {
+                service.quotes(symbols);
+            } catch (const std::invalid_argument &) {
+                rejected = true;
+            }
+            CHECK(rejected && calls == 0);
+        }
+        CHECK(service.quotes({}).empty());
+    });
+    test("batch quota backoff preserves fallback and Live mode", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "fixture";
+        c.twelve_key = "fixture";
+        int denied = 0, good = 0;
+        ir::ResearchService service(c, [&](const std::string &url) -> std::string {
+            if (url.find("eodhd.com") != url.npos) {
+                ++denied;
+                throw ir::ProviderError("rate_limit", 429);
+            }
+            ++good;
+            return R"({"close":"212","currency":"USD"})";
+        });
+        auto rows = service.quotes({"AAPL", "JPM", "GS"});
+        CHECK(denied == 1 && good == 3);
+        for (const auto &r : rows) {
+            CHECK(r["price"] == 212 && r["source"] == "Twelve Data" && r["mode"] == "live");
+        }
+        CHECK(rows[0]["issues"][0]["providerId"] == "eodhd");
+        c.twelve_key = "";
+        ir::ResearchService failed(
+            c, [](const auto &) -> std::string { throw ir::ProviderError("rate_limit", 429); });
+        for (const auto &r : failed.quotes({"AAPL", "GS"})) {
+            CHECK(r["price"].is_null() && r["available"] == false && r["mode"] == "live");
+        }
+    });
     std::cout << passed << " tests passed\n";
 }

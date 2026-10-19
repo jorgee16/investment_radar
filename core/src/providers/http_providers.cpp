@@ -289,6 +289,9 @@ ProviderDescriptor EodhdProvider::descriptor() const {
              DataCapability::Earnings, DataCapability::News, DataCapability::History}};
 }
 std::optional<Quote> EodhdProvider::quote(const std::string &s) {
+    return quote_impl(s, true);
+}
+std::optional<Quote> EodhdProvider::quote_impl(const std::string &s, bool metadata) {
     if (key_.empty())
         return {};
     auto j = request(get_, "https://eodhd.com/api/real-time/" + enc(eod_symbol(s)) +
@@ -298,7 +301,7 @@ std::optional<Quote> EodhdProvider::quote(const std::string &s) {
         return {};
     auto currency = str(j, "currency"), name = str(j, "name", s);
     auto type = instrument_type(str(j, "type"));
-    if (currency.empty()) {
+    if (metadata && currency.empty()) {
         auto general =
             optional_request(get_, "https://eodhd.com/api/v1.1/fundamentals/" + enc(eod_symbol(s)) +
                                        "?api_token=" + enc(key_) + "&fmt=json&filter=General");
@@ -311,7 +314,7 @@ std::optional<Quote> EodhdProvider::quote(const std::string &s) {
     }
     if (currency.empty())
         currency = listing_currency_hint(s);
-    if (name.empty() || name == s) {
+    if (metadata && (name.empty() || name == s)) {
         auto search = optional_request(get_, "https://eodhd.com/api/search/" + enc(s) +
                                                  "?api_token=" + enc(key_) + "&fmt=json&limit=5");
         if (search.is_array()) {
@@ -516,6 +519,9 @@ ProviderDescriptor FmpProvider::descriptor() const {
              DataCapability::Earnings, DataCapability::History}};
 }
 std::optional<Quote> FmpProvider::quote(const std::string &s) {
+    return quote_impl(s, true);
+}
+std::optional<Quote> FmpProvider::quote_impl(const std::string &s, bool metadata) {
     if (key_.empty())
         return {};
     auto j = request(get_, "https://financialmodelingprep.com/stable/quote?symbol=" + enc(s) +
@@ -527,13 +533,15 @@ std::optional<Quote> FmpProvider::quote(const std::string &s) {
     if (!p || *p <= 0)
         return {};
     auto currency = str(x, "currency");
-    if (currency.empty()) {
+    if (metadata && currency.empty()) {
         auto profile = optional_request(
             get_, "https://financialmodelingprep.com/stable/profile?symbol=" + enc(s) +
                       "&apikey=" + enc(key_));
         if (profile.is_array() && !profile.empty())
             currency = str(profile[0], "currency");
     }
+    if (currency.empty())
+        currency = listing_currency_hint(s);
     return Quote{s,
                  str(x, "name", s),
                  currency,
@@ -669,6 +677,9 @@ ProviderDescriptor AlphaVantageProvider::descriptor() const {
              DataCapability::Earnings}};
 }
 std::optional<Quote> AlphaVantageProvider::quote(const std::string &s) {
+    return quote_impl(s, true);
+}
+std::optional<Quote> AlphaVantageProvider::quote_impl(const std::string &s, bool metadata) {
     if (key_.empty())
         return {};
     const auto symbol = alpha_symbol(s);
@@ -692,9 +703,11 @@ std::optional<Quote> AlphaVantageProvider::quote(const std::string &s) {
         change_pct = *change;
     }
     std::string name = s;
-    auto search = optional_request(
-        get_, "https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=" + enc(symbol) +
-                  "&apikey=" + enc(key_));
+    auto search =
+        metadata ? optional_request(
+                       get_, "https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=" +
+                                 enc(symbol) + "&apikey=" + enc(key_))
+                 : json();
     if (search.contains("bestMatches") && search["bestMatches"].is_array() &&
         !search["bestMatches"].empty())
         name = str(search["bestMatches"][0], "2. name", name);

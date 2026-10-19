@@ -5,6 +5,10 @@ import org.junit.Test
 import java.net.URL
 
 class ProviderPolicyTest {
+    @Test fun pollingOnlyRecognizesQuoteEndpoints() {
+        listOf("https://eodhd.com/api/real-time/AAPL.US?api_token=fixture", "https://financialmodelingprep.com/stable/quote?symbol=AAPL", "https://api.twelvedata.com/quote?symbol=AAPL", "https://finnhub.io/api/v1/quote?symbol=AAPL", "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL").forEach { assertTrue(it, ProviderPolicy.isQuoteUrl(it)) }
+        listOf("https://eodhd.com/api/eod/AAPL.US?fmt=json", "https://financialmodelingprep.com/stable/profile?symbol=AAPL", "https://www.alphavantage.co/query?function=OVERVIEW").forEach { assertFalse(it, ProviderPolicy.isQuoteUrl(it)) }
+    }
     @Test fun allFiveProvidersUseHttpsAndExactHosts() {
         val allowed = listOf(
             "https://eodhd.com/api/real-time/AIR.PA",
