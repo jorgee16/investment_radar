@@ -21,7 +21,7 @@ jobs:
           # Pin CLI 19 to the same JDK 21-compatible toolchain tested locally.
           # Hosted "latest" command-line tools can require a newer Java runtime.
           archive="$RUNNER_TEMP/android-cli-19.zip"
-          curl --fail --location --retry 2 https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -o "$archive"
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 --http1.1 --connect-timeout 30 --max-time 300 https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -o "$archive"
           echo "7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee  $archive" | sha256sum --check
           unzip -q "$archive" -d "$RUNNER_TEMP/android-cli-19"
           SDKMANAGER="$RUNNER_TEMP/android-cli-19/cmdline-tools/bin/sdkmanager"
