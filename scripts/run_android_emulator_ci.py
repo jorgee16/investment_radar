@@ -67,6 +67,11 @@ def main():
         run('Install emulator and Android 15 system image',
             [args.cli / 'sdkmanager', '--sdk_root=' + str(args.sdk), '--install',
              'emulator', 'system-images;android-35;default;x86_64'], 600, 'y\n' * 30)
+        image = args.sdk / 'system-images/android-35/default/x86_64'
+        if not (image / 'package.xml').is_file() or not (image / 'system.img').is_file():
+            install_log = logs / 'install-emulator-and-android-15-system-image.txt'
+            raise RuntimeError('The requested system image is missing from the SDK root\n' +
+                               install_log.read_text(errors='replace')[-9000:])
         run('Create disposable Pixel 5 AVD',
             [args.cli / 'avdmanager', 'create', 'avd', '--force', '--name', 'ir_validation',
              '--package', 'system-images;android-35;default;x86_64', '--device', 'pixel_5'], 120, 'no\n')

@@ -24,7 +24,11 @@ jobs:
           curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 --http1.1 --connect-timeout 30 --max-time 300 https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -o "$archive"
           echo "7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee  $archive" | sha256sum --check
           unzip -q "$archive" -d "$RUNNER_TEMP/android-cli-19"
-          SDKMANAGER="$RUNNER_TEMP/android-cli-19/cmdline-tools/bin/sdkmanager"
+          # avdmanager discovers the SDK from cmdline-tools/<version>/bin;
+          # unlike sdkmanager it has no --sdk_root override.
+          mkdir -p "$ANDROID_HOME/cmdline-tools/19.0"
+          cp -a "$RUNNER_TEMP/android-cli-19/cmdline-tools/." "$ANDROID_HOME/cmdline-tools/19.0/"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/19.0/bin/sdkmanager"
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.0.12077973' 'cmake;3.22.1'
       # A stable signing identity is mandatory for Android in-place upgrades.
       # Configure ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD as repository secrets.
@@ -63,7 +67,7 @@ jobs:
           test -c /dev/kvm
           sudo chmod 666 /dev/kvm
       - name: Test installed Release APK on Android 15
-        run: python3 scripts/run_android_emulator_ci.py --sdk "$ANDROID_HOME" --cli "$RUNNER_TEMP/android-cli-19/cmdline-tools/bin" --inputs dist/android-inputs --output dist/android-validation
+        run: python3 scripts/run_android_emulator_ci.py --sdk "$ANDROID_HOME" --cli "$ANDROID_HOME/cmdline-tools/19.0/bin" --inputs dist/android-inputs --output dist/android-validation
       - name: Record emulator readiness
         if: always()
         shell: python
