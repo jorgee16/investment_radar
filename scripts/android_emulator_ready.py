@@ -31,7 +31,7 @@ def prepare(adb, directory):
     def shell(*args):
         return subprocess.check_output([*adb, 'shell', *args], text=True, timeout=40)
     def focus():
-        return [line.strip() for line in shell('dumpsys', 'window', 'windows').splitlines()
+        return [line.strip() for line in shell('dumpsys', 'window').splitlines()
                 if 'mCurrentFocus=' in line or 'mFocusedApp=' in line]
     try:
         report['initialFocus'] = focus()
