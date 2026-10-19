@@ -32,13 +32,18 @@ json checked_provider_payload(const std::string &body) {
                 message.find("frequency") != message.npos)
                 code = "rate_limit";
             else if (message.find("invalid api") != message.npos ||
-                     message.find("invalid key") != message.npos ||
-                     message.find("apikey") != message.npos ||
-                     message.find("api key") != message.npos)
+                     message.find("invalid key") != message.npos)
                 code = "authentication";
             else if (message.find("subscription") != message.npos ||
-                     message.find("premium") != message.npos)
+                     message.find("premium") != message.npos ||
+                     message.find("don't have access") != message.npos ||
+                     message.find("do not have access") != message.npos)
                 code = "subscription";
+            else if (message.find("apikey") != message.npos ||
+                     message.find("api key") != message.npos ||
+                     message.find("api_token") != message.npos ||
+                     message.find("api token") != message.npos)
+                code = "authentication";
         }
         throw ProviderError(code, status);
     }

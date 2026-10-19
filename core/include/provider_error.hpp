@@ -24,7 +24,7 @@ inline std::string provider_error_message(const std::string &code) {
     if (code == "rate_limit")
         return "Limite de pedidos atingido; tenta novamente mais tarde.";
     if (code == "no_data")
-        return "Sem cotação para este símbolo; verifica a bolsa e a cobertura do plano.";
+        return "Sem dados para este símbolo; verifica a bolsa e a cobertura do plano.";
     if (code == "network")
         return "Falha de rede, TLS ou tempo limite.";
     if (code == "invalid_response")

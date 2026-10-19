@@ -50,7 +50,30 @@ Os nomes exatos dos menus podem mudar. Não registámos contas nem validámos o
 processo autenticado de emissão de chaves nesta sessão. Não prometemos preços,
 quotas ou acesso europeu de um plano gratuito.
 
-## 4. Passar a dados reais
+## 4. Alpha Vantage
+
+1. Abre [a página de chaves](https://www.alphavantage.co/support/#api-key), cria a
+   chave e guarda-a no campo **Alpha Vantage** da aplicação.
+2. Testa AAPL e consulta cada capacidade separadamente. Uma quota atingida não
+   significa que o símbolo não existe.
+3. O adapter usa GLOBAL_QUOTE, OVERVIEW, demonstrações e EARNINGS. Confirma na
+   conta as permissões e o orçamento de pedidos; o teste pode fazer vários.
+
+OVERVIEW pode fornecer P/E e P/E estimado publicados, mesmo quando alguma
+demonstração não está acessível. Não há garantia de cobertura de AIR.PA.
+
+## 5. Finnhub
+
+1. Regista-te em [finnhub.io/register](https://finnhub.io/register) e obtém a chave
+   no dashboard. Guarda-a no campo **Finnhub** da aplicação.
+2. Testa AAPL e verifica **Fundamentais**, **P/E devolvido** e **Resultados**.
+3. Repete com AIR.PA. O perfil de uma empresa, por si só, não confirma acesso às
+   métricas financeiras ou às bolsas europeias.
+
+O adapter implementa cotação, métricas/perfil, surpresas históricas de EPS e
+calendário de resultados. Histórico de preços e notícias vêm dos outros adapters.
+
+## 6. Passar a dados reais
 
 1. Guarda pelo menos uma chave e testa a ligação em **Providers**. O teste pode
    ser feito ainda em Demo e faz pedidos reais apenas aos providers configurados.

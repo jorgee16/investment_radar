@@ -791,6 +791,29 @@ int main() {
         CHECK(service.providers()[4]["connected"] == false);
         CHECK(service.status()["live"] == false);
     });
+    test("HTTP 200 plan messages mentioning API keys retain the correct diagnosis", [] {
+        for (const auto &body :
+             {R"({"Information":"Premium endpoint. Subscribe with your API key."})",
+              R"({"error":"You don't have access to this resource."})"}) {
+            bool thrown = false;
+            try {
+                ir::checked_provider_payload(body);
+            } catch (const ir::ProviderError &e) {
+                CHECK(e.code == "subscription");
+                thrown = true;
+            }
+            CHECK(thrown);
+        }
+        bool thrown = false;
+        try {
+            ir::checked_provider_payload(
+                R"({"Error Message":"Invalid API key. Premium endpoint."})");
+        } catch (const ir::ProviderError &e) {
+            CHECK(e.code == "authentication");
+            thrown = true;
+        }
+        CHECK(thrown);
+    });
     test("HTTP 200 quota errors and malformed payloads are safely classified", [] {
         ir::ResearchConfig config;
         config.demo = false;
