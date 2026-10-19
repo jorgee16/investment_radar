@@ -59,7 +59,7 @@ teclado e tema. `WebViewSanityTest` é um controlo diagnóstico do motor legado;
 não constitui validação da UI Compose.
 
 O workflow usa um certificado temporário e executa a suíte no APK Release
-instalado. Só promove uma APK candidata com 16 testes verdes e screenshots do
+instalado. Só promove uma APK candidata com 22 testes verdes e screenshots do
 mesmo run; a revisão visual dos screenshots continua obrigatória. O runner
 regista o SHA-256 do APK e rejeita crashes e testes vazios.
 
@@ -84,3 +84,29 @@ As regressões usam respostas HTTP em cache de teste e fixtures C++: cotação c
 fundamentais recusados (incluindo cooldown), ETF sem rácios de empresa, perfil e
 proveniência, identidade exata da bolsa e estatísticas históricas. Não validam
 permissões de uma conta real e não contornam limitações do plano gratuito.
+
+### Chaves guardadas entre versões
+
+As chaves ficam cifradas no armazenamento privado da aplicação, com uma chave do
+Android Keystore. Uma atualização mantém as cinco chaves, o modo, as fontes e a
+carteira. Instala a nova APK **por cima da existente**. Os campos de introdução
+ficam vazios por segurança; o estado **Chave guardada · Android Keystore** confirma
+que a chave continua configurada. Não é necessário voltar a colá-la.
+
+Desinstalar a aplicação ou escolher “Limpar dados” apaga esses dados e a chave de
+cifragem. Uma APK com outra assinatura não pode atualizar a instalação existente;
+nesse caso deve corrigir-se a assinatura da APK. As builds de CI com certificados
+temporários servem apenas para validação, não para atualizar a aplicação de uso.
+
+Antes de distribuir uma atualização, verifica a identidade das APKs:
+
+```sh
+python3 scripts/check_android_update.py anterior.apk nova.apk --build-tools "$ANDROID_HOME/build-tools/35.0.0"
+```
+
+O teste `scripts/test_android_upgrade.py` instala a versão anterior num emulador
+descartável, guarda cinco chaves fictícias cifradas, instala a nova com `adb install
+-r` e confirma a manutenção do UID, do conteúdo cifrado, da capacidade de decifrar
+as chaves, dos favoritos e do reconhecimento das cinco chaves na apresentação.
+Também verifica que guardar outras definições não apaga essas chaves. O reset
+inicial requer `--reset-test-device`; não há reset entre as duas versões.

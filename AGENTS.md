@@ -54,3 +54,10 @@ Before making broad changes, inspect the repository and produce a short status a
 - Android state;
 - known security/credential-storage limitations;
 - highest-value next steps.
+
+## Android updates and saved provider credentials
+- User-distributed APK updates must retain application ID `com.investmentradar.app` and the original release signing key. Never generate a new signing identity for an update, and never advise uninstalling an existing installation to work around a signing mismatch.
+- Preserve the `secure_providers` encrypted preferences and Android Keystore alias `investment-radar-providers-v1`. Any future storage migration must decrypt the existing data before replacing it. Changing versions, Demo/Live or provider routing must not clear unrelated provider keys.
+- Before distributing an update, run `scripts/check_android_update.py` against the previously distributed APK. Keep the signing key and password outside Git; do not put provider credentials inside APKs.
+- Temporary signing keys in emulator CI are for disposable validation builds, not upgrades of user installations. Do not promote those APKs as user updates unless their identity passes the same compatibility check.
+- Use `scripts/test_android_upgrade.py` on a disposable emulator to validate five encrypted credentials across a real package update; there must be no uninstall or app-data reset between its seed and verify phases.
