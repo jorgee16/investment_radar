@@ -162,8 +162,8 @@ import org.json.JSONObject
     }
     if (!hasScore) {
         FinanceCard(title = if (applicable) "Análise fundamental indisponível" else "Análise de ETF / fundo") {
-            Text(if (applicable) "Score e valor justo precisam de fundamentais. A análise de preço acima usa o histórico disponível."
-                else "A análise de preço está disponível. O modelo de empresas não se aplica a este fundo.", style = MaterialTheme.typography.bodyMedium)
+            Text(if (applicable) "Score e valor justo precisam de fundamentais. Explora o histórico no painel Mercado."
+                else "Explora o histórico em Mercado. O modelo de empresas não se aplica a este fundo.", style = MaterialTheme.typography.bodyMedium)
         }
         return
     }
@@ -199,7 +199,7 @@ import org.json.JSONObject
         FinancialHistoryDashboard(snapshot)
         EarningsDashboard(snapshot)
         FinanceCard(title = "Dados financeiros") {
-            if (available.isEmpty()) Text("Sem demonstrações financeiras devolvidas pelos providers para este ativo.", style = MaterialTheme.typography.bodyMedium)
+            if (available.isEmpty()) Text("Sem rácios financeiros devolvidos pelos providers para este ativo.", style = MaterialTheme.typography.bodyMedium)
             MetricTiles(available.map { (key, label) ->
                 val metric = snapshot.optJSONObject("metricSources")?.optJSONObject(key)
                 VisualMetric(key, label,
