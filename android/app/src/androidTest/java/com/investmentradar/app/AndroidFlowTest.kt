@@ -70,7 +70,19 @@ class AndroidFlowTest {
     private fun click(tag: String) {
         val node = ui.onNodeWithTag(tag)
         // Scroll only when offscreen; dialog and navigation nodes have no scroll parent.
-        runCatching { node.assertIsDisplayed() }.onFailure { node.performScrollTo() }
+        runCatching { node.assertIsDisplayed() }.onFailure {
+            node.performScrollTo()
+            // performScrollTo targets the nearest scroll container. A period
+            // chip is inside a horizontal strip which can itself be below the
+            // vertical viewport on a short display. Reveal that strip first,
+            // then scroll horizontally to the same requested control.
+            if (runCatching { node.assertIsDisplayed() }.isFailure) {
+                node.onAncestors().filter(SemanticsMatcher.keyIsDefined(
+                    androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange))
+                    .onFirst().performScrollTo()
+                node.performScrollTo()
+            }
+        }
         node.assertIsDisplayed().performClick()
         ui.waitForIdle()
     }
