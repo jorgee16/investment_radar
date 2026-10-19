@@ -150,12 +150,18 @@ class AndroidFlowTest {
         liveFixture(false)
         assertEquals(132.8, state().snapshot!!.getDouble("price"), .001)
         click("asset-tab-1")
-        ui.onAllNodesWithText("EODHD: O plano ou as permissões não permitem este pedido.").onFirst().performScrollTo().assertIsDisplayed()
+        ui.onAllNodesWithText("EODHD: O plano ou as permissões não permitem este pedido.").assertCountEquals(0)
         ui.onNodeWithText("COMPONENTES DO SCORE").assertDoesNotExist()
         capture("live-permission-analysis")
         ui.onNodeWithText("COMPORTAMENTO DO PREÇO").performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("+32,80%").performScrollTo().assertIsDisplayed()
         capture("live-price-analysis")
+        click("analytics-drawdown")
+        ui.onNodeWithTag("analytics-chart-mode").assertTextEquals("Queda desde o pico anterior (%)")
+        capture("live-price-drawdown")
+        click("availability-details")
+        ui.onAllNodesWithText("EODHD: O plano ou as permissões não permitem este pedido.").onFirst().performScrollTo().assertIsDisplayed()
+        capture("live-permission-expanded")
         click("asset-tab-2")
         ui.onNodeWithText("P/E").assertDoesNotExist()
         capture("live-permission-financials")
@@ -249,7 +255,11 @@ class AndroidFlowTest {
                 "income-statement-ttm" to """[{"date":"2026-06-30","revenue":1000}]""",
                 "cash-flow-statement-ttm" to """[{"date":"2026-06-30","freeCashFlow":120}]"""
             )) cache.put(fmp + "$endpoint?symbol=$ticker&apikey=$key", payload)
-            cache.put(fmp + "income-statement?symbol=$ticker&period=annual&limit=2&apikey=$key", """[{"date":"2025-12-31","reportedCurrency":"$currency"}]""")
+            cache.put(fmp + "income-statement?symbol=$ticker&period=annual&limit=5&apikey=$key", """[
+                {"date":"2025-12-31","reportedCurrency":"$currency","revenue":1500000000,"netIncome":-150000000},
+                {"date":"2024-12-31","reportedCurrency":"$currency","revenue":1200000000,"netIncome":0},
+                {"date":"2023-12-31","reportedCurrency":"$currency","revenue":1000000000}
+            ]""")
             for (range in listOf(90L, 120L)) for (offset in -1L..1L) {
                 cache.put(eod + "eod/$code?api_token=$key&fmt=json&period=d&from=${today.minusDays(range).plusDays(offset)}", """[{"date":"2026-06-30","close":100,"adjusted_close":50,"open":95,"high":110,"low":90},{"date":"2026-10-16","close":$price,"open":180,"high":350,"low":175}]""")
             }
@@ -283,11 +293,57 @@ class AndroidFlowTest {
         capture("live-combined-candles-fixture")
         ui.onNodeWithText("30,00").performScrollTo().assertIsDisplayed(); capture("live-combined-pe-summary-fixture")
         click("asset-tab-1"); ui.onNodeWithText("Score heurístico").assertExists(); capture("live-combined-analysis-fixture")
-        click("asset-tab-2"); ui.onNodeWithText("30,00").performScrollTo().assertIsDisplayed(); capture("live-combined-financials-fixture")
+        click("asset-tab-2")
+        ui.onNodeWithTag("financial-quarterly").assertIsNotEnabled()
+        ui.onNodeWithText("-150,0 M").assertExists()
+        click("financial-period-0"); ui.onNodeWithTag("financial-netIncome-value").assertTextEquals("—")
+        ui.onNodeWithTag("financial-selected-period").assertTextEquals("2023-12-31")
+        capture("live-statement-missing-value-fixture")
+        click("financial-period-1"); ui.onNodeWithTag("financial-netIncome-value").assertTextEquals("0,00")
+        capture("live-statement-zero-value-fixture")
+        click("financial-period-2"); capture("live-statement-negative-value-fixture")
+        ui.onNodeWithText("30,00").performScrollTo().assertIsDisplayed(); capture("live-combined-financials-fixture")
         click("asset-tab-3"); await("live calendar fallback") { !state().auxiliaryLoading && state().events.isNotEmpty() }
         assertEquals("Finnhub", state().events.single().text("source")); assertNull(state().events.single().number("epsActual")); capture("live-combined-results-fixture")
         click("asset-tab-4"); await("live news") { !state().auxiliaryLoading && state().news.isNotEmpty() }
         ui.onNodeWithText("Notícia de teste dos providers").assertIsDisplayed(); capture("live-combined-news-fixture")
+    }
+    @Test fun interactiveFinancialChartsSwitchFrequencyAndInspectPeriods() {
+        page(Page.Markets); click("asset-tab-2")
+        ui.onNodeWithTag("financial-history").assertExists()
+        ui.onNodeWithTag("financial-selected-period").assertTextEquals("2025-12-31")
+        capture("visual-financial-annual")
+        click("financial-quarterly")
+        ui.onNodeWithTag("financial-selected-period").assertTextEquals("2025-12-28")
+        click("financial-period-0")
+        ui.onNodeWithTag("financial-selected-period").assertTextEquals("2025-03-28")
+        capture("visual-financial-quarterly")
+        ui.onNodeWithTag("financial-chart").performScrollTo().performTouchInput { click(Offset(width * .65f, height * .4f)) }
+        ui.onNodeWithTag("financial-selected-period").assertTextEquals("2025-09-28")
+        ui.onNodeWithTag("earnings-history").performScrollTo()
+        click("earnings-period-0")
+        ui.onNodeWithTag("earnings-selected-period").assertTextEquals("2025-03-28")
+        capture("visual-eps-comparison")
+        click("metric-pe")
+        ui.onNodeWithTag("metric-close").assertIsDisplayed(); capture("visual-metric-details"); click("metric-close")
+        orient(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
+        click("financial-annual"); ui.onNodeWithTag("financial-selected-period").assertTextEquals("2025-12-31")
+        capture("visual-financial-landscape", true)
+    }
+    @Test fun visualAnalysisSeparatesMarketModelAndAnalystConsensus() {
+        page(Page.Markets); click("asset-tab-1")
+        ui.onNodeWithTag("analysis-score").assertExists(); capture("visual-model-score")
+        click("analysis-analysts")
+        ui.onNodeWithTag("analyst-consensus").assertExists()
+        ui.onNodeWithText("COMPONENTES DO SCORE").assertDoesNotExist()
+        capture("visual-analyst-distribution")
+        click("analysis-market"); click("analytics-drawdown")
+        ui.onNodeWithTag("analytics-chart-mode").assertTextEquals("Queda desde o pico anterior (%)")
+        capture("visual-market-drawdown")
+        click("metric-maxDrawdownPct"); ui.onNodeWithTag("metric-close").assertIsDisplayed()
+        capture("visual-risk-details"); click("metric-close")
+        page(Page.Settings); click("dark-theme"); page(Page.Markets); click("asset-tab-2")
+        ui.onNodeWithTag("financial-chart").performScrollTo().assertIsDisplayed(); capture("visual-financial-dark")
     }
     @Test fun allNavigationAndAssetTabs() {
         for (target in listOf(Page.Portfolio, Page.Watchlist, Page.Screener, Page.Calendar, Page.Providers, Page.Settings)) {

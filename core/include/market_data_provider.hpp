@@ -26,6 +26,22 @@ struct FundProfile {
     std::string isin, issuer, domicile, index, inception_date;
 };
 
+// Keep complete statement rows together: periods, reporting units and providers
+// must never be mixed to manufacture a comparable financial series.
+struct FinancialPeriod {
+    std::string period, frequency, currency, source;
+    std::optional<double> revenue, net_income, eps;
+};
+struct EarningsObservation {
+    std::string period, source;
+    std::optional<double> actual, estimated;
+};
+struct AnalystConsensus {
+    std::string currency, source, as_of;
+    std::optional<double> target;
+    std::optional<double> strong_buy, buy, hold, sell, strong_sell;
+};
+
 struct Quote {
     std::string symbol;
     std::string name;
@@ -60,6 +76,8 @@ struct Fundamentals {
     std::string eps_currency;
     std::string instrument_type = "unknown";
     FundProfile fund;
+    std::vector<FinancialPeriod> financials;
+    std::optional<AnalystConsensus> analysts;
 };
 
 struct EstimateSnapshot {
@@ -68,6 +86,7 @@ struct EstimateSnapshot {
     std::optional<double> estimated_eps;
     std::string source;
     Provenance metrics;
+    std::vector<EarningsObservation> history;
 };
 
 struct EarningsEvent {

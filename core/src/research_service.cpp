@@ -1,6 +1,7 @@
 #include "research_service.hpp"
 #include "investment_engine.hpp"
 #include "json_utils.hpp"
+#include "price_analysis.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -93,6 +94,16 @@ class DemoProvider final : public IMarketDataProvider {
             f.fcf_margin_pct.reset();
             f.roe_pct.reset();
             f.debt_to_equity.reset();
+        } else {
+            for (int i = 0; i < 4; ++i) {
+                f.financials.push_back({std::to_string(2022 + i) + "-12-31", "annual", d->currency,
+                                        "Demo", 40e9 + i * 9e9, 4e9 + i * 2e9, 2.0 + i * .7});
+                f.financials.push_back(
+                    {"2025-" + std::string(i < 3 ? "0" : "") + std::to_string((i + 1) * 3) + "-28",
+                     "quarterly", d->currency, "Demo", 12e9 + i * 1e9, 1e9 + i * 3e8, .6 + i * .1});
+            }
+            f.analysts = AnalystConsensus{
+                d->currency, "Demo", "2025-12-31", d->price * 1.18, 8, 12, 5, 2, 1};
         }
         return f;
     }
@@ -100,7 +111,12 @@ class DemoProvider final : public IMarketDataProvider {
         auto d = demo_row(s);
         if (!d || std::string(d->sector) == "ETF")
             return {};
-        return EstimateSnapshot{d->surprise, d->revisions, std::nullopt, "Demo", {}};
+        EstimateSnapshot e{d->surprise, d->revisions, std::nullopt, "Demo", {}};
+        for (int i = 0; i < 4; ++i)
+            e.history.push_back(
+                {"2025-" + std::string(i < 3 ? "0" : "") + std::to_string((i + 1) * 3) + "-28",
+                 "Demo", .6 + i * .15, .65 + i * .1});
+        return e;
     }
     std::vector<PriceBar> history(const std::string &s, int) override {
         auto d = demo_row(s);
@@ -407,20 +423,36 @@ json ResearchService::snapshot(const std::string &s) {
     describe(DataCapability::Estimates, bool(e), !fund);
     describe(DataCapability::History, !h.empty());
     // Descriptive observations, not a score, recommendation or dividend-inclusive return.
-    json price_stats = nullptr;
-    std::erase_if(h, [](const auto &bar) { return !std::isfinite(bar.price) || bar.price <= 0; });
-    std::sort(h.begin(), h.end(), [](const auto &a, const auto &b) { return a.label < b.label; });
-    if (h.size() >= 2 && h.front().label != h.back().label) {
-        const auto [low, high] = std::minmax_element(
-            h.begin(), h.end(), [](const auto &a, const auto &b) { return a.price < b.price; });
-        price_stats = {{"from", h.front().label},
-                       {"to", h.back().label},
-                       {"observations", h.size()},
-                       {"changePct", (h.back().price / h.front().price - 1) * 100},
-                       {"low", low->price},
-                       {"high", high->price},
-                       {"source", h.front().source}};
+    auto price_stats = price_statistics(h);
+    json financials = json::array(), earnings_history = json::array(), analysts = nullptr;
+    if (f) {
+        for (const auto &p : f->financials)
+            financials.push_back({{"period", p.period},
+                                  {"frequency", p.frequency},
+                                  {"currency", p.currency},
+                                  {"source", p.source},
+                                  {"revenue", nullable(p.revenue)},
+                                  {"netIncome", nullable(p.net_income)},
+                                  {"eps", nullable(p.eps)}});
+        if (f->analysts) {
+            const auto &a = *f->analysts;
+            analysts = {{"currency", a.currency},
+                        {"source", a.source},
+                        {"asOf", a.as_of},
+                        {"target", nullable(a.target)},
+                        {"strongBuy", nullable(a.strong_buy)},
+                        {"buy", nullable(a.buy)},
+                        {"hold", nullable(a.hold)},
+                        {"sell", nullable(a.sell)},
+                        {"strongSell", nullable(a.strong_sell)}};
+        }
     }
+    if (e)
+        for (const auto &p : e->history)
+            earnings_history.push_back({{"period", p.period},
+                                        {"source", p.source},
+                                        {"actual", nullable(p.actual)},
+                                        {"estimated", nullable(p.estimated)}});
     return {{"symbol", s},
             {"name", f && !f->name.empty() && f->name != s ? f->name
                      : q                                   ? q->name
@@ -429,6 +461,9 @@ json ResearchService::snapshot(const std::string &s) {
             {"analysisApplicable", !fund},
             {"availability", availability},
             {"priceStatistics", price_stats},
+            {"financialHistory", financials},
+            {"earningsHistory", earnings_history},
+            {"analysts", analysts},
             {"fund",
              {{"isin", f ? f->fund.isin : ""},
               {"issuer", f ? f->fund.issuer : ""},

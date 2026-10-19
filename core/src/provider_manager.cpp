@@ -240,6 +240,22 @@ std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) 
         copy_metric(m.fcf_margin_pct, v.fcf_margin_pct, "fcfMargin");
         copy_metric(m.roe_pct, v.roe_pct, "roe");
         copy_metric(m.debt_to_equity, v.debt_to_equity, "debtToEquity");
+        // Pick each statement frequency atomically from the first capable
+        // provider; never join different reporting currencies or fiscal dates.
+        for (auto frequency : {"annual", "quarterly"}) {
+            if (std::none_of(m.financials.begin(), m.financials.end(),
+                             [&](const auto &p) { return p.frequency == frequency; })) {
+                for (const auto &p : v.financials)
+                    if (p.frequency == frequency) {
+                        m.financials.push_back(p);
+                        contributed = true;
+                    }
+            }
+        }
+        if (!m.analysts && v.analysts) {
+            m.analysts = v.analysts;
+            contributed = true;
+        }
         if (!m.eps_ttm && v.eps_ttm) {
             m.eps_ttm = v.eps_ttm;
             m.eps_currency = v.eps_currency;
@@ -269,7 +285,8 @@ std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) 
     const auto &m = *merged;
     if (m.instrument_type == "unknown" && m.name.empty() && m.sector.empty() &&
         m.currency.empty() && !m.pe && !m.forward_pe && !m.revenue_growth_pct &&
-        !m.eps_growth_pct && !m.fcf_margin_pct && !m.roe_pct && !m.debt_to_equity && !m.eps_ttm)
+        !m.eps_growth_pct && !m.fcf_margin_pct && !m.roe_pct && !m.debt_to_equity && !m.eps_ttm &&
+        m.financials.empty() && !m.analysts)
         return {};
     return merged;
 }
@@ -295,6 +312,10 @@ std::optional<EstimateSnapshot> ProviderManager::estimates(const std::string &s)
                 copy(merged->earnings_surprise_pct, v->earnings_surprise_pct, "earningsSurprise");
                 copy(merged->estimate_revision_pct, v->estimate_revision_pct, "estimateRevision");
                 copy(merged->estimated_eps, v->estimated_eps, "estimatedEPS");
+                if (merged->history.empty() && !v->history.empty()) {
+                    merged->history = v->history;
+                    contributed = true;
+                }
                 if (contributed) {
                     if (merged->source.empty())
                         merged->source = v->source;
@@ -308,7 +329,7 @@ std::optional<EstimateSnapshot> ProviderManager::estimates(const std::string &s)
             diagnostics_.push_back(p->descriptor().name + ": request failed; fallback attempted");
         }
     if (!merged || (!merged->earnings_surprise_pct && !merged->estimate_revision_pct &&
-                    !merged->estimated_eps))
+                    !merged->estimated_eps && merged->history.empty()))
         return {};
     return merged;
 }

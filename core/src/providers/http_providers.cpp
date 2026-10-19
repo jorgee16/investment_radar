@@ -244,7 +244,25 @@ void tag(Fundamentals &f, const char *key, const std::optional<double> &v,
 }
 bool useful(const Fundamentals &f) {
     return f.pe || f.forward_pe || f.revenue_growth_pct || f.eps_growth_pct || f.fcf_margin_pct ||
-           f.roe_pct || f.debt_to_equity || f.eps_ttm;
+           f.roe_pct || f.debt_to_equity || f.eps_ttm || !f.financials.empty() || f.analysts;
+}
+void statement(Fundamentals &f, const json &row, const std::string &period,
+               const std::string &frequency, const std::string &currency, const char *revenue,
+               const char *income, const char *eps) {
+    if (period.empty() || period > date_ago(0))
+        return;
+    FinancialPeriod p{period,           frequency,    currency, f.source, num(row, revenue),
+                      num(row, income), num(row, eps)};
+    if (p.revenue || p.net_income || p.eps)
+        f.financials.push_back(p);
+}
+void earnings_observation(EstimateSnapshot &e, const json &row, const std::string &period,
+                          const char *actual, const char *estimated) {
+    if (period.empty() || period > date_ago(0) || e.history.size() >= 8)
+        return;
+    auto a = num(row, actual), b = num(row, estimated);
+    if (a || b)
+        e.history.push_back({period, e.source, a, b});
 }
 void align_ohlc(PriceBar &bar) {
     auto clear = [&] {
@@ -382,6 +400,33 @@ std::optional<Fundamentals> EodhdProvider::fundamentals(const std::string &s) {
     f.eps_growth_pct = pct(num(h, "QuarterlyEarningsGrowthYOY"));
     auto financials = object(j, "Financials"),
          bs = object(object(financials, "Balance_Sheet"), "quarterly");
+    const auto statements = object(financials, "Income_Statement");
+    for (auto frequency : {"yearly", "quarterly"}) {
+        auto rows = object(statements, frequency);
+        int count = 0;
+        for (auto it = rows.rbegin(); it != rows.rend() && count < 8; ++it, ++count)
+            statement(f, it.value(), str(it.value(), "date", it.key()),
+                      std::string(frequency) == "yearly" ? "annual" : "quarterly", f.currency,
+                      "totalRevenue", "netIncome", "eps");
+    }
+    auto ratings = object(j, "AnalystRatings");
+    AnalystConsensus consensus;
+    consensus.source = f.source;
+    consensus.currency = str(g, "CurrencyCode");
+    consensus.as_of = str(g, "UpdatedAt");
+    consensus.target = num(ratings, "TargetPrice");
+    auto count = [&](const char *key) -> std::optional<double> {
+        auto n = num(ratings, key);
+        return n && *n >= 0 && std::floor(*n) == *n ? n : std::nullopt;
+    };
+    consensus.strong_buy = count("StrongBuy");
+    consensus.buy = count("Buy");
+    consensus.hold = count("Hold");
+    consensus.sell = count("Sell");
+    consensus.strong_sell = count("StrongSell");
+    if (consensus.target || consensus.strong_buy || consensus.buy || consensus.hold ||
+        consensus.sell || consensus.strong_sell)
+        f.analysts = consensus;
     auto balance = latest(bs);
     auto debt = num(balance, "totalDebt"), equity = num(balance, "totalStockholderEquity");
     if (debt && equity && *equity > 0)
@@ -434,6 +479,8 @@ std::optional<EstimateSnapshot> EodhdProvider::estimates(const std::string &s) {
     auto hist = object(root, "History");
     EstimateSnapshot e;
     e.source = "EODHD";
+    for (auto it = hist.rbegin(); it != hist.rend(); ++it)
+        earnings_observation(e, it.value(), it.key(), "epsActual", "epsEstimate");
     for (auto it = hist.rbegin(); it != hist.rend(); ++it) {
         if (it.key() > date_ago(0))
             continue;
@@ -444,7 +491,8 @@ std::optional<EstimateSnapshot> EodhdProvider::estimates(const std::string &s) {
             break;
         }
     } // Earnings growth is not a historical revision of the same forecast.
-    return e.earnings_surprise_pct ? std::optional<EstimateSnapshot>(e) : std::nullopt;
+    return e.earnings_surprise_pct || !e.history.empty() ? std::optional<EstimateSnapshot>(e)
+                                                         : std::nullopt;
 }
 std::vector<EarningsEvent> EodhdProvider::earnings(const std::string &s, const std::string &from,
                                                    const std::string &to) {
@@ -564,7 +612,7 @@ std::optional<Fundamentals> FmpProvider::fundamentals(const std::string &s) {
                             "?symbol=" + enc(s) + extra + "&apikey=" + enc(key_));
     };
     auto r = get("ratios-ttm"), km = get("key-metrics-ttm"),
-         inc = completed_rows(get("income-statement", "&period=annual&limit=2"));
+         inc = completed_rows(get("income-statement", "&period=annual&limit=5"));
     std::string period;
     if (r.is_array() && !r.empty()) {
         f.pe = first(r[0], "priceToEarningsRatioTTM", "peRatioTTM");
@@ -580,6 +628,9 @@ std::optional<Fundamentals> FmpProvider::fundamentals(const std::string &s) {
         auto &a = inc[0];
         period = str(a, "date");
         f.currency = str(a, "reportedCurrency");
+        for (auto &row : inc)
+            statement(f, row, str(row, "date"), "annual", str(row, "reportedCurrency"), "revenue",
+                      "netIncome", "epsDiluted");
         if (inc.size() > 1) {
             auto &b = inc[1];
             f.revenue_growth_pct = growth(num(a, "revenue"), num(b, "revenue"));
@@ -608,6 +659,8 @@ std::optional<EstimateSnapshot> FmpProvider::estimates(const std::string &s) {
     auto base = "https://financialmodelingprep.com/stable/";
     auto er = completed_rows(
         request(get_, std::string(base) + "earnings?symbol=" + enc(s) + "&apikey=" + enc(key_)));
+    for (auto &x : er)
+        earnings_observation(e, x, str(x, "date"), "epsActual", "epsEstimated");
     for (auto &x : er) {
         auto a = num(x, "epsActual"), b = num(x, "epsEstimated");
         if (a && b && *b != 0) {
@@ -616,7 +669,8 @@ std::optional<EstimateSnapshot> FmpProvider::estimates(const std::string &s) {
             break;
         }
     } // Forecasts for different fiscal years are not estimate revisions.
-    return e.earnings_surprise_pct ? std::optional<EstimateSnapshot>(e) : std::nullopt;
+    return e.earnings_surprise_pct || !e.history.empty() ? std::optional<EstimateSnapshot>(e)
+                                                         : std::nullopt;
 }
 std::vector<EarningsEvent> FmpProvider::earnings(const std::string &s, const std::string &from,
                                                  const std::string &to) {
@@ -751,6 +805,12 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
     auto aInc = rows(income, "annualReports");
     auto aEarn = rows(earnings, "annualEarnings");
     auto qEarn = rows(earnings, "quarterlyEarnings");
+    for (const auto &row : aInc)
+        statement(f, row, str(row, "fiscalDateEnding"), "annual", str(row, "reportedCurrency"),
+                  "totalRevenue", "netIncome", "reportedEPS");
+    for (const auto &row : qInc)
+        statement(f, row, str(row, "fiscalDateEnding"), "quarterly", str(row, "reportedCurrency"),
+                  "totalRevenue", "netIncome", "reportedEPS");
     auto matching_periods = [](const json &a, const json &b) {
         if (a.size() < 4 || b.size() < 4)
             return false;
@@ -829,6 +889,9 @@ std::optional<EstimateSnapshot> AlphaVantageProvider::estimates(const std::strin
                         earnings["quarterlyEarnings"].is_array()
                     ? earnings["quarterlyEarnings"]
                     : json::array();
+    rows = completed_rows(rows, "fiscalDateEnding");
+    for (const auto &row : rows)
+        earnings_observation(e, row, str(row, "fiscalDateEnding"), "reportedEPS", "estimatedEPS");
     for (const auto &row : rows) {
         auto actual = num(row, "reportedEPS");
         auto estimated = num(row, "estimatedEPS");
@@ -841,7 +904,8 @@ std::optional<EstimateSnapshot> AlphaVantageProvider::estimates(const std::strin
     }
     // Do not probe forward-estimate endpoints here: Alpha Vantage may gate them
     // behind premium access and the free tier has a very small daily request budget.
-    return e.earnings_surprise_pct ? std::optional<EstimateSnapshot>(e) : std::nullopt;
+    return e.earnings_surprise_pct || !e.history.empty() ? std::optional<EstimateSnapshot>(e)
+                                                         : std::nullopt;
 }
 std::vector<EarningsEvent> AlphaVantageProvider::earnings(const std::string &s,
                                                           const std::string &from,
@@ -935,6 +999,9 @@ std::optional<EstimateSnapshot> FinnhubProvider::estimates(const std::string &s)
                                   "&limit=4&token=" + enc(key_));
     EstimateSnapshot e;
     e.source = "Finnhub";
+    rows = completed_rows(rows, "period");
+    for (const auto &row : rows)
+        earnings_observation(e, row, str(row, "period"), "actual", "estimate");
     if (rows.is_array())
         for (const auto &row : rows) {
             auto actual = num(row, "actual"), estimate = num(row, "estimate");
@@ -947,7 +1014,8 @@ std::optional<EstimateSnapshot> FinnhubProvider::estimates(const std::string &s)
                 break;
             }
         }
-    return e.earnings_surprise_pct ? std::optional<EstimateSnapshot>(e) : std::nullopt;
+    return e.earnings_surprise_pct || !e.history.empty() ? std::optional<EstimateSnapshot>(e)
+                                                         : std::nullopt;
 }
 std::vector<EarningsEvent> FinnhubProvider::earnings(const std::string &s, const std::string &from,
                                                      const std::string &to) {

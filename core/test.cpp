@@ -1,4 +1,5 @@
 #include "investment_engine.hpp"
+#include "price_analysis.hpp"
 #include "provider_error.hpp"
 #include "research_service.hpp"
 #include <cmath>
@@ -934,6 +935,106 @@ int main() {
         for (const auto &r : failed.quotes({"AAPL", "GS"})) {
             CHECK(r["price"].is_null() && r["available"] == false && r["mode"] == "live");
         }
+    });
+    test("price analytics sort closes and calculate drawdown and sample volatility", [] {
+        auto stats = ir::price_statistics({{"2025-01-04", 108, "EODHD"},
+                                           {"2025-01-02", 120, "EODHD"},
+                                           {"2025-01-01", 100, "EODHD"},
+                                           {"2025-01-03", 90, "EODHD"}});
+        CHECK(std::abs(stats["changePct"].get<double>() - 8) < 1e-9);
+        CHECK(stats["low"] == 90 && stats["high"] == 120);
+        CHECK(std::abs(stats["maxDrawdownPct"].get<double>() + 25) < 1e-9);
+        CHECK(std::abs(stats["sessionVolatilityPct"].get<double>() - std::sqrt(675.0)) < 1e-9);
+        CHECK(std::abs(stats["returns"][0]["changePct"].get<double>() - 20) < 1e-9);
+        CHECK(stats["returns"][1]["changePct"].is_null());
+        CHECK(stats["sma20"].is_null() && stats["sma50"].is_null());
+        CHECK(stats["rangePositionPct"] == 60);
+        CHECK(stats["path"][0]["indexed"] == 100);
+        CHECK(stats["path"][2]["drawdownPct"] == -25);
+    });
+    test("price analytics require comparable observations and retain flat zero risk", [] {
+        CHECK(ir::price_statistics({}).is_null());
+        CHECK(ir::price_statistics({{"a", 100, "A"}, {"b", 110, "B"}}).is_null());
+        CHECK(ir::price_statistics({{"a", 100, "A"}, {"a", 110, "A"}}).is_null());
+        CHECK(ir::price_statistics({{"a", 100, "A"}, {"b", 0, "A"}}).is_null());
+        std::vector<ir::PriceBar> rows;
+        for (int i = 10; i < 60; ++i)
+            rows.push_back({std::to_string(i), 100, "A"});
+        auto stats = ir::price_statistics(rows);
+        CHECK(stats["sma20"] == 100 && stats["sma50"] == 100);
+        CHECK(stats["rangePositionPct"].is_null());
+        CHECK(stats["maxDrawdownPct"] == 0 && stats["sessionVolatilityPct"] == 0);
+        CHECK(stats["returns"][2]["changePct"] == 0);
+        CHECK(stats["returns"][3]["changePct"].is_null());
+    });
+    test("EODHD exposes statements and consensus without inventing missing quarters", [] {
+        ir::EodhdProvider provider("fixture", [](const auto &) {
+            return R"({"General":{"Name":"Issuer","CurrencyCode":"EUR","UpdatedAt":"2025-12-31"},
+                "Financials":{"Income_Statement":{"currency_symbol":"USD","yearly":{
+                  "2024-12-31":{"totalRevenue":1000,"netIncome":-50},
+                  "2025-12-31":{"totalRevenue":1200,"netIncome":0}},
+                  "quarterly":{"2025-09-30":{"totalRevenue":350,"netIncome":10}}}},
+                "AnalystRatings":{"TargetPrice":150,"StrongBuy":5,"Buy":3,"Hold":2,"Sell":0,"StrongSell":-1}})";
+        });
+        auto f = provider.fundamentals("AIR.PA");
+        CHECK(f && !f->pe && f->financials.size() == 3);
+        CHECK(f->financials[0].currency == "USD" && f->financials[0].source == "EODHD");
+        CHECK(f->financials[0].net_income == 0 && f->financials[1].net_income == -50);
+        CHECK(f->analysts && f->analysts->currency == "EUR" && f->analysts->target == 150);
+        CHECK(f->analysts->sell == 0 && !f->analysts->strong_sell);
+    });
+    test("statement fallback preserves atomic currency and source per frequency", [] {
+        ir::ProviderManager manager;
+        auto a = std::make_shared<FundStub>("first"), b = std::make_shared<FundStub>("second");
+        a->value.financials.push_back({"2025-12-31", "annual", "EUR", "first", 100, {}, {}});
+        b->value.financials.push_back({"2025-12-31", "annual", "USD", "second", 200, 50, {}});
+        b->value.financials.push_back({"2025-09-30", "quarterly", "USD", "second", 50, 5, {}});
+        manager.add(a);
+        manager.add(b);
+        auto f = manager.fundamentals("AIR.PA");
+        CHECK(f && f->financials.size() == 2);
+        CHECK(f->financials[0].currency == "EUR" && !f->financials[0].net_income);
+        CHECK(f->financials[1].source == "second" && f->financials[1].currency == "USD");
+    });
+    test("Finnhub EPS history filters future data and keeps unknown estimates null", [] {
+        ir::FinnhubProvider p("fixture", [](const auto &) {
+            return R"([{"period":"2099-12-31","actual":999,"estimate":1},
+                        {"period":"2025-09-30","actual":-0.5},
+                        {"period":"2025-06-30","actual":0,"estimate":0.5}])";
+        });
+        auto e = p.estimates("AAPL");
+        CHECK(e && e->history.size() == 2);
+        CHECK(e->history[0].actual == -.5 && !e->history[0].estimated);
+        CHECK(e->history[1].actual == 0 && e->history[1].source == "Finnhub");
+        CHECK(e->earnings_surprise_pct == -100);
+    });
+    test("Alpha statements remain useful even when no scoring ratios are returned", [] {
+        ir::AlphaVantageProvider p("fixture", [](const auto &url) -> std::string {
+            if (url.find("function=INCOME_STATEMENT") != std::string::npos)
+                return R"({"annualReports":[{"fiscalDateEnding":"2025-12-31","reportedCurrency":"USD","totalRevenue":"100","netIncome":"-5"}],
+                           "quarterlyReports":[{"fiscalDateEnding":"2025-09-30","reportedCurrency":"USD","totalRevenue":"20","netIncome":"0"}]})";
+            return "{}";
+        });
+        auto f = p.fundamentals("AAPL");
+        CHECK(f && !f->pe && f->financials.size() == 2);
+        CHECK(f->financials[0].net_income == -5 && f->financials[1].net_income == 0);
+    });
+    test("snapshot visual payloads stay explicit about demo and absent live data", [] {
+        ir::ResearchService demo(
+            {}, [](const auto &) -> std::string { throw std::runtime_error("no transport"); });
+        auto data = demo.snapshot("AIR.PA");
+        CHECK(data["mode"] == "demo" && data["financialHistory"].size() == 8);
+        CHECK(data["financialHistory"][0]["source"] == "Demo");
+        CHECK(data["earningsHistory"].size() == 4 && data["analysts"]["source"] == "Demo");
+        auto fund = demo.snapshot("VUAA.DE");
+        CHECK(fund["financialHistory"].empty() && fund["earningsHistory"].empty() &&
+              fund["analysts"].is_null());
+        ir::ResearchConfig c;
+        c.demo = false;
+        ir::ResearchService live(c, [](const auto &) { return "{}"; });
+        auto missing = live.snapshot("AIR.PA");
+        CHECK(missing["financialHistory"].empty() && missing["earningsHistory"].empty());
+        CHECK(missing["analysts"].is_null() && missing["priceStatistics"].is_null());
     });
     std::cout << passed << " tests passed\n";
 }

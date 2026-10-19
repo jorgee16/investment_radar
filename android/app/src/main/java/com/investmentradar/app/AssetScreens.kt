@@ -30,7 +30,6 @@ import org.json.JSONObject
         if (!state.loading) EmptyState("Análise indisponível", "Atualiza os dados ou verifica a configuração dos providers.")
         return
     }
-    if (state.tab in 1..2) DataAvailability(snapshot) { model.navigate(Page.Providers) }
     when (state.tab) {
         0 -> OverviewScreen(state, model, cached?.let { mergeQuote(snapshot, it) } ?: snapshot, addPosition)
         1 -> AnalysisScreen(snapshot)
@@ -48,6 +47,7 @@ import org.json.JSONObject
             } }
         }
     }
+    if (state.tab in 0..2) DataAvailability(snapshot) { model.navigate(Page.Providers) }
 }
 
 @Composable private fun OverviewScreen(state: RadarState, model: RadarViewModel, snapshot: JSONObject, addPosition: () -> Unit) {
@@ -85,13 +85,15 @@ import org.json.JSONObject
             MetricRow("Tipo de instrumento", if (snapshot.text("instrumentType") == "etf") "ETF" else "Fundo")
             Text("O score de empresas não se aplica a este instrumento.", style = MaterialTheme.typography.bodySmall)
         } else {
-            MetricRow("P/E", decimal(snapshot.number("pe"))); MetricRow("P/E estimado", decimal(snapshot.number("forwardPE")))
+            MetricTiles(listOf(
+                VisualMetric("pe", "P/E", decimal(snapshot.number("pe")), metricSource(snapshot, "pe"), metricExplanation("pe")),
+                VisualMetric("forwardPE", "P/E estimado", decimal(snapshot.number("forwardPE")), metricSource(snapshot, "forwardPE"), metricExplanation("forwardPE"))
+            ))
             MetricRow("Score Investment Radar", snapshot.number("score")?.let { decimal(it, 0) + " / 100" } ?: "Dados insuficientes")
             MetricRow("Cobertura de métricas", decimal(snapshot.number("coverage"), 0) + "%")
         }
         TextButton({ model.setTab(1) }) { Text("Ver análise →") }
     }
-    Warnings(snapshot)
     if (expanded) Dialog(onDismissRequest = { expanded = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxWidth().padding(12.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -117,78 +119,67 @@ import org.json.JSONObject
     val missing = listOf("fundamentals", "estimates").filter {
         availability.optJSONObject(it)?.text("status") in listOf("unavailable", "missing_key")
     }
-    if (missing.isEmpty()) return
-    FinanceCard(title = "Disponibilidade dos dados") {
-        Text(if (availability.optJSONObject("quotes")?.text("status") == "available")
-            "A cotação está disponível. Isso não confirma acesso aos fundamentais ou às estimativas."
-            else "Ainda não há dados suficientes para esta análise.")
-        missing.forEach { capability ->
-            val item = availability.getJSONObject(capability)
-            val issues = item.optJSONArray("issues")?.objects().orEmpty()
-            Text(capabilities.getValue(capability), fontWeight = FontWeight.SemiBold)
-            if (item.text("status") == "missing_key") Text("Nenhum provider configurado para estes dados.", style = MaterialTheme.typography.bodySmall)
-            else if (issues.isEmpty()) Text("Os providers não devolveram dados para este ativo. Verifica a cobertura do símbolo e do plano.", style = MaterialTheme.typography.bodySmall)
-            else issues.map { "${it.text("provider")}: ${it.text("message")}" }.distinct().forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+    val warnings = snapshot.optJSONArray("warnings")?.strings().orEmpty().distinct()
+    if (missing.isEmpty() && warnings.isEmpty()) return
+    var expanded by rememberSaveable(snapshot.text("symbol")) { mutableStateOf(false) }
+    FinanceCard(title = "Fontes e cobertura") {
+        Text(if (missing.isEmpty()) "Dados recebidos · consultar fontes" else "${missing.size} tipos de dados por completar", style = MaterialTheme.typography.bodyMedium)
+        TextButton({ expanded = !expanded }, Modifier.testTag("availability-details")) { Text(if (expanded) "Ocultar detalhes −" else "Ver disponibilidade +") }
+        if (expanded) {
+            missing.forEach { capability ->
+                val item = availability.getJSONObject(capability)
+                Text(capabilities.getValue(capability), fontWeight = FontWeight.SemiBold)
+                val issues = item.optJSONArray("issues")?.objects().orEmpty()
+                if (item.text("status") == "missing_key") Text("Nenhum provider configurado.", style = MaterialTheme.typography.bodySmall)
+                issues.map { "${it.text("provider")}: ${it.text("message")}" }.distinct().forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+            if (missing.isEmpty()) warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
-        Text("O teste de cotação valida apenas a cotação. Na página Providers podes testar as restantes capacidades.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         TextButton(configure, Modifier.testTag("availability-providers")) { Text("Ver providers e permissões →") }
-    }
-}
-
-@Composable private fun HistoricalAnalysis(snapshot: JSONObject) {
-    val stats = snapshot.optJSONObject("priceStatistics") ?: return
-    FinanceCard(title = "Comportamento do preço") {
-        Text("${stats.text("from")} → ${stats.text("to")}", style = MaterialTheme.typography.bodySmall)
-        MetricRow("Variação no período", percent(stats.number("changePct")))
-        MetricRow("Menor preço observado", money(stats.number("low"), snapshot.text("currency")))
-        MetricRow("Maior preço observado", money(stats.number("high"), snapshot.text("currency")))
-        Text("${stats.optInt("observations")} observações · ${stats.text("source")}", style = MaterialTheme.typography.labelSmall)
-        Text("Calculado sobre os preços do histórico devolvido pelo provider. Não representa rentabilidade total com dividendos, score ou recomendação de investimento.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable private fun AnalysisScreen(snapshot: JSONObject) {
     val applicable = snapshot.optBoolean("analysisApplicable", true)
-    if (!applicable || snapshot.number("coverage") == 0.0) {
-        FinanceCard(title = if (applicable) "Análise fundamental indisponível" else "Análise de ETF / fundo") {
-            Text(if (applicable) "Faltam fundamentais e estimativas para calcular o score e o intervalo de valor justo. A cotação e o histórico, por si só, não bastam."
-                else "Este instrumento é um fundo. O modelo de score e valor justo baseado nos resultados de uma empresa não se aplica.")
-            Text("Os dados ausentes não são substituídos por valores de demonstração.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val hasScore = applicable && (snapshot.number("coverage") ?: 0.0) > 0
+    var panel by rememberSaveable(snapshot.text("symbol")) { mutableStateOf(if (hasScore) "fundamental" else "market") }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("market" to "Mercado", "fundamental" to "Fundamentos", "analysts" to "Analistas").forEach { (key, label) ->
+            FilterChip(panel == key, { panel = key }, { Text(label) }, Modifier.testTag("analysis-$key"))
         }
-        HistoricalAnalysis(snapshot)
-        Warnings(snapshot)
+    }
+    if (panel == "analysts") {
+        AnalystDashboard(snapshot)
+        EarningsDashboard(snapshot)
+        if (snapshot.optJSONObject("analysts") == null && snapshot.optJSONArray("earningsHistory")?.length().let { it == null || it == 0 })
+            FinanceCard { EmptyState("Sem consenso disponível", "Os providers não devolveram recomendações ou estimativas para este ativo.") }
         return
     }
-
-    FinanceCard(title = "Análise Investment Radar") {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column(Modifier.weight(1f)) { Text("Score heurístico", color = MaterialTheme.colorScheme.onSurfaceVariant); Text(snapshot.number("score")?.let { decimal(it, 0) + "/100" } ?: "—", fontSize = 36.sp, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("analysis-score")) }
-            Column(Modifier.weight(1f)) { Text("Cobertura", color = MaterialTheme.colorScheme.onSurfaceVariant); Text(decimal(snapshot.number("coverage"), 0) + "%", fontSize = 30.sp, fontWeight = FontWeight.Bold) }
+    if (panel == "market") {
+        HistoricalDashboard(snapshot)
+        if (snapshot.optJSONObject("priceStatistics") == null) FinanceCard { EmptyState("Histórico insuficiente", "São necessários pelo menos dois fechos comparáveis para a análise de mercado.") }
+        if (hasScore) return
+    }
+    if (!hasScore) {
+        FinanceCard(title = if (applicable) "Análise fundamental indisponível" else "Análise de ETF / fundo") {
+            Text(if (applicable) "Score e valor justo precisam de fundamentais. A análise de preço acima usa o histórico disponível."
+                else "A análise de preço está disponível. O modelo de empresas não se aplica a este fundo.", style = MaterialTheme.typography.bodyMedium)
         }
-        Text(snapshot.text("thesis"), style = MaterialTheme.typography.bodyMedium)
-        Text("Avaliação quantitativa do Investment Radar. Não representa consenso ou recomendação de analistas.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
     }
-    HistoricalAnalysis(snapshot)
-    FinanceCard(title = "Componentes do score") {
-        linkedMapOf("quality" to "Qualidade", "growth" to "Crescimento", "valuation" to "Valuation", "momentum" to "Momentum", "risk" to "Risco").forEach { (key, label) ->
-            val value = snapshot.optJSONObject("breakdown")?.number(key)
-            if (value != null) MetricRow(label, decimal(value, 0))
-            if (value != null) LinearProgressIndicator(progress = { (value / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.secondary)
-        }
-    }
-    if (snapshot.number("fairLow") != null) FinanceCard(title = "Intervalo de valor justo") {
-        val currency = snapshot.text("currency")
-        MetricRow("Abaixo de (cenário de compra)", money(snapshot.number("buyBelow"), currency))
-        MetricRow("Valor justo — limite inferior", money(snapshot.number("fairLow"), currency))
-        MetricRow("Valor justo — limite superior", money(snapshot.number("fairHigh"), currency))
-        MetricRow("Acima de (cenário caro)", money(snapshot.number("expensiveAbove"), currency))
-        Text("Modelo de múltiplos de resultados. Valores ausentes permanecem indisponíveis; não são preços-alvo de analistas.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+    ScoreDashboard(snapshot)
+    if (snapshot.number("fairLow") != null) ValuationDashboard(snapshot)
     val reasons = snapshot.optJSONArray("reasons")?.objects().orEmpty()
-    if (reasons.isNotEmpty()) FinanceCard(title = "O que explica a análise") { reasons.forEach { reason ->
-        Text(reason.text("label"), fontWeight = FontWeight.SemiBold); Text(reason.text("detail"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } }
-    Warnings(snapshot)
+    if (reasons.isNotEmpty()) {
+        var expanded by rememberSaveable(snapshot.text("symbol")) { mutableStateOf(false) }
+        FinanceCard(title = "O que explica a análise") {
+            TextButton({ expanded = !expanded }, Modifier.testTag("analysis-explanation")) { Text(if (expanded) "Fechar explicação −" else "Explorar os indicadores +") }
+            if (expanded) reasons.forEach { reason ->
+                Text(reason.text("label"), fontWeight = FontWeight.SemiBold)
+                Text(reason.text("detail"), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
 }
 @Composable private fun FinancialsScreen(snapshot: JSONObject) {
     val fund = !snapshot.optBoolean("analysisApplicable", true)
@@ -205,19 +196,19 @@ import org.json.JSONObject
     } else {
         val fields = linkedMapOf("pe" to "P/E", "forwardPE" to "P/E estimado", "revenueGrowth" to "Crescimento da receita", "epsGrowth" to "Crescimento do EPS", "fcfMargin" to "Margem de fluxo de caixa livre", "roe" to "Retorno sobre o capital (ROE)", "debtToEquity" to "Dívida / capital próprio", "earningsSurprise" to "Surpresa de resultados", "estimateRevision" to "Revisão de estimativas")
         val available = fields.filterKeys { snapshot.number(it) != null }
+        FinancialHistoryDashboard(snapshot)
+        EarningsDashboard(snapshot)
         FinanceCard(title = "Dados financeiros") {
+            if (available.isEmpty()) Text("Sem demonstrações financeiras devolvidas pelos providers para este ativo.", style = MaterialTheme.typography.bodyMedium)
+            MetricTiles(available.map { (key, label) ->
+                val metric = snapshot.optJSONObject("metricSources")?.optJSONObject(key)
+                VisualMetric(key, label,
+                    if (key in listOf("pe", "forwardPE", "debtToEquity")) decimal(snapshot.number(key)) else percent(snapshot.number(key)),
+                    metric?.let { listOf(it.text("source"), it.text("period"), it.text("basis")).filter(String::isNotBlank).joinToString(" · ") }.orEmpty(),
+                    metricExplanation(key), snapshot.number(key))
+            })
             if (snapshot.text("sector").isNotBlank()) MetricRow("Setor", snapshot.text("sector"))
             if (snapshot.text("reportingCurrency").isNotBlank()) MetricRow("Moeda de reporte", snapshot.text("reportingCurrency"))
-            if (available.isEmpty()) Text("Os providers não devolveram métricas financeiras para este ativo. Não é possível preencher esta secção apenas com cotações.")
-            available.forEach { (key, label) ->
-                val metric = snapshot.optJSONObject("metricSources")?.optJSONObject(key)
-                val source = metric?.let { listOf(it.text("source"), it.text("period"), it.text("basis")).filter(String::isNotBlank).joinToString(" · ") }
-                    ?: snapshot.optJSONObject("sources")?.text(if (key in listOf("earningsSurprise", "estimateRevision")) "estimates" else "fundamentals")?.takeIf { it != "none" }
-                MetricRow(label, if (key in listOf("pe", "forwardPE", "debtToEquity")) decimal(snapshot.number(key)) else percent(snapshot.number(key)), source = source)
-                HorizontalDivider()
-            }
-            val absent = fields.filterKeys { snapshot.number(it) == null }.values
-            if (available.isNotEmpty() && absent.isNotEmpty()) Text("Sem dados: ${absent.joinToString(", ")}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     FinanceCard(title = "Dados de negociação") {
@@ -226,11 +217,6 @@ import org.json.JSONObject
         if (snapshot.text("instrumentType") == "unknown") Text("Tipo de instrumento por confirmar. Se for um ETF, são necessários dados do fundo, não demonstrações financeiras de uma empresa.", style = MaterialTheme.typography.bodySmall)
         Text("A moeda de negociação pode ser diferente da moeda de reporte ou da moeda base do fundo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    Warnings(snapshot)
-}
-@Composable private fun Warnings(snapshot: JSONObject) {
-    val warnings = snapshot.optJSONArray("warnings")?.strings().orEmpty().distinct()
-    if (warnings.isNotEmpty()) FinanceCard(title = "Disponibilidade dos dados") { warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 }
 @Composable internal fun EventsList(events: List<JSONObject>, loading: Boolean, open: (String) -> Unit) {
     if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
