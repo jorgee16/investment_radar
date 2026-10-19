@@ -180,20 +180,24 @@ json ResearchService::test_providers(const std::string &symbol, const std::strin
         throw std::invalid_argument("Invalid symbol");
     json out = json::array();
     for (const auto &r : manager_.test_connections(symbol, provider)) {
-        out.push_back({{"id", r.id},
-                       {"name", r.name},
-                       {"symbol", r.symbol},
-                       {"code", r.code},
-                       {"message", r.message},
-                       {"testedAt", r.tested_at},
-                       {"httpStatus", r.http_status ? json(r.http_status) : json(nullptr)},
-                       {"connected", r.code == "ok"},
-                       {"capability", "quotes"},
-                       {"capabilities", r.capability_codes},
-                       {"price", r.quote ? json(r.quote->price) : json(nullptr)},
-                       {"currency", r.quote ? r.quote->currency : ""},
-                       {"quoteTimestamp",
-                        r.quote && r.quote->timestamp ? json(r.quote->timestamp) : json(nullptr)}});
+        out.push_back(
+            {{"id", r.id},
+             {"name", r.name},
+             {"symbol", r.symbol},
+             {"code", r.code},
+             {"message", r.message},
+             {"testedAt", r.tested_at},
+             {"httpStatus", r.http_status ? json(r.http_status) : json(nullptr)},
+             {"connected", r.code == "ok"},
+             {"capability", "quotes"},
+             {"capabilities", r.capability_codes},
+             {"pe", r.fundamentals ? nullable(r.fundamentals->pe) : json(nullptr)},
+             {"forwardPE", r.fundamentals ? nullable(r.fundamentals->forward_pe) : json(nullptr)},
+             {"epsTTM", r.fundamentals ? nullable(r.fundamentals->eps_ttm) : json(nullptr)},
+             {"price", r.quote ? json(r.quote->price) : json(nullptr)},
+             {"currency", r.quote ? r.quote->currency : ""},
+             {"quoteTimestamp",
+              r.quote && r.quote->timestamp ? json(r.quote->timestamp) : json(nullptr)}});
     }
     return out;
 }

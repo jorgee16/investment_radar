@@ -29,6 +29,7 @@ class ProviderPolicyTest {
         assertEquals(900, ProviderPolicy.ttlSeconds("https://finnhub.io/api/v1/quote"))
         assertEquals(43200, ProviderPolicy.ttlSeconds("https://eodhd.com/api/fundamentals/AIR.PA"))
         assertEquals(43200, ProviderPolicy.ttlSeconds("https://www.alphavantage.co/query?function=INCOME_STATEMENT"))
+        assertEquals(43200, ProviderPolicy.ttlSeconds("https://www.alphavantage.co/query?function=OVERVIEW"))
         assertEquals(604800, ProviderPolicy.ttlSeconds("https://www.alphavantage.co/query?function=SYMBOL_SEARCH"))
         assertEquals(900, ProviderPolicy.ttlSeconds("https://eodhd.com/api/news"))
     }

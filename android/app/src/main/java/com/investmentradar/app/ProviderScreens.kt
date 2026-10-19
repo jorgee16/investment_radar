@@ -52,6 +52,7 @@ import org.json.JSONObject
     }
     FinanceCard(title = "Testar ligação") {
         Text("Guarda primeiro as chaves. O teste consulta cotações, fundamentais, estimativas, histórico, resultados e notícias para este símbolo, mesmo em Demo. Pode consumir vários pedidos da quota.", style = MaterialTheme.typography.bodySmall)
+        Text("Fundamentais recebidos não garantem todas as métricas. Surpresas de resultados não são previsões: o P/E estimado pode continuar indisponível.", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(testSymbol, { testSymbol = it.take(32); testError = null }, label = { Text("Ticker de teste") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("test-symbol"))
         Button({ testError = model.testProviders(testSymbol) }, enabled = !state.testing && !state.saving, modifier = Modifier.testTag("test-providers")) { Text(if (state.testing) "A testar…" else "Testar todos") }
         if (testError != null) Text(testError!!, color = MaterialTheme.colorScheme.error)
@@ -75,6 +76,11 @@ import org.json.JSONObject
                     "network" -> "Falha de ligação"
                     else -> "Pedido sem sucesso"
                 }, modifier = Modifier.testTag("capability-${report.text("id")}-$capability"))
+            }
+            if (results?.text("fundamentals") == "ok") {
+                MetricRow("P/E devolvido", decimal(report.number("pe")), modifier = Modifier.testTag("report-pe-${report.text("id")}"))
+                MetricRow("P/E estimado devolvido", decimal(report.number("forwardPE")))
+                if (report.number("epsTTM") != null) Text("EPS dos últimos 12 meses recebido. O cálculo do P/E exige moeda compatível com a cotação.", style = MaterialTheme.typography.bodySmall)
             }
         }
     }

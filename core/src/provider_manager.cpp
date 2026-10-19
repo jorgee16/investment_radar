@@ -52,6 +52,7 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
         r.name = d.name;
         r.symbol = symbol;
         r.code = d.enabled ? "no_data" : "missing_key";
+        std::string blocked;
 
         auto probe = [&](DataCapability cap, auto call) {
             const auto name = capability_name(cap);
@@ -63,6 +64,10 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
                 r.capability_codes[name] = "missing_key";
                 return;
             }
+            if (!blocked.empty()) {
+                r.capability_codes[name] = blocked;
+                return;
+            }
             try {
                 const bool ok = call();
                 r.capability_codes[name] = ok ? "ok" : "no_data";
@@ -71,6 +76,8 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
                 if (!r.http_status)
                     r.http_status = e.http_status;
                 record_failure(p, cap, e);
+                if (e.code == "rate_limit" || e.code == "authentication" || e.code == "network")
+                    blocked = e.code;
             } catch (...) {
                 r.capability_codes[name] = "invalid_response";
             }
@@ -83,7 +90,10 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
                 r.quote.reset();
             return ok;
         });
-        probe(DataCapability::Fundamentals, [&] { return bool(p->fundamentals(symbol)); });
+        probe(DataCapability::Fundamentals, [&] {
+            r.fundamentals = p->fundamentals(symbol);
+            return bool(r.fundamentals);
+        });
         probe(DataCapability::Estimates, [&] { return bool(p->estimates(symbol)); });
         probe(DataCapability::History, [&] { return !p->history(symbol, 45).empty(); });
         probe(DataCapability::Earnings,
@@ -92,7 +102,7 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
 
         const auto quote_it = r.capability_codes.find("quotes");
         r.code = quote_it != r.capability_codes.end() ? quote_it->second : r.code;
-        if (r.code == "ok") {
+        if (r.code == "ok" && blocked.empty()) {
             cooldowns_.erase(d.id);
             cooldowns_.erase(d.id + ":quotes");
         }
@@ -106,7 +116,7 @@ std::vector<ProviderProbe> ProviderManager::test_connections(const std::string &
         }
         r.tested_at = std::time(nullptr);
         r.message = d.enabled ? std::to_string(ok_count) + "/" + std::to_string(tested_count) +
-                                    " capabilities returned data for " + symbol + "."
+                                    " capacidades devolveram dados para " + symbol + "."
                               : provider_error_message("missing_key");
         health_[d.id] = r;
         out.push_back(std::move(r));
@@ -232,7 +242,7 @@ std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) 
         copy_metric(m.debt_to_equity, v.debt_to_equity, "debtToEquity");
         if (!m.eps_ttm && v.eps_ttm) {
             m.eps_ttm = v.eps_ttm;
-            m.eps_currency = v.eps_currency.empty() ? v.currency : v.eps_currency;
+            m.eps_currency = v.eps_currency;
             contributed = true;
             if (auto it = v.metrics.find("epsTTM"); it != v.metrics.end())
                 m.metrics["epsTTM"] = it->second;

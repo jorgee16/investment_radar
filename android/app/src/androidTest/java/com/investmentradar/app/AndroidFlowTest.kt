@@ -219,6 +219,69 @@ class AndroidFlowTest {
         ui.onNodeWithText("37,60").performScrollTo().assertIsDisplayed()
         capture("live-trailing-pe-financials-fixture")
     }
+    @Test fun liveProvidersCombineMetricsAndKeepAllAssetTabsFunctional() {
+        scenario.close()
+        val key = "fixture-combined-providers"
+        val cache = ApiCache(context)
+        val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+        val eod = "https://eodhd.com/api/"
+        val denied = """{"status":"error","code":403}"""
+        LocalPortfolio(context).write(listOf("AAPL"), emptyList(), true)
+        for (ticker in listOf("AIR.PA", "AAPL")) {
+            val code = if (ticker == "AAPL") "AAPL.US" else ticker
+            val currency = if (ticker == "AAPL") "USD" else "EUR"
+            val price = if (ticker == "AAPL") 343.46 else 188.0
+            cache.put(eod + "real-time/$code?api_token=$key&fmt=json", """{"close":$price,"currency":"$currency","name":"Ativo de teste $ticker"}""")
+            val fundamental = eod + "v1.1/fundamentals/$code?api_token=$key&fmt=json"
+            cache.put(fundamental, denied); cache.put("$fundamental&filter=Earnings", denied)
+            val finnhub = "https://finnhub.io/api/v1/"
+            cache.put(finnhub + "stock/profile2?symbol=$ticker&token=$key", """{"name":"Ativo de teste $ticker","currency":"$currency"}""")
+            cache.put(finnhub + "stock/metric?symbol=$ticker&metric=all&token=$key", """{"metric":{"peTTM":30,"revenueGrowthTTMYoy":12,"epsGrowthTTMYoy":15,"roeTTM":18,"debtEquityAnnual":0.5}}""")
+            cache.put(finnhub + "stock/earnings?symbol=$ticker&limit=4&token=$key", """[{"period":"2026-06-30","actual":3,"estimate":2.5}]""")
+            val fmp = "https://financialmodelingprep.com/stable/"
+            for ((endpoint, payload) in mapOf(
+                "ratios-ttm" to """[{"priceToEarningsRatioTTM":28}]""",
+                "key-metrics-ttm" to "[]",
+                "income-statement-ttm" to """[{"date":"2026-06-30","revenue":1000}]""",
+                "cash-flow-statement-ttm" to """[{"date":"2026-06-30","freeCashFlow":120}]"""
+            )) cache.put(fmp + "$endpoint?symbol=$ticker&apikey=$key", payload)
+            cache.put(fmp + "income-statement?symbol=$ticker&period=annual&limit=2&apikey=$key", """[{"date":"2025-12-31","reportedCurrency":"$currency"}]""")
+            for (range in listOf(90L, 120L)) for (offset in -1L..1L) {
+                cache.put(eod + "eod/$code?api_token=$key&fmt=json&period=d&from=${today.minusDays(range).plusDays(offset)}", """[{"date":"2026-06-30","close":100,"adjusted_close":50,"open":95,"high":110,"low":90},{"date":"2026-10-16","close":$price,"open":180,"high":350,"low":175}]""")
+            }
+        }
+        val eventDate = today.plusDays(5)
+        for (fromOffset in -1L..1L) for (toOffset in -1L..1L) {
+            val from = today.minusDays(7).plusDays(fromOffset); val to = today.plusDays(90).plusDays(toOffset)
+            cache.put(eod + "calendar/earnings?api_token=$key&fmt=json&from=$from&to=$to&symbols=AAPL.US", denied)
+            cache.put("https://finnhub.io/api/v1/calendar/earnings?from=$from&to=$to&token=$key&symbol=AAPL", """{"earningsCalendar":[{"date":"$eventDate","symbol":"AAPL","epsEstimate":3}]}""")
+        }
+        cache.put(eod + "news?api_token=$key&fmt=json&s=AAPL.US&limit=10", """[{"date":"$today","title":"Notícia de teste dos providers","link":"https://example.org/investment-radar-fixture"}]""")
+        cache.close()
+        SecureSettings(context).save(JSONObject().put("demo", false).put("eodhdKey", key).put("finnhubKey", key).put("fmpKey", key))
+        start(); search("AAPL")
+        await("combined provider data") { !state().loading && !state().historyLoading && state().snapshot?.text("symbol") == "AAPL" && state().history.size == 2 }
+        val snapshot = state().snapshot!!
+        assertFalse(state().demo)
+        assertEquals(30.0, snapshot.getDouble("pe"), .001)
+        assertEquals(12.0, snapshot.getDouble("fcfMargin"), .001)
+        assertEquals("Finnhub", snapshot.getJSONObject("metricSources").getJSONObject("pe").getString("source"))
+        assertEquals("FMP", snapshot.getJSONObject("metricSources").getJSONObject("fcfMargin").getString("source"))
+        assertTrue(snapshot.number("score") != null)
+        assertTrue(snapshot.isNull("forwardPE"))
+        assertEquals(50.0, state().history.first().getDouble("close"), .001)
+        ui.onNodeWithText("Velas").performScrollTo().assertIsEnabled().performClick()
+        ui.onNodeWithContentDescription("Gráfico de preços com 2 observações, de 45,00 a 350,00. Velas OHLC.").assertExists()
+        ui.onNodeWithTag("price-chart").performScrollTo().assertIsDisplayed()
+        capture("live-combined-candles-fixture")
+        ui.onNodeWithText("30,00").performScrollTo().assertIsDisplayed(); capture("live-combined-pe-summary-fixture")
+        click("asset-tab-1"); ui.onNodeWithText("Score heurístico").assertExists(); capture("live-combined-analysis-fixture")
+        click("asset-tab-2"); ui.onNodeWithText("30,00").performScrollTo().assertIsDisplayed(); capture("live-combined-financials-fixture")
+        click("asset-tab-3"); await("live calendar fallback") { !state().auxiliaryLoading && state().events.isNotEmpty() }
+        assertEquals("Finnhub", state().events.single().text("source")); assertNull(state().events.single().number("epsActual")); capture("live-combined-results-fixture")
+        click("asset-tab-4"); await("live news") { !state().auxiliaryLoading && state().news.isNotEmpty() }
+        ui.onNodeWithText("Notícia de teste dos providers").assertIsDisplayed(); capture("live-combined-news-fixture")
+    }
     @Test fun allNavigationAndAssetTabs() {
         for (target in listOf(Page.Portfolio, Page.Watchlist, Page.Screener, Page.Calendar, Page.Providers, Page.Settings)) {
             page(target); capture("nav-${target.name}")

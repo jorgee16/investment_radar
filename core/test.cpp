@@ -307,6 +307,196 @@ int main() {
         CHECK(!p.quote("AIR.PA"));
         CHECK(url.find("AIR%3AEPA") != url.npos);
     });
+    test("composite fundamentals preserve subscription and quota diagnostics", [] {
+        for (const auto &code : {"subscription", "rate_limit", "authentication", "network"}) {
+            for (const auto &id : {"fmp", "alpha", "finnhub"}) {
+                int calls = 0;
+                ir::HttpGet get = [&](const std::string &) -> std::string {
+                    ++calls;
+                    throw ir::ProviderError(code);
+                };
+                std::unique_ptr<ir::IMarketDataProvider> p;
+                if (std::string(id) == "fmp")
+                    p = std::make_unique<ir::FmpProvider>("fixture", get);
+                else if (std::string(id) == "alpha")
+                    p = std::make_unique<ir::AlphaVantageProvider>("fixture", get);
+                else
+                    p = std::make_unique<ir::FinnhubProvider>("fixture", get);
+                bool thrown = false;
+                try {
+                    p->fundamentals("AAPL");
+                } catch (const ir::ProviderError &e) {
+                    CHECK(e.code == code);
+                    thrown = true;
+                }
+                CHECK(thrown);
+                if (std::string(code) != "subscription")
+                    CHECK(calls == 1);
+            }
+        }
+    });
+    test("estimate endpoints retain real errors instead of returning no data", [] {
+        ir::HttpGet get = [](const std::string &) -> std::string {
+            throw ir::ProviderError("rate_limit", 429);
+        };
+        std::vector<std::shared_ptr<ir::IMarketDataProvider>> ps{
+            std::make_shared<ir::FmpProvider>("fixture", get),
+            std::make_shared<ir::AlphaVantageProvider>("fixture", get),
+            std::make_shared<ir::FinnhubProvider>("fixture", get)};
+        for (auto &p : ps) {
+            bool thrown = false;
+            try {
+                p->estimates("AAPL");
+            } catch (const ir::ProviderError &e) {
+                CHECK(e.code == "rate_limit");
+                thrown = true;
+            }
+            CHECK(thrown);
+        }
+    });
+    test("Finnhub profile alone does not validate financial fundamentals", [] {
+        ir::FinnhubProvider p("fixture", [](const std::string &url) {
+            return url.find("profile2") != url.npos
+                       ? R"({"name":"Apple","currency":"USD","finnhubIndustry":"Technology"})"
+                       : "{}";
+        });
+        CHECK(!p.fundamentals("AAPL"));
+    });
+    test("Finnhub does not treat three year growth as comparable YoY", [] {
+        ir::FinnhubProvider p("fixture", [](const std::string &url) {
+            return url.find("/stock/metric") != url.npos
+                       ? R"({"metric":{"peTTM":20,"revenueGrowth3Y":30,"epsGrowth3Y":60}})"
+                       : "{}";
+        });
+        auto f = p.fundamentals("AAPL");
+        CHECK(f && f->pe == 20);
+        CHECK(!f->revenue_growth_pct && !f->eps_growth_pct);
+    });
+    test("Alpha Vantage uses overview PE even when statements are restricted", [] {
+        ir::AlphaVantageProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("OVERVIEW") != url.npos)
+                return R"({"Name":"Apple","Sector":"Technology","PERatio":"30","ForwardPE":"25","ReturnOnEquityTTM":"0.18","LatestQuarter":"2026-06-30"})";
+            throw ir::ProviderError("subscription", 403);
+        });
+        auto f = p.fundamentals("AAPL");
+        CHECK(f && f->pe == 30 && f->forward_pe == 25 && f->roe_pct == 18);
+        CHECK(f->name == "Apple");
+        CHECK(f->metrics.at("pe").period == "2026-06-30");
+    });
+    test("Alpha TTM cannot skip a missing recent EPS quarter", [] {
+        ir::AlphaVantageProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("OVERVIEW") != url.npos)
+                return R"({"PERatio":20})";
+            if (url.find("function=EARNINGS") != url.npos)
+                return R"({"quarterlyEarnings":[{"fiscalDateEnding":"2025-12-31","reportedEPS":null},{"fiscalDateEnding":"2025-09-30","reportedEPS":2},{"fiscalDateEnding":"2025-06-30","reportedEPS":2},{"fiscalDateEnding":"2025-03-31","reportedEPS":2},{"fiscalDateEnding":"2024-12-31","reportedEPS":100}]})";
+            return "{}";
+        });
+        auto f = p.fundamentals("AAPL");
+        CHECK(f && !f->eps_ttm);
+    });
+    test("provider probe stops after quota and exposes received PE separately", [] {
+        ir::ResearchConfig c;
+        c.fmp_key = "fixture";
+        bool quota = true;
+        int calls = 0;
+        ir::ResearchService service(c, [&](const std::string &url) -> std::string {
+            ++calls;
+            if (url.find("/quote?") != url.npos)
+                return R"([{"price":343.46,"currency":"USD"}])";
+            if (quota)
+                throw ir::ProviderError("rate_limit", 429);
+            if (url.find("ratios-ttm") != url.npos)
+                return R"([{"priceToEarningsRatioTTM":30}])";
+            return "[]";
+        });
+        auto report = service.test_providers("AAPL", "fmp")[0];
+        CHECK(calls == 2);
+        CHECK(report["capabilities"]["quotes"] == "ok");
+        for (auto cap : {"fundamentals", "estimates", "earnings", "history"})
+            CHECK(report["capabilities"][cap] == "rate_limit");
+        CHECK(report["pe"].is_null());
+        quota = false;
+        report = service.test_providers("AAPL", "fmp")[0];
+        CHECK(report["capabilities"]["fundamentals"] == "ok");
+        CHECK(report["pe"] == 30);
+        CHECK(report["forwardPE"].is_null());
+    });
+    test("live snapshot combines EODHD quotes, Finnhub PE and FMP cash flow", [] {
+        for (const bool prefer_fmp : {false, true}) {
+            ir::ResearchConfig c;
+            c.demo = false;
+            c.eodhd_key = c.alpha_key = c.finnhub_key = c.fmp_key = "fixture";
+            if (prefer_fmp)
+                c.routing.fundamentals = "fmp";
+            int alpha_calls = 0;
+            ir::ResearchService service(c, [&](const std::string &url) -> std::string {
+                if (url.find("alphavantage.co") != url.npos) {
+                    ++alpha_calls;
+                    throw ir::ProviderError("rate_limit", 429);
+                }
+                if (url.find("real-time/") != url.npos)
+                    return R"({"close":343.46,"currency":"USD","name":"Apple"})";
+                if (url.find("eodhd.com") != url.npos) {
+                    if (url.find("fundamentals/") != url.npos)
+                        throw ir::ProviderError("subscription", 403);
+                    return R"([{"date":"2026-10-16","close":343.46}])";
+                }
+                if (url.find("profile2") != url.npos)
+                    return R"({"name":"Apple","currency":"USD"})";
+                if (url.find("stock/metric") != url.npos)
+                    return R"({"metric":{"peTTM":30,"revenueGrowthTTMYoy":12,"epsGrowthTTMYoy":15,"roeTTM":18,"debtEquityAnnual":0.5}})";
+                if (url.find("stock/earnings") != url.npos)
+                    return R"([{"period":"2026-06-30","actual":3,"estimate":2.5}])";
+                if (url.find("ratios-ttm") != url.npos)
+                    return R"([{"priceToEarningsRatioTTM":28}])";
+                if (url.find("cash-flow-statement-ttm") != url.npos)
+                    return R"([{"date":"2026-06-30","freeCashFlow":120}])";
+                if (url.find("income-statement-ttm") != url.npos)
+                    return R"([{"date":"2026-06-30","revenue":1000}])";
+                if (url.find("income-statement?") != url.npos)
+                    return R"([{"date":"2025-12-31","reportedCurrency":"USD"}])";
+                return "[]";
+            });
+            auto snapshot = service.snapshot("AAPL");
+            CHECK(snapshot["price"] == 343.46);
+            CHECK(snapshot["pe"] == (prefer_fmp ? 28 : 30));
+            CHECK(snapshot["metricSources"]["pe"]["source"] == (prefer_fmp ? "FMP" : "Finnhub"));
+            CHECK(snapshot["metricSources"]["fcfMargin"]["source"] == "FMP");
+            CHECK(snapshot["sources"]["quote"] == "EODHD");
+            CHECK(snapshot["forwardPE"].is_null());
+            CHECK(snapshot["estimateRevision"].is_null());
+            CHECK(snapshot["earningsSurprise"] == 20);
+            CHECK(snapshot["fcfMargin"] == 12);
+            CHECK(!snapshot["score"].is_null());
+            CHECK(snapshot["coverage"] == 78);
+            CHECK(alpha_calls == 1);
+            CHECK(snapshot["mode"] == "live");
+        }
+    });
+    test("adjusted line prices and candles use the same basis", [] {
+        ir::HttpGet get = [](const std::string &) {
+            return R"([{"date":"2026-06-30","adjusted_close":50,"adjClose":50,"open":95,"high":110,"low":90,"close":100}])";
+        };
+        std::vector<std::shared_ptr<ir::IMarketDataProvider>> ps{
+            std::make_shared<ir::EodhdProvider>("fixture", get),
+            std::make_shared<ir::FmpProvider>("fixture", get)};
+        for (auto &p : ps) {
+            auto bars = p->history("AAPL", 90);
+            CHECK(bars.size() == 1);
+            CHECK(bars[0].price == 50 && bars[0].close == 50);
+            CHECK(bars[0].open == 47.5 && bars[0].high == 55 && bars[0].low == 45);
+        }
+    });
+    test("invalid or incomplete OHLC cannot enable misleading candles", [] {
+        for (const auto &body :
+             {R"([{"date":"2026-06-30","close":100,"open":99,"high":98,"low":95}])",
+              R"([{"date":"2026-06-30","close":100,"high":110,"low":95}])"}) {
+            ir::EodhdProvider p("fixture", [&](const auto &) { return body; });
+            auto bars = p.history("AAPL", 90);
+            CHECK(bars.size() == 1 && bars[0].price == 100);
+            CHECK(!bars[0].open && !bars[0].high && !bars[0].low && !bars[0].close);
+        }
+    });
     test("history chronological and missing prices omitted", [] {
         ir::FmpProvider p("fixture", [](auto &) {
             return R"([{"date":"2025-02-02","close":12},{"date":"2025-02-01","close":11},{"date":"2025-01-01","close":null}])";
@@ -348,6 +538,7 @@ int main() {
         a->value.currency = "EUR";
         a->value.revenue_growth_pct = 12;
         b->value.currency = "USD";
+        b->value.eps_currency = "USD";
         b->value.eps_ttm = 5;
         m.add(a);
         m.add(b);

@@ -26,7 +26,7 @@ internal object ProviderPolicy {
             listOf("/api/search/", "symbol_search", "profile2").any(u::contains) -> 604800
             listOf("fundamentals", "statement", "ratios", "key-metrics",
                 "analyst-estimates", "income_statement", "balance_sheet",
-                "cash_flow", "stock/metric").any(u::contains) -> 43200
+                "cash_flow", "function=overview", "stock/metric").any(u::contains) -> 43200
             u.contains("news") -> 900
             u.contains("calendar") || u.contains("earnings") -> 1800
             else -> 3600

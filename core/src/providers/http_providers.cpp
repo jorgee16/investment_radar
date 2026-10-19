@@ -157,18 +157,16 @@ std::optional<double> metric_num(const json &j, std::initializer_list<const char
     return {};
 }
 std::optional<double> sum_field(const json &rows, const char *key, int n) {
-    if (!rows.is_array())
+    if (!rows.is_array() || rows.size() < static_cast<size_t>(n))
         return {};
     double total = 0;
-    int count = 0;
-    for (const auto &row : rows) {
-        if (auto v = num(row, key)) {
-            total += *v;
-            if (++count == n)
-                return total;
-        }
+    for (int i = 0; i < n; ++i) {
+        auto value = num(rows[i], key);
+        if (!value)
+            return {}; // Never replace a missing recent quarter with an older one.
+        total += *value;
     }
-    return {};
+    return std::isfinite(total) ? std::optional<double>(total) : std::nullopt;
 }
 json request(const HttpGet &get, const std::string &u) {
     return checked_provider_payload(get(u));
@@ -181,20 +179,57 @@ json optional_request(const HttpGet &get, const std::string &u) {
         return json();
     }
 }
+// A composite capability can survive a restricted optional endpoint, but must
+// preserve the real error if none of its endpoints yield usable metrics.
+class PartialRequests {
+  public:
+    explicit PartialRequests(const HttpGet &get) : get_(get) {}
+    json get(const std::string &url) {
+        if (stopped_)
+            return {};
+        try {
+            return request(get_, url);
+        } catch (const ProviderError &e) {
+            if (!error_ || rank(e.code) > rank(error_->code))
+                error_ = e;
+            stopped_ = e.code == "authentication" || e.code == "rate_limit" || e.code == "network";
+        } catch (...) {
+            if (!error_)
+                error_ = ProviderError("invalid_response");
+        }
+        return {};
+    }
+    void require_if_empty(bool usable) const {
+        if (!usable && error_)
+            throw *error_;
+    }
+
+  private:
+    static int rank(const std::string &code) {
+        return code == "authentication" ? 5
+               : code == "rate_limit"   ? 4
+               : code == "network"      ? 3
+               : code == "subscription" ? 2
+                                        : 1;
+    }
+    const HttpGet &get_;
+    std::optional<ProviderError> error_;
+    bool stopped_ = false;
+};
 json latest(const json &rows) {
     if (!rows.is_object() || rows.empty())
         return json::object();
     return rows.rbegin().value();
 }
-json completed_rows(json rows) {
+json completed_rows(json rows, const char *date_key = "date") {
     if (!rows.is_array())
         return json::array();
     json out = json::array();
     for (auto &r : rows)
-        if (!str(r, "date").empty() && str(r, "date") <= date_ago(0))
+        if (!str(r, date_key).empty() && str(r, date_key) <= date_ago(0))
             out.push_back(r);
     std::sort(out.begin(), out.end(),
-              [](auto &a, auto &b) { return str(a, "date") > str(b, "date"); });
+              [date_key](auto &a, auto &b) { return str(a, date_key) > str(b, date_key); });
     return out;
 }
 void tag(Fundamentals &f, const char *key, const std::optional<double> &v,
@@ -205,6 +240,35 @@ void tag(Fundamentals &f, const char *key, const std::optional<double> &v,
 bool useful(const Fundamentals &f) {
     return f.pe || f.forward_pe || f.revenue_growth_pct || f.eps_growth_pct || f.fcf_margin_pct ||
            f.roe_pct || f.debt_to_equity || f.eps_ttm;
+}
+void align_ohlc(PriceBar &bar) {
+    auto clear = [&] {
+        bar.open.reset();
+        bar.high.reset();
+        bar.low.reset();
+        bar.close.reset();
+    };
+    if (!bar.open || !bar.high || !bar.low || !bar.close || *bar.low <= 0 ||
+        *bar.low > std::min(*bar.open, *bar.close) || *bar.high < std::max(*bar.open, *bar.close)) {
+        clear();
+        return;
+    }
+    // EODHD/FMP may supply adjusted close alongside raw OHLC. Keep candles and
+    // the line/crosshair on the same basis without inventing missing bars.
+    const double factor = bar.price / *bar.close;
+    if (!std::isfinite(factor) || factor <= 0) {
+        clear();
+        return;
+    }
+    for (auto value : {bar.open, bar.high, bar.low, bar.close})
+        if (!std::isfinite(*value * factor)) {
+            clear();
+            return;
+        }
+    *bar.open *= factor;
+    *bar.high *= factor;
+    *bar.low *= factor;
+    bar.close = bar.price;
 }
 void sort_bars(std::vector<PriceBar> &v) {
     std::sort(v.begin(), v.end(), [](auto &a, auto &b) { return a.label < b.label; });
@@ -418,6 +482,7 @@ std::vector<PriceBar> EodhdProvider::history(const std::string &s, int days) {
                 bar.high = num(x, "high");
                 bar.low = num(x, "low");
                 bar.close = num(x, "close");
+                align_ohlc(bar);
                 out.push_back(std::move(bar));
             }
         }
@@ -480,15 +545,16 @@ std::optional<Fundamentals> FmpProvider::fundamentals(const std::string &s) {
     f.symbol = s;
     f.name = s;
     f.source = "FMP";
+    PartialRequests requests(get_);
     auto get = [&](const std::string &endpoint, const std::string &extra = "") {
-        return optional_request(get_, "https://financialmodelingprep.com/stable/" + endpoint +
-                                          "?symbol=" + enc(s) + extra + "&apikey=" + enc(key_));
+        return requests.get("https://financialmodelingprep.com/stable/" + endpoint +
+                            "?symbol=" + enc(s) + extra + "&apikey=" + enc(key_));
     };
     auto r = get("ratios-ttm"), km = get("key-metrics-ttm"),
          inc = completed_rows(get("income-statement", "&period=annual&limit=2"));
     std::string period;
     if (r.is_array() && !r.empty()) {
-        f.pe = num(r[0], "priceToEarningsRatioTTM");
+        f.pe = first(r[0], "priceToEarningsRatioTTM", "peRatioTTM");
         f.debt_to_equity = num(r[0], "debtToEquityRatioTTM");
         tag(f, "pe", f.pe, str(r[0], "date"), "TTM");
         tag(f, "debtToEquity", f.debt_to_equity, str(r[0], "date"), "TTM");
@@ -509,7 +575,7 @@ std::optional<Fundamentals> FmpProvider::fundamentals(const std::string &s) {
     }
     auto cf = get("cash-flow-statement-ttm"), ttm = get("income-statement-ttm");
     if (cf.is_array() && !cf.empty() && ttm.is_array() && !ttm.empty() &&
-        str(cf[0], "date") == str(ttm[0], "date")) {
+        !str(cf[0], "date").empty() && str(cf[0], "date") == str(ttm[0], "date")) {
         auto cash = num(cf[0], "freeCashFlow"), rev = num(ttm[0], "revenue");
         if (cash && rev && *rev > 0)
             f.fcf_margin_pct = *cash / *rev * 100;
@@ -518,6 +584,7 @@ std::optional<Fundamentals> FmpProvider::fundamentals(const std::string &s) {
     // Forward P/E stays unknown unless an explicit comparable forecast is provided.
     tag(f, "revenueGrowth", f.revenue_growth_pct, period, "annual YoY");
     tag(f, "epsGrowth", f.eps_growth_pct, period, "annual YoY");
+    requests.require_if_empty(useful(f));
     return useful(f) ? std::optional<Fundamentals>(f) : std::nullopt;
 }
 std::optional<EstimateSnapshot> FmpProvider::estimates(const std::string &s) {
@@ -526,8 +593,8 @@ std::optional<EstimateSnapshot> FmpProvider::estimates(const std::string &s) {
     EstimateSnapshot e;
     e.source = "FMP";
     auto base = "https://financialmodelingprep.com/stable/";
-    auto er = completed_rows(optional_request(
-        get_, std::string(base) + "earnings?symbol=" + enc(s) + "&apikey=" + enc(key_)));
+    auto er = completed_rows(
+        request(get_, std::string(base) + "earnings?symbol=" + enc(s) + "&apikey=" + enc(key_)));
     for (auto &x : er) {
         auto a = num(x, "epsActual"), b = num(x, "epsEstimated");
         if (a && b && *b != 0) {
@@ -580,6 +647,7 @@ std::vector<PriceBar> FmpProvider::history(const std::string &s, int days) {
                 bar.high = num(x, "high");
                 bar.low = num(x, "low");
                 bar.close = num(x, "close");
+                align_ohlc(bar);
                 out.push_back(std::move(bar));
             }
         }
@@ -631,22 +699,33 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
     if (key_.empty())
         return {};
     const auto symbol = alpha_symbol(s);
+    PartialRequests requests(get_);
     auto fetch = [&](const char *fn) {
-        return optional_request(get_,
-                                "https://www.alphavantage.co/query?function=" + std::string(fn) +
-                                    "&symbol=" + enc(symbol) + "&apikey=" + enc(key_));
+        return requests.get("https://www.alphavantage.co/query?function=" + std::string(fn) +
+                            "&symbol=" + enc(symbol) + "&apikey=" + enc(key_));
     };
+    auto overview = fetch("OVERVIEW");
     auto income = fetch("INCOME_STATEMENT");
     auto balance = fetch("BALANCE_SHEET");
     auto cash = fetch("CASH_FLOW");
     auto earnings = fetch("EARNINGS");
     Fundamentals f;
     f.symbol = s;
-    f.name = s;
+    f.name = str(overview, "Name", s);
+    f.sector = str(overview, "Sector");
     f.source = "Alpha Vantage";
+    auto latest_quarter = str(overview, "LatestQuarter");
+    f.pe = num(overview, "PERatio");
+    f.forward_pe = num(overview, "ForwardPE");
+    f.roe_pct = pct(num(overview, "ReturnOnEquityTTM"));
+    tag(f, "pe", f.pe, latest_quarter, "reported TTM ratio");
+    tag(f, "forwardPE", f.forward_pe, latest_quarter, "reported forward ratio");
+    tag(f, "roe", f.roe_pct, latest_quarter, "reported TTM ratio");
 
     auto rows = [](const json &j, const char *key) {
-        return j.is_object() && j.contains(key) && j[key].is_array() ? j[key] : json::array();
+        return completed_rows(j.is_object() && j.contains(key) && j[key].is_array() ? j[key]
+                                                                                    : json::array(),
+                              "fiscalDateEnding");
     };
     auto qInc = rows(income, "quarterlyReports");
     auto qBal = rows(balance, "quarterlyReports");
@@ -654,6 +733,14 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
     auto aInc = rows(income, "annualReports");
     auto aEarn = rows(earnings, "annualEarnings");
     auto qEarn = rows(earnings, "quarterlyEarnings");
+    auto matching_periods = [](const json &a, const json &b) {
+        if (a.size() < 4 || b.size() < 4)
+            return false;
+        for (int i = 0; i < 4; ++i)
+            if (str(a[i], "fiscalDateEnding") != str(b[i], "fiscalDateEnding"))
+                return false;
+        return true;
+    };
 
     if (!qInc.empty())
         f.currency = str(qInc[0], "reportedCurrency");
@@ -667,12 +754,14 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
     auto eps_ttm = sum_field(qEarn, "reportedEPS", 4);
     if (eps_ttm) {
         f.eps_ttm = eps_ttm;
+        if (matching_periods(qEarn, qInc))
+            f.eps_currency = f.currency;
         f.metrics["epsTTM"] = {f.source,
                                str(qEarn.empty() ? json::object() : qEarn[0], "fiscalDateEnding"),
                                "sum of latest four reported quarters"};
     }
 
-    if (revenue_ttm && ocf_ttm && capex_ttm && *revenue_ttm != 0) {
+    if (revenue_ttm && ocf_ttm && capex_ttm && *revenue_ttm != 0 && matching_periods(qInc, qCash)) {
         f.fcf_margin_pct = (*ocf_ttm - std::abs(*capex_ttm)) / *revenue_ttm * 100.0;
         tag(f, "fcfMargin", f.fcf_margin_pct,
             str(qCash.empty() ? json::object() : qCash[0], "fiscalDateEnding"),
@@ -690,7 +779,7 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
         if (equity && *equity != 0) {
             if (debt)
                 f.debt_to_equity = *debt / *equity;
-            if (net_income_ttm)
+            if (net_income_ttm && !f.roe_pct)
                 f.roe_pct = *net_income_ttm / *equity * 100.0;
         }
         auto period = str(qBal[0], "fiscalDateEnding");
@@ -706,15 +795,16 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
         f.eps_growth_pct = growth(num(aEarn[0], "reportedEPS"), num(aEarn[1], "reportedEPS"));
         tag(f, "epsGrowth", f.eps_growth_pct, str(aEarn[0], "fiscalDateEnding"), "annual YoY");
     }
-    return useful(f) || f.eps_ttm ? std::optional<Fundamentals>(f) : std::nullopt;
+    requests.require_if_empty(useful(f));
+    return useful(f) ? std::optional<Fundamentals>(f) : std::nullopt;
 }
 std::optional<EstimateSnapshot> AlphaVantageProvider::estimates(const std::string &s) {
     if (key_.empty())
         return {};
     const auto symbol = alpha_symbol(s);
-    auto earnings = optional_request(
-        get_, "https://www.alphavantage.co/query?function=EARNINGS&symbol=" + enc(symbol) +
-                  "&apikey=" + enc(key_));
+    auto earnings =
+        request(get_, "https://www.alphavantage.co/query?function=EARNINGS&symbol=" + enc(symbol) +
+                          "&apikey=" + enc(key_));
     EstimateSnapshot e;
     e.source = "Alpha Vantage";
     auto rows = earnings.is_object() && earnings.contains("quarterlyEarnings") &&
@@ -789,11 +879,11 @@ std::optional<Quote> FinnhubProvider::quote(const std::string &s) {
 std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) {
     if (key_.empty())
         return {};
-    auto profile = optional_request(
-        get_, "https://finnhub.io/api/v1/stock/profile2?symbol=" + enc(s) + "&token=" + enc(key_));
-    auto metrics =
-        optional_request(get_, "https://finnhub.io/api/v1/stock/metric?symbol=" + enc(s) +
-                                   "&metric=all&token=" + enc(key_));
+    PartialRequests requests(get_);
+    auto profile = requests.get("https://finnhub.io/api/v1/stock/profile2?symbol=" + enc(s) +
+                                "&token=" + enc(key_));
+    auto metrics = requests.get("https://finnhub.io/api/v1/stock/metric?symbol=" + enc(s) +
+                                "&metric=all&token=" + enc(key_));
     auto m = object(metrics, "metric");
     Fundamentals f;
     f.symbol = s;
@@ -803,9 +893,8 @@ std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) 
     f.currency = str(profile, "currency", listing_currency_hint(s));
     f.pe = metric_num(m, {"peBasicExclExtraTTM", "peExclExtraTTM", "peTTM", "peAnnual"});
     f.forward_pe = metric_num(m, {"forwardPE", "forwardPe"});
-    f.revenue_growth_pct =
-        metric_num(m, {"revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy", "revenueGrowth3Y"});
-    f.eps_growth_pct = metric_num(m, {"epsGrowthTTMYoy", "epsGrowthQuarterlyYoy", "epsGrowth3Y"});
+    f.revenue_growth_pct = metric_num(m, {"revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy"});
+    f.eps_growth_pct = metric_num(m, {"epsGrowthTTMYoy", "epsGrowthQuarterlyYoy"});
     f.roe_pct = metric_num(m, {"roeTTM", "roeRfy", "roeAnnual"});
     f.debt_to_equity = metric_num(m, {"totalDebt/totalEquityAnnual", "totalDebtToEquity",
                                       "debtEquityAnnual", "debtEquityTTM"});
@@ -816,14 +905,14 @@ std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) 
     tag(f, "epsGrowth", f.eps_growth_pct, period, "provider metric");
     tag(f, "roe", f.roe_pct, period, "provider metric");
     tag(f, "debtToEquity", f.debt_to_equity, period, "provider metric");
-    return useful(f) || f.name != s || !f.sector.empty() ? std::optional<Fundamentals>(f)
-                                                         : std::nullopt;
+    requests.require_if_empty(useful(f));
+    return useful(f) ? std::optional<Fundamentals>(f) : std::nullopt;
 }
 std::optional<EstimateSnapshot> FinnhubProvider::estimates(const std::string &s) {
     if (key_.empty())
         return {};
-    auto rows = optional_request(get_, "https://finnhub.io/api/v1/stock/earnings?symbol=" + enc(s) +
-                                           "&limit=4&token=" + enc(key_));
+    auto rows = request(get_, "https://finnhub.io/api/v1/stock/earnings?symbol=" + enc(s) +
+                                  "&limit=4&token=" + enc(key_));
     EstimateSnapshot e;
     e.source = "Finnhub";
     if (rows.is_array())
@@ -910,6 +999,7 @@ std::vector<PriceBar> TwelveDataProvider::history(const std::string &s, int days
                 bar.high = num(x, "high");
                 bar.low = num(x, "low");
                 bar.close = close;
+                align_ohlc(bar);
                 out.push_back(std::move(bar));
             }
         }

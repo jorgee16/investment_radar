@@ -13,6 +13,7 @@ struct ProviderProbe {
     long long tested_at = 0;
     int http_status = 0;
     std::optional<Quote> quote;
+    std::optional<Fundamentals> fundamentals;
     std::unordered_map<std::string, std::string> capability_codes;
 };
 

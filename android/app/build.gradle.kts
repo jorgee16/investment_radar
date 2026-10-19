@@ -6,7 +6,7 @@ android {
     ndkVersion = "27.0.12077973"
     defaultConfig {
         applicationId = "com.investmentradar.app"
-        minSdk = 26; targetSdk = 35; versionCode = 8; versionName = "0.6.1"
+        minSdk = 26; targetSdk = 35; versionCode = 9; versionName = "0.6.2"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild { cmake { cppFlags += "-std=c++20"; arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON" } }
