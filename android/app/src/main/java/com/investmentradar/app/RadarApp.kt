@@ -136,9 +136,9 @@ import org.json.JSONObject
 }
 
 @Composable internal fun FinanceCard(modifier: Modifier = Modifier, title: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (title != null) Text(title.uppercase(java.util.Locale.forLanguageTag("pt-PT")), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (title != null) Text(title, style = MaterialTheme.typography.titleMedium)
             content()
         }
     }
@@ -149,15 +149,24 @@ import org.json.JSONObject
     }
 }
 @Composable internal fun ModeBanner(state: RadarState, model: RadarViewModel) {
-    Surface(shape = RoundedCornerShape(12.dp), color = if (state.demo) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant) {
-        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(if (state.demo) "DEMO · Dados sintéticos" else "LIVE · Dados dos providers", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("data-mode"))
-            if (state.page != Page.Markets) Text(if (state.demo) "Demonstração; os valores apresentados não são cotações reais." else "Cotações podem ser diferidas. A cobertura depende do plano de cada provider.", style = MaterialTheme.typography.bodySmall)
-            if (!state.demo && state.page != Page.Markets) Text(if (state.pollingActive) "Favoritos: atualização a cada ${state.pollingMinutes} min" else "Atualização automática pausada", style = MaterialTheme.typography.bodySmall)
-            state.pollingMessage?.takeIf { !state.demo }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            if (!state.demo && state.configured.isEmpty()) TextButton({ model.navigate(Page.Providers) }, contentPadding = PaddingValues(0.dp)) { Text("Configurar chaves de API") }
+    var details by rememberSaveable { mutableStateOf(false) }
+    Surface(shape = RoundedCornerShape(10.dp), color = if (state.demo) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (state.demo) "DEMO · Dados sintéticos" else "LIVE · Dados dos providers", Modifier.weight(1f).testTag("data-mode"), style = MaterialTheme.typography.labelSmall)
+            TextButton({ details = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Sobre os dados", style = MaterialTheme.typography.labelSmall) }
         }
     }
+    if (details) AlertDialog(onDismissRequest = { details = false }, title = { Text(if (state.demo) "Modo de demonstração" else "Dados dos providers") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(if (state.demo) "Os valores apresentados são sintéticos e não são cotações reais." else "Cotações podem ser diferidas. Consulta a data e a fonte de cada ativo. A cobertura depende do plano de cada provider.")
+            if (!state.demo) {
+                Text(if (state.pollingActive) "Favoritos: atualização a cada ${state.pollingMinutes} min" else "Atualização automática pausada")
+                state.pollingMessage?.let { Text(it) }
+            }
+        }
+    }, confirmButton = { TextButton({ details = false }) { Text("Fechar") } }, dismissButton = {
+        if (!state.demo && state.configured.isEmpty()) TextButton({ details = false; model.navigate(Page.Providers) }) { Text("Configurar providers") }
+    })
 }
 @Composable internal fun PriceRow(ticker: String, quote: JSONObject?, onClick: () -> Unit, remove: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp).testTag("quote-$ticker"), verticalAlignment = Alignment.CenterVertically) {
@@ -169,31 +178,16 @@ import org.json.JSONObject
         Column(horizontalAlignment = Alignment.End) {
             Text(money(quote?.number("price"), quote?.text("currency").orEmpty()), fontWeight = FontWeight.SemiBold)
             val change = quote?.number("changePct")
-            Text(percent(change), color = if (change == null) MaterialTheme.colorScheme.onSurfaceVariant else if (change >= 0) FinanceGreen else FinanceRed, style = MaterialTheme.typography.labelMedium)
+            ChangeBadge(change)
         }
         if (remove != null) IconButton(remove, Modifier.testTag("remove-watch-$ticker")) { Icon(Icons.Default.Close, "Remover $ticker da watchlist", Modifier.size(20.dp)) }
     }
 }
 @Composable internal fun HomeScreen(state: RadarState, model: RadarViewModel, addWatch: () -> Unit) {
     ModeBanner(state, model)
-    FinanceCard(title = "A minha carteira") {
-        val totals = portfolioTotals(state.positions, state.quotes)
-        if (totals.isEmpty()) { Text("Tudo começa com a primeira posição", fontSize = 21.sp, fontWeight = FontWeight.Bold); Text("Acompanha os teus investimentos, o custo médio e a evolução por moeda.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        else totals.forEach { total ->
-            Text(money(total.value, total.currency), fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("Resultado total: ${money(total.value?.minus(total.invested), total.currency)}", color = if ((total.value ?: total.invested) >= total.invested) FinanceGreen else FinanceRed)
-        }
-        TextButton({ model.navigate(Page.Portfolio) }, Modifier.testTag("open-portfolio")) { Text(if (totals.isEmpty()) "Adicionar um investimento →" else "Ver carteira →") }
-    }
-    FinanceCard {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("A tua watchlist", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            IconButton(addWatch, Modifier.testTag("add-watch")) { Icon(Icons.Default.Add, "Adicionar ativo") }
-        }
-        if (state.watch.isEmpty()) EmptyState("Ainda sem ativos", "Adiciona um ticker para acompanhares o mercado.")
-        state.watch.forEachIndexed { i, ticker -> PriceRow(ticker, state.quotes[ticker], { model.selectAsset(ticker) }); if (i < state.watch.lastIndex) HorizontalDivider() }
-        TextButton({ model.navigate(Page.Watchlist) }) { Text("Gerir watchlist →") }
-    }
+    PortfolioHero(state) { model.navigate(Page.Portfolio) }
+    if (state.watch.isNotEmpty()) WatchMarketPulse(state)
+    WatchlistDashboard(state, model, addWatch)
     FinanceCard(title = "Explorar") {
         TextButton({ model.navigate(Page.Screener) }) { Text("Comparar ativos no screener →") }
         TextButton({ model.navigate(Page.Calendar) }) { Text("Consultar calendário de resultados →") }

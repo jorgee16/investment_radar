@@ -1,6 +1,7 @@
 package com.investmentradar.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -55,12 +56,7 @@ import org.json.JSONObject
     val hasOHLC = state.history.isNotEmpty() && state.history.all { p -> listOf("open", "high", "low", "close").all { p.number(it) != null } }
     val currency = snapshot.text("currency")
     FinanceCard {
-        Text(snapshot.text("name").ifBlank { state.symbol }, fontWeight = FontWeight.SemiBold, fontSize = 25.sp)
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(money(snapshot.number("price"), currency), fontWeight = FontWeight.Bold, fontSize = 38.sp, modifier = Modifier.testTag("asset-price"))
-            val change = snapshot.number("changePct")
-            Text(percent(change), color = if (change == null) MaterialTheme.colorScheme.onSurfaceVariant else if (change >= 0) FinanceGreen else FinanceRed, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        }
+        AssetQuoteHeader(state.symbol, snapshot)
         val source = snapshot.optJSONObject("sources")?.text("quote").orEmpty()
         val timestamp = snapshot.number("timestamp")?.takeIf { it > 0 }?.let { java.time.Instant.ofEpochSecond(it.toLong()).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm z")) }
         Text("${state.symbol} · ${currency.ifBlank { "moeda desconhecida" }} · ${if (source == "none") "Sem cotação" else source}${timestamp?.let { "\n$it" }.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -68,6 +64,13 @@ import org.json.JSONObject
         PriceChart(state.history, currency, state.historyLoading, candle && hasOHLC)
         ChartControls(state, model, candle && hasOHLC, { candle = it }, { expanded = true })
         Text(if (state.demo) "Histórico sintético de demonstração; os períodos não representam negociação real." else "Histórico diário. A disponibilidade de velas e datas depende do provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    snapshot.optJSONObject("priceStatistics")?.let { stats ->
+        val low = stats.number("low"); val high = stats.number("high")
+        if (low != null && high != null) FinanceCard(title = "Intervalo do histórico") {
+            RangeVisual(low, high, stats.number("last"), currency)
+            Text("${stats.text("from")} → ${stats.text("to")} · ${stats.text("source")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
     FinanceCard(title = "Os meus investimentos") {
         val holdings = state.positions.filter { it.symbol == state.symbol }
@@ -80,20 +83,7 @@ import org.json.JSONObject
         }
         TextButton(addPosition, Modifier.testTag("asset-add-position")) { Text("Adicionar investimento +") }
     }
-    FinanceCard(title = "Principais estatísticas") {
-        if (!snapshot.optBoolean("analysisApplicable", true)) {
-            MetricRow("Tipo de instrumento", if (snapshot.text("instrumentType") == "etf") "ETF" else "Fundo")
-            Text("O score de empresas não se aplica a este instrumento.", style = MaterialTheme.typography.bodySmall)
-        } else {
-            MetricTiles(listOf(
-                VisualMetric("pe", "P/E", decimal(snapshot.number("pe")), metricSource(snapshot, "pe"), metricExplanation("pe")),
-                VisualMetric("forwardPE", "P/E estimado", decimal(snapshot.number("forwardPE")), metricSource(snapshot, "forwardPE"), metricExplanation("forwardPE"))
-            ))
-            MetricRow("Score Investment Radar", snapshot.number("score")?.let { decimal(it, 0) + " / 100" } ?: "Dados insuficientes")
-            MetricRow("Cobertura de métricas", decimal(snapshot.number("coverage"), 0) + "%")
-        }
-        TextButton({ model.setTab(1) }) { Text("Ver análise →") }
-    }
+    OverviewStatistics(snapshot) { model.setTab(1) }
     if (expanded) Dialog(onDismissRequest = { expanded = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxWidth().padding(12.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -143,7 +133,7 @@ import org.json.JSONObject
     val applicable = snapshot.optBoolean("analysisApplicable", true)
     val hasScore = applicable && (snapshot.number("coverage") ?: 0.0) > 0
     var panel by rememberSaveable(snapshot.text("symbol")) { mutableStateOf(if (hasScore) "fundamental" else "market") }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         listOf("market" to "Mercado", "fundamental" to "Fundamentos", "analysts" to "Analistas").forEach { (key, label) ->
             FilterChip(panel == key, { panel = key }, { Text(label) }, Modifier.testTag("analysis-$key"))
         }
@@ -200,13 +190,20 @@ import org.json.JSONObject
         EarningsDashboard(snapshot)
         FinanceCard(title = "Dados financeiros") {
             if (available.isEmpty()) Text("Sem rácios financeiros devolvidos pelos providers para este ativo.", style = MaterialTheme.typography.bodyMedium)
-            MetricTiles(available.map { (key, label) ->
-                val metric = snapshot.optJSONObject("metricSources")?.optJSONObject(key)
-                VisualMetric(key, label,
-                    if (key in listOf("pe", "forwardPE", "debtToEquity")) decimal(snapshot.number(key)) else percent(snapshot.number(key)),
-                    metric?.let { listOf(it.text("source"), it.text("period"), it.text("basis")).filter(String::isNotBlank).joinToString(" · ") }.orEmpty(),
-                    metricExplanation(key), snapshot.number(key))
-            })
+            val sections = linkedMapOf(
+                "Avaliação" to listOf("pe", "forwardPE"),
+                "Crescimento e rentabilidade" to listOf("revenueGrowth", "epsGrowth", "fcfMargin", "roe"),
+                "Balanço e resultados" to listOf("debtToEquity", "earningsSurprise", "estimateRevision")
+            )
+            sections.forEach { (title, keys) ->
+                val rows = available.filterKeys { it in keys }
+                if (rows.isNotEmpty()) {
+                    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    MetricTiles(rows.map { (key, label) -> VisualMetric(key, label,
+                        if (key in listOf("pe", "forwardPE", "debtToEquity")) decimal(snapshot.number(key)) else percent(snapshot.number(key)),
+                        metricSource(snapshot, key), metricExplanation(key), snapshot.number(key)) })
+                }
+            }
             if (snapshot.text("sector").isNotBlank()) MetricRow("Setor", snapshot.text("sector"))
             if (snapshot.text("reportingCurrency").isNotBlank()) MetricRow("Moeda de reporte", snapshot.text("reportingCurrency"))
         }

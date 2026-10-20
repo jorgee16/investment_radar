@@ -192,9 +192,9 @@ class AndroidFlowTest {
         assertEquals(132.8, state().snapshot!!.getDouble("price"), .001)
         click("asset-tab-1")
         ui.onAllNodesWithText("EODHD: O plano ou as permissões não permitem este pedido.").assertCountEquals(0)
-        ui.onNodeWithText("COMPONENTES DO SCORE").assertDoesNotExist()
+        ui.onNodeWithText("Componentes do score").assertDoesNotExist()
         capture("live-permission-analysis")
-        ui.onNodeWithText("COMPORTAMENTO DO PREÇO").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("Comportamento do preço").performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("+32,80%").performScrollTo().assertIsDisplayed()
         capture("live-price-analysis")
         click("analytics-drawdown")
@@ -214,12 +214,12 @@ class AndroidFlowTest {
         assertEquals("etf", state().snapshot!!.text("instrumentType"))
         click("asset-tab-1")
         capture("live-etf-analysis-top")
-        ui.onNodeWithText("ANÁLISE DE ETF / FUNDO").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("Análise de ETF / fundo").performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("Score heurístico").assertDoesNotExist()
-        ui.onNodeWithText("INTERVALO DE VALOR JUSTO").assertDoesNotExist()
+        ui.onNodeWithText("Intervalo de valor justo").assertDoesNotExist()
         capture("live-etf-analysis")
         click("asset-tab-2")
-        ui.onNodeWithText("PERFIL DO ETF / FUNDO").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("Perfil do ETF / fundo").performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("IE00BFMXXD54").assertExists()
         ui.onNodeWithText("S&P 500").performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("Retorno sobre o capital (ROE)").assertDoesNotExist()
@@ -376,7 +376,7 @@ class AndroidFlowTest {
         ui.onNodeWithTag("analysis-score").assertExists(); capture("visual-model-score")
         click("analysis-analysts")
         ui.onNodeWithTag("analyst-consensus").assertExists()
-        ui.onNodeWithText("COMPONENTES DO SCORE").assertDoesNotExist()
+        ui.onNodeWithText("Componentes do score").assertDoesNotExist()
         capture("visual-analyst-distribution")
         click("analysis-market"); click("analytics-drawdown")
         ui.onNodeWithTag("analytics-chart-mode").assertTextEquals("Queda desde o pico anterior (%)")
@@ -385,6 +385,31 @@ class AndroidFlowTest {
         capture("visual-risk-details"); click("metric-close")
         page(Page.Settings); click("dark-theme"); page(Page.Markets); click("asset-tab-2")
         ui.onNodeWithTag("financial-chart").performScrollTo().assertIsDisplayed(); capture("visual-financial-dark")
+    }
+    @Test fun dashboardSortAndResearchHierarchyKeepAssetIdentity() {
+        await("favorite quotes") { state().watch.all { state().quotes.containsKey(it) } }
+        capture("research-home-light")
+        click("watch-sort-up")
+        val quotes = state().quotes
+        val priced = state().watch.filter { quotes[it]?.number("changePct") != null }
+        assertTrue(priced.size >= 2)
+        val highest = priced.maxBy { quotes.getValue(it).number("changePct")!! }
+        val lowest = priced.minBy { quotes.getValue(it).number("changePct")!! }
+        fun top(ticker: String) = ui.onNodeWithTag("quote-$ticker").fetchSemanticsNode().positionInRoot.y
+        assertTrue("Highest change is before lowest", top(highest) < top(lowest))
+        capture("research-favorites-gainers")
+        click("watch-sort-down")
+        assertTrue("Lowest change is before highest", top(lowest) < top(highest))
+        click("quote-$lowest")
+        assertEquals(lowest, state().symbol)
+        await("selected favorite research") { !state().loading && !state().historyLoading }
+        ui.onNodeWithTag("asset-price").assertExists()
+        capture("research-quote-light")
+        page(Page.Settings); click("dark-theme"); page(Page.Home)
+        capture("research-home-dark")
+        page(Page.Markets); capture("research-quote-dark")
+        orient(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
+        capture("research-quote-landscape", true)
     }
     @Test fun allNavigationAndAssetTabs() {
         for (target in listOf(Page.Portfolio, Page.Watchlist, Page.Screener, Page.Calendar, Page.Providers, Page.Settings)) {

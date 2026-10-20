@@ -52,19 +52,24 @@ internal fun metricExplanation(key: String) = when (key) {
 
 @Composable internal fun MetricTiles(metrics: List<VisualMetric>) {
     var detail by remember { mutableStateOf<VisualMetric?>(null) }
-    metrics.chunked(2).forEach { pair ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            pair.forEach { metric ->
-                Surface(Modifier.weight(1f).heightIn(min = 112.dp).testTag("metric-${metric.key}").clickable { detail = metric },
-                    shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(metric.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(metric.value, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                        Text("Detalhes ↗", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f || maxWidth < 280.dp) 1 else if (maxWidth >= 600.dp) 3 else 2
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            metrics.chunked(columns).forEach { pair ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { metric ->
+                        Surface(Modifier.weight(1f).heightIn(min = 112.dp).testTag("metric-${metric.key}").clickable { detail = metric },
+                        shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(metric.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(metric.value, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                                Text(metric.source.substringBefore(" · ").ifBlank { "Ver indicador ↗" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                        }
                     }
+                    repeat(columns - pair.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
-            if (pair.size == 1) Spacer(Modifier.weight(1f))
         }
     }
     detail?.let { metric ->
@@ -121,7 +126,7 @@ internal fun metricExplanation(key: String) = when (key) {
     }
 }
 
-@Composable private fun RangeVisual(low: Double, high: Double, current: Double?, currency: String) {
+@Composable internal fun RangeVisual(low: Double, high: Double, current: Double?, currency: String) {
     val accent = MaterialTheme.colorScheme.primary
     val grid = MaterialTheme.colorScheme.outlineVariant
     Column(Modifier.fillMaxWidth()) {
