@@ -12,6 +12,7 @@ import android.view.KeyEvent
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.core.view.ViewCompat
@@ -47,7 +48,7 @@ class AndroidFlowTest {
         instrumentation.uiAutomation.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1").use { fd ->
             android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
         }
-        listOf("secure_providers", "providers", "radar_native", "radar_appearance", "quote_polling").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
+        listOf("secure_providers", "providers", "radar_native", "radar_appearance", "quote_polling", "investment_plan", "investment_plans_v1").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
         ApiCache(context).use { cache -> listOf("quote_values", "quote_budget", "quote_backoff").forEach { cache.writableDatabase.delete(it, null, null) } }
         LocalPortfolio(context).write(defaultWatch, emptyList(), true)
         start()
@@ -409,6 +410,90 @@ class AndroidFlowTest {
         capture("portfolio-multiple-lots"); restart(); assertEquals(2, state().positions.size)
         page(Page.Portfolio); val ids = state().positions.map { it.id }
         ids.forEach { click("remove-position-$it") }; assertTrue(state().positions.isEmpty()); capture("portfolio-empty")
+    }
+    @Test fun portfolioDiscoveryFiltersAndPlanPersist() {
+        page(Page.Portfolio); click("add-position")
+        fill("position-symbol", "micro")
+        click("position-suggestion-MSFT")
+        ui.onNodeWithTag("position-symbol").assertTextContains("MSFT")
+        ui.onNodeWithTag("position-currency").assertTextContains("USD")
+        fill("position-qty", "2"); fill("position-avg", "300"); click("position-submit")
+        await("Microsoft position") { state().positions.size == 1 }
+        ui.onNodeWithTag("portfolio-search").performScrollTo(); fill("portfolio-search", "Microsoft"); finishInput("portfolio-search")
+        ui.onNodeWithTag("position-${state().positions.single().id}").performScrollTo().assertIsDisplayed()
+        capture("portfolio-discovery-name")
+        ui.onNodeWithTag("portfolio-search").performScrollTo(); fill("portfolio-search", "inexistente"); finishInput("portfolio-search"); ui.onNodeWithText("Sem correspondências").performScrollTo().assertIsDisplayed()
+        click("portfolio-clear"); click("portfolio-sector"); click("portfolio-sector-Tecnologia")
+        assertEquals(1, state().positions.size)
+        click("portfolio-plan-tab"); click("preset-world")
+        ui.onNodeWithTag("plan-monthly").performScrollTo(); fill("plan-monthly", "1000"); finishInput("plan-monthly")
+        click("group-add-world"); fill("plan-asset-query", "IE00BK5BQT80"); finishInput("plan-asset-query")
+        capture("plan-instrument-search")
+        click("plan-pick-VWCE.DE")
+        ui.waitUntil(60_000) { ui.onAllNodesWithTag("plan-budget").fetchSemanticsNodes().size == 1 }
+        ui.onNodeWithTag("plan-budget").performScrollTo().assertIsDisplayed(); ui.onNode(hasTestTagPrefix("allocation-row-")).performScrollTo().assertIsDisplayed(); capture("plan-monthly-allocation")
+        click("plan-activate"); await("plan active") { activity.model.investmentPlanLibrary().activeId != null }
+        val saved = activity.model.investmentPlanLibrary().plans.single()
+        assertEquals("1000", saved.monthly); assertEquals("VWCE.DE", saved.groups.single().items.single().symbol)
+        click("plan-back"); click("duplicate-plan-${saved.id}")
+        click("plan-save"); await("duplicate persisted") { activity.model.investmentPlanLibrary().plans.size == 2 }
+        assertEquals(saved.id, activity.model.investmentPlanLibrary().activeId)
+        click("plan-back")
+        val copy = activity.model.investmentPlanLibrary().plans.first { it.id != saved.id }
+        click("delete-plan-${copy.id}"); click("confirm-delete-plan")
+        await("duplicate removed") { activity.model.investmentPlanLibrary().plans.size == 1 }
+        restart(); page(Page.Portfolio); click("portfolio-plan-tab"); click("edit-plan-${saved.id}")
+        ui.onNodeWithTag("plan-monthly").assertTextContains("1000")
+        ui.onNodeWithTag("plan-weight-world").performScrollTo(); fill("plan-weight-world", "99"); finishInput("plan-weight-world")
+        ui.onNodeWithTag("plan-activate").performScrollTo().assertIsNotEnabled()
+        capture("plan-invalid-weights")
+        assertEquals("100", activity.model.investmentPlanLibrary().plans.single().groups.single().weight)
+    }
+    @Test fun sectorPlansAllowCustomGroupsAndEqualWeights() {
+        page(Page.Portfolio); click("portfolio-plan-tab"); click("preset-sectors"); click("plan-add-group")
+        click("new-group-submit")
+        val groupId = ui.onAllNodes(hasTestTagPrefix("plan-group-")).fetchSemanticsNodes().single().config[androidx.compose.ui.semantics.SemanticsProperties.TestTag].removePrefix("plan-group-")
+        click("group-add-$groupId"); fill("plan-asset-query", "Microsoft"); finishInput("plan-asset-query"); click("plan-pick-MSFT")
+        click("group-add-$groupId"); fill("plan-asset-query", "Apple"); finishInput("plan-asset-query"); click("plan-pick-AAPL")
+        click("plan-save"); await("sector draft saved") { activity.model.investmentPlanLibrary().plans.size == 1 }
+        var saved = activity.model.investmentPlanLibrary().plans.single()
+        assertEquals(listOf("50.0", "50.0"), saved.groups.single().items.map { it.weight })
+        click("plan-add-group"); click("new-group-kind"); click("new-group-kind-Reserva")
+        fill("new-group-name", "Emergência"); finishInput("new-group-name"); click("new-group-submit")
+        click("plan-equal-groups"); click("plan-save")
+        await("reserve draft saved") { activity.model.investmentPlanLibrary().plans.single().groups.size == 2 }
+        saved = activity.model.investmentPlanLibrary().plans.single()
+        assertEquals(listOf("50.0", "50.0"), saved.groups.map { it.weight })
+        ui.onNodeWithTag("plan-allocation-chart").performScrollTo().performTouchInput { click(Offset(center.x, height * .1f)) }
+        capture("plan-sector-chart")
+        instrumentation.runOnMainSync { activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        ui.onNodeWithTag("plan-allocation-chart").performScrollTo(); capture("plan-sector-landscape", true)
+        instrumentation.runOnMainSync { activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+        click("plan-back")
+        click("preset-custom"); click("plan-add-group"); click("new-group-kind"); click("new-group-kind-Grupo livre")
+        fill("new-group-name", "As minhas escolhas"); finishInput("new-group-name"); click("new-group-submit"); click("plan-save")
+        await("custom draft saved") { activity.model.investmentPlanLibrary().plans.size == 2 }
+        assertTrue(activity.model.investmentPlanLibrary().plans.any { it.groups.singleOrNull()?.name == "As minhas escolhas" })
+    }
+    private fun hasTestTagPrefix(prefix: String) = SemanticsMatcher("Test tag starts with $prefix") { node -> node.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag)?.startsWith(prefix) == true }
+    @Test fun planRebalancingBlocksMissingCurrencyAndKeepsFixedMode() {
+        instrumentation.runOnMainSync { activity.model.addPosition("JPM", "2", "300", "USD") }
+        await("position ready") { state().positions.size == 1 }
+        val position = state().positions.single()
+        val item = PlanInstrument(symbol = "JPM", name = "JPMorgan", currency = "USD")
+        val draft = InvestmentPlan(name = "Associado", groups = listOf(PlanGroup("bank", "Finanças", "sector", "100", items = listOf(item))), linkedPositionIds = setOf(position.id))
+        InvestmentPlanStore(context).write(PlanLibrary(listOf(draft)))
+        page(Page.Portfolio); click("portfolio-plan-tab"); click("edit-plan-${draft.id}")
+        click("plan-mode-rebalance")
+        ui.waitUntil(60_000) { ui.onAllNodesWithTag("plan-rebalance-blocked").fetchSemanticsNodes().size == 1 }
+        ui.onNodeWithTag("plan-rebalance-blocked").performScrollTo().assertIsDisplayed(); capture("plan-fx-unavailable")
+        ui.onNodeWithTag("plan-activate").performScrollTo().assertIsNotEnabled()
+        click("plan-mode-fixed"); ui.waitUntil(60_000) { ui.onAllNodesWithTag("plan-budget").fetchSemanticsNodes().size == 1 }
+        click("plan-activate"); await("fixed plan active") { activity.model.investmentPlanLibrary().activeId == draft.id }
+        click("plan-mode-rebalance"); click("plan-associations"); click("link-position-${position.id}")
+        ui.waitUntil(60_000) { ui.onAllNodesWithTag("plan-budget").fetchSemanticsNodes().size == 1 }
+        click("plan-activate"); await("unlinked plan active") { activity.model.investmentPlanLibrary().plans.single().linkedPositionIds.isEmpty() }
+        assertEquals(1, state().positions.size)
     }
     @Test fun currencySeparationAndMissingQuotes() {
         page(Page.Portfolio)

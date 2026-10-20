@@ -1,3 +1,5 @@
+#include "investment_plan.hpp"
+#include "portfolio_plan.hpp"
 #include "provider_error.hpp"
 #include "research_service.hpp"
 #include <algorithm>
@@ -57,7 +59,13 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_investmentradar_app_NativeCore_nat
             return transport.at("body").get<std::string>();
         });
         json data;
-        if (op == "/api/validate")
+        if (op == "/api/plans/allocate")
+            data = ir::allocate_plan(json::parse(sym));
+        else if (op == "/api/plans/equalize")
+            data = ir::equal_plan_weights(std::stoi(sym));
+        else if (op == "/api/plan")
+            data = ir::investment_plan(json::parse(sym));
+        else if (op == "/api/validate")
             data = ir::config_json(config);
         else if (op == "/api/status") {
             data = service.status();

@@ -204,21 +204,27 @@ import org.json.JSONObject
 @Composable internal fun EntryDialog(title: String, action: String, tag: String, dismiss: () -> Unit, submit: (String) -> String?) {
     var value by rememberSaveable { mutableStateOf("") }; var error by rememberSaveable { mutableStateOf<String?>(null) }
     val focus = LocalFocusManager.current
-    fun save() { error = submit(value); if (error == null) focus.clearFocus() }
+    fun save() { error = submit(value); focus.clearFocus() }
     AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value, { value = it.take(32); error = null }, label = { Text("Ticker") }, placeholder = { Text("AIR.PA, AAPL…") }, singleLine = true,
+            OutlinedTextField(value, { value = it.take(80); error = null }, label = { Text("Nome ou ticker") }, placeholder = { Text("AIR.PA, AAPL…") }, singleLine = true,
                 isError = error != null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { save() }), modifier = Modifier.fillMaxWidth().testTag("$tag-input"))
             if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("form-error"))
+            AssetSuggestions(value, tag) { value = it.symbol; error = null; focus.clearFocus() }
         }
     }, confirmButton = { TextButton({ save() }, Modifier.testTag("$tag-submit")) { Text(action) } }, dismissButton = { TextButton(dismiss) { Text("Cancelar") } })
 }
 @Composable internal fun PositionDialog(initial: String, dismiss: () -> Unit, submit: (String, String, String, String) -> String?) {
     var ticker by rememberSaveable { mutableStateOf(initial) }; var qty by rememberSaveable { mutableStateOf("") }; var avg by rememberSaveable { mutableStateOf("") }; var currency by rememberSaveable { mutableStateOf("EUR") }; var error by rememberSaveable { mutableStateOf<String?>(null) }
+    var choosing by rememberSaveable { mutableStateOf(false) }
+    val focus = LocalFocusManager.current
     AlertDialog(onDismissRequest = dismiss, title = { Text("Adicionar investimento") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(ticker, { ticker = it.take(32) }, label = { Text("Ticker") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("position-symbol"))
+            OutlinedTextField(ticker, { ticker = it.take(80); choosing = true; error = null }, label = { Text("Nome ou ticker") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("position-symbol"))
+            TextButton({ choosing = !choosing; if (choosing) ticker = "" }, Modifier.testTag("position-browse")) { Text(if (choosing) "Fechar catálogo" else "Procurar por nome ou setor") }
+            if (choosing) AssetSuggestions(ticker, "position") { asset -> ticker = asset.symbol; currency = asset.currency; choosing = false; focus.clearFocus(); error = null }
+            directoryAsset(ticker)?.let { Text(it.name, style = MaterialTheme.typography.bodySmall) }
             OutlinedTextField(qty, { qty = it }, label = { Text("Quantidade") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().testTag("position-qty"))
             OutlinedTextField(avg, { avg = it }, label = { Text("Preço médio por unidade") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().testTag("position-avg"))
             OutlinedTextField(currency, { currency = it.take(3) }, label = { Text("Moeda do preço médio") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("position-currency"))

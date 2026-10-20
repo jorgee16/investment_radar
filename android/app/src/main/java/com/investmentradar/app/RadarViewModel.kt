@@ -49,6 +49,33 @@ internal class RadarViewModel(application: Application, private val saved: Saved
         pollingMinutes = polling.intervalMinutes, pollingBackground = polling.background, pollingDailyLimit = polling.dailyLimit
     ))
     val state = mutable.asStateFlow()
+    private val investmentPlans = InvestmentPlanStore(application)
+    internal fun investmentPlanLibrary() = investmentPlans.load()
+    internal suspend fun allocateInvestmentPlan(plan: InvestmentPlan): JSONObject {
+        val snapshot = state.value
+        return repository.request("/api/plans/allocate", JSONObject().put("plan", plan.json())
+            .put("now", System.currentTimeMillis() / 1000).put("demo", snapshot.demo)
+            .put("positions", JSONArray(snapshot.positions.map { it.json() })).put("quotes", JSONObject(snapshot.quotes)).toString()) as JSONObject
+    }
+    internal suspend fun equalPlanWeights(count: Int): List<String> {
+        val values = repository.request("/api/plans/equalize", count.toString()) as JSONArray
+        return (0 until values.length()).map { values.getDouble(it).toString() }
+    }
+    internal suspend fun saveInvestmentPlan(plan: InvestmentPlan, activate: Boolean): PlanLibrary {
+        val validation = allocateInvestmentPlan(plan)
+        check(!activate || validation.optBoolean("valid")) { "Completa os instrumentos e os pesos antes de ativar." }
+        check(!activate || plan.mode != "rebalance" || validation.optBoolean("rebalanceAvailable")) { "Faltam dados para corrigir desvios. Escolhe repartição fixa ou revê as associações." }
+        val library = investmentPlans.load()
+        val active = if (activate) plan.id else if (library.activeId == plan.id) null else library.activeId
+        return PlanLibrary(library.plans.filterNot { it.id == plan.id } + plan, active).also(investmentPlans::write)
+    }
+    internal fun deleteInvestmentPlan(id: String): PlanLibrary {
+        val library = investmentPlans.load()
+        return PlanLibrary(library.plans.filterNot { it.id == id }, library.activeId?.takeUnless { it == id }).also(investmentPlans::write)
+    }
+    internal suspend fun planInstrumentMetrics(symbol: String): JSONObject =
+        assetCache[symbol] ?: state.value.screening[symbol] ?: repository.request("/api/snapshot", symbol) as JSONObject
+    internal suspend fun calculatePlan(input: JSONObject): JSONObject = repository.request("/api/plan", input.toString()) as JSONObject
     private var generation = 0
     private var assetJob: Job? = null
     private var historyJob: Job? = null

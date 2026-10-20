@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -29,8 +30,24 @@ import androidx.compose.ui.unit.sp
     }
 }
 @Composable internal fun PortfolioScreen(state: RadarState, model: RadarViewModel, add: () -> Unit) {
+    var planTab by rememberSaveable { mutableStateOf(false) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(!planTab, { planTab = false }, label = { Text("Investimentos") }, modifier = Modifier.testTag("portfolio-holdings-tab"))
+        FilterChip(planTab, { planTab = true }, label = { Text("Plano mensal") }, modifier = Modifier.testTag("portfolio-plan-tab"))
+    }
+    if (planTab) { InvestmentPlanScreen(model); return }
     ModeBanner(state, model)
     Button(add, Modifier.testTag("add-position")) { Text("Adicionar investimento +") }
+    val portfolioFocus = LocalFocusManager.current
+    val portfolioKeyboard = LocalSoftwareKeyboardController.current
+    var query by rememberSaveable { mutableStateOf("") }
+    var sector by rememberSaveable { mutableStateOf("Todos") }
+    fun metadata(position: Position): DirectoryAsset {
+        val known = directoryAsset(position.symbol)
+        val quote = state.quotes[position.symbol]
+        return DirectoryAsset(position.symbol, known?.name ?: quote?.text("name").orEmpty(), known?.sector ?: "Sem setor", position.currency)
+    }
+    val visible = state.positions.filter { metadata(it).matches(query, sector) }
     val totals = portfolioTotals(state.positions, state.quotes)
     if (totals.isEmpty()) FinanceCard { EmptyState("Ainda não tens investimentos", "Adiciona uma compra com quantidade, preço médio e moeda para acompanhar a carteira.") }
     totals.forEach { total -> FinanceCard(title = "Carteira em ${total.currency}", modifier = Modifier.testTag("total-${total.currency}")) {
@@ -38,18 +55,43 @@ import androidx.compose.ui.unit.sp
         MetricRow("Investido", money(total.invested, total.currency), modifier = Modifier.testTag("invested-${total.currency}"))
         MetricRow("Resultado total", money(total.value?.minus(total.invested), total.currency), modifier = Modifier.testTag("profit-${total.currency}"))
         if (total.value == null) Text("Faltam cotações na moeda da posição. Os valores não são convertidos automaticamente.", style = MaterialTheme.typography.bodySmall)
+        Text("Distribuição do capital investido", style = MaterialTheme.typography.labelLarge)
+        state.positions.filter { it.currency == total.currency }.groupBy { it.symbol }.entries
+            .sortedByDescending { (_, lots) -> lots.sumOf { it.qty * it.avg } }.forEach { (symbol, lots) ->
+                val weight = lots.sumOf { it.qty * it.avg } / total.invested
+                Row(Modifier.fillMaxWidth().clickable { model.selectAsset(symbol) }) {
+                    Text(symbol, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                    Text("${decimal(weight * 100, 1)}%", style = MaterialTheme.typography.labelMedium)
+                }
+                LinearProgressIndicator(progress = { weight.toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+            }
     } }
-    state.positions.forEach { position ->
+    if (state.positions.isNotEmpty()) FinanceCard(title = "Os meus investimentos") {
+        OutlinedTextField(query, { query = it }, label = { Text("Pesquisar nome ou símbolo") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { portfolioFocus.clearFocus(); portfolioKeyboard?.hide() }),
+            leadingIcon = { Icon(Icons.Default.Search, null) }, modifier = Modifier.fillMaxWidth().testTag("portfolio-search"))
+        SectorMenu(state.positions.map { metadata(it).sector }, sector, "portfolio-sector") { sector = it }
+        Text("${visible.size} de ${state.positions.size} compras · totais da carteira completa", style = MaterialTheme.typography.bodySmall)
+        if (query.isNotEmpty() || sector != "Todos") TextButton({ query = ""; sector = "Todos" }, Modifier.testTag("portfolio-clear")) { Text("Limpar filtros") }
+        if (visible.isEmpty()) EmptyState("Sem correspondências", "Experimenta outro nome ou limpa os filtros.")
+    }
+    visible.forEach { position ->
         val quote = state.quotes[position.symbol]; val price = quote?.number("price")?.takeIf { quote.text("currency") == position.currency }
         FinanceCard(modifier = Modifier.testTag("position-${position.id}")) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f).clickable { model.selectAsset(position.symbol) }) {
                     Text(position.symbol, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    val asset = metadata(position)
+                    if (asset.name.isNotBlank()) Text(asset.name, style = MaterialTheme.typography.bodyMedium)
+                    Text(asset.sector, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     Text("${decimal(position.qty, 4)} unidades", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton({ model.removePosition(position.id) }, Modifier.testTag("remove-position-${position.id}")) { Icon(Icons.Default.Delete, "Remover compra de ${position.symbol}") }
             }
+            MetricRow("Investido", money(position.avg * position.qty, position.currency))
             MetricRow("Custo médio", money(position.avg, position.currency))
+            MetricRow("Resultado não realizado", money(price?.let { (it - position.avg) * position.qty }, position.currency))
             MetricRow("Valor de mercado", money(price?.times(position.qty), position.currency))
             TextButton({ model.selectAsset(position.symbol) }) { Text("Abrir análise →") }
         }

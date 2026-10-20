@@ -1,4 +1,6 @@
 #include "investment_engine.hpp"
+#include "investment_plan.hpp"
+#include "portfolio_plan.hpp"
 #include "price_analysis.hpp"
 #include "provider_error.hpp"
 #include "research_service.hpp"
@@ -1035,6 +1037,149 @@ int main() {
         auto missing = live.snapshot("AIR.PA");
         CHECK(missing["financialHistory"].empty() && missing["earningsHistory"].empty());
         CHECK(missing["analysts"].is_null() && missing["priceStatistics"].is_null());
+    });
+    test("investment plan taxes only gains and keeps contributions separate", [] {
+        json input = {{"monthly", 350}, {"years", 10},  {"goal", 100000}, {"annual", 0},
+                      {"tax", 28},      {"equity", 75}, {"stocks", 5}};
+        auto result = ir::investment_plan(input);
+        CHECK(result["points"].size() == 10);
+        CHECK(result["points"][9]["net"] == 42000);
+        CHECK(result["points"][9]["tax"] == 0);
+        CHECK(std::abs(result["requiredMonthly"].get<double>() - 100000.0 / 120) < 1e-8);
+        CHECK(result["equityMonthly"] == 262.5 && result["stocksMonthly"] == 17.5 &&
+              result["stableMonthly"] == 70);
+        input["annual"] = 5;
+        result = ir::investment_plan(input);
+        auto last = result["points"][9];
+        CHECK(last["net"].get<double>() > 42000 &&
+              last["net"].get<double>() < last["gross"].get<double>());
+        CHECK(std::abs(last["tax"].get<double>() - (last["gross"].get<double>() - 42000) * .28) <
+              1e-8);
+        input["monthly"] = result["requiredMonthly"];
+        CHECK(std::abs(ir::investment_plan(input)["points"][9]["net"].get<double>() - 100000) <
+              1e-6);
+        input["annual"] = -10;
+        result = ir::investment_plan(input);
+        CHECK(result["points"][9]["tax"] == 0);
+        CHECK(result["points"][9]["net"] < result["points"][9]["invested"]);
+    });
+    test("investment plan rejects invalid or misleading inputs", [] {
+        json input = {{"monthly", 350}, {"years", 10},  {"goal", 100000}, {"annual", 5},
+                      {"tax", 28},      {"equity", 75}, {"stocks", 5}};
+        for (auto patch : std::vector<json>{{{"monthly", -1}},
+                                            {{"years", 1.5}},
+                                            {{"years", 0}},
+                                            {{"annual", -100}},
+                                            {{"tax", 101}},
+                                            {{"equity", 99}, {"stocks", 5}}}) {
+            auto bad = input;
+            bad.update(patch);
+            bool rejected = false;
+            try {
+                ir::investment_plan(bad);
+            } catch (const std::exception &) {
+                rejected = true;
+            }
+            CHECK(rejected);
+        }
+    });
+    test("plan allocations preserve cents and hierarchy", [] {
+        json plan = {{"name", "Test"},
+                     {"monthly", "350,01"},
+                     {"groups", json::array({{{"id", "world"},
+                                              {"name", "ETF"},
+                                              {"weight", "80"},
+                                              {"items", json::array({{{"id", "a"},
+                                                                      {"symbol", "A"},
+                                                                      {"name", "A"},
+                                                                      {"currency", "EUR"},
+                                                                      {"weight", "50"}},
+                                                                     {{"id", "b"},
+                                                                      {"symbol", "B"},
+                                                                      {"name", "B"},
+                                                                      {"currency", "EUR"},
+                                                                      {"weight", "50"}}})}},
+                                             {{"id", "cash"},
+                                              {"name", "Cash"},
+                                              {"kind", "reserve"},
+                                              {"weight", "20"},
+                                              {"balance", "0"}}})}};
+        auto r = ir::allocate_plan({{"plan", plan}});
+        CHECK(r["valid"] == true && r["rebalanceAvailable"] == true);
+        CHECK(r["rows"].size() == 3 && r["budgetCents"] == 35001);
+        long long total = 0;
+        for (auto row : r["rows"]) {
+            total += row["fixedCents"].get<long long>();
+            CHECK(row["rebalanceCents"] == row["fixedCents"]);
+        }
+        CHECK(total == 35001 && r["rows"][0]["targetPct"] == 40);
+        auto equal = ir::equal_plan_weights(3);
+        CHECK(equal[0] == 33.34 && equal[1] == 33.33 && equal[2] == 33.33);
+        plan["groups"][0]["weight"] = "70";
+        CHECK(ir::allocate_plan({{"plan", plan}})["valid"] == false);
+        plan["groups"][0]["weight"] = "80";
+        plan["groups"][0]["items"][1]["symbol"] = "A";
+        CHECK(ir::allocate_plan({{"plan", plan}})["valid"] == false);
+    });
+    test("rebalance uses only linked positions and never sells", [] {
+        json plan = {{"name", "Test"},
+                     {"monthly", "100"},
+                     {"linkedPositionIds", {"p"}},
+                     {"groups", json::array({{{"id", "equity"},
+                                              {"name", "Equity"},
+                                              {"weight", "50"},
+                                              {"items", json::array({{{"id", "a"},
+                                                                      {"symbol", "A"},
+                                                                      {"name", "A"},
+                                                                      {"currency", "EUR"},
+                                                                      {"weight", "100"}}})}},
+                                             {{"id", "cash"},
+                                              {"name", "Cash"},
+                                              {"kind", "reserve"},
+                                              {"weight", "50"},
+                                              {"balance", "0"}}})}};
+        json request = {
+            {"plan", plan},
+            {"positions",
+             json::array(
+                 {{{"id", "p"}, {"symbol", "A"}, {"currency", "EUR"}, {"qty", 9}},
+                  {{"id", "outside"}, {"symbol", "OTHER"}, {"currency", "USD"}, {"qty", 100}}})},
+            {"quotes", {{"A", {{"price", 100}, {"currency", "EUR"}, {"timestamp", 1}}}}}};
+        auto r = ir::allocate_plan(request);
+        CHECK(r["valid"] == true && r["rebalanceAvailable"] == true);
+        CHECK(r["rows"][0]["fixedCents"] == 5000);
+        CHECK(r["rows"][0]["rebalanceCents"] == 0 && r["rows"][1]["rebalanceCents"] == 10000);
+        CHECK(r["currentValueEur"] == 900);
+        request["now"] = 8 * 86400;
+        CHECK(ir::allocate_plan(request)["rebalanceAvailable"] == false);
+        request.erase("now");
+        request["quotes"]["A"]["price"] = 1e308;
+        CHECK(ir::allocate_plan(request)["rebalanceAvailable"] == false);
+        request["quotes"]["A"]["price"] = 100;
+        request["quotes"]["A"]["cacheStale"] = true;
+        r = ir::allocate_plan(request);
+        CHECK(r["valid"] == true && r["rebalanceAvailable"] == false &&
+              r["rows"][0]["rebalanceCents"].is_null());
+        request["quotes"] = json::object();
+        CHECK(ir::allocate_plan(request)["rebalanceAvailable"] == false);
+        request["plan"]["linkedPositionIds"] = {"deleted"};
+        CHECK(ir::allocate_plan(request)["rebalanceAvailable"] == false);
+    });
+    test("plans block invalid drafts and foreign-currency rebalancing", [] {
+        auto p = json::parse(
+            R"({"name":"Test","monthly":"100","groups":[{"id":"g","name":"US","weight":"100","items":[{"id":"a","symbol":"A","currency":"USD","weight":"100"}]}],"linkedPositionIds":["p"]})");
+        auto r = ir::allocate_plan(
+            {{"plan", p},
+             {"positions",
+              json::array({{{"id", "p"}, {"symbol", "A"}, {"currency", "USD"}, {"qty", 1}}})}});
+        CHECK(r["valid"] == true && r["rebalanceAvailable"] == false);
+        for (const auto &value : {"0", "-1", "nan", "inf", "1.001", "999999999"}) {
+            auto bad = p;
+            bad["monthly"] = value;
+            CHECK(ir::allocate_plan({{"plan", bad}})["valid"] == false);
+        }
+        p["groups"][0]["items"] = json::array();
+        CHECK(ir::allocate_plan({{"plan", p}})["valid"] == false);
     });
     std::cout << passed << " tests passed\n";
 }
