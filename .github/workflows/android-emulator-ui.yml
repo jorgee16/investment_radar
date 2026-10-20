@@ -58,12 +58,15 @@ jobs:
         working-directory: android
         run: |
           mkdir -p ../dist/android-inputs
-          cp app/build/outputs/apk/release/app-release.apk ../dist/android-inputs/investment-radar-0.6.5.apk
+          cp app/build/outputs/apk/release/app-release.apk ../dist/android-inputs/investment-radar-0.6.6.apk
           cp app/build/outputs/apk/androidTest/release/app-release-androidTest.apk ../dist/android-inputs/instrumentation.apk
           curl --fail --location --retry 3 https://github.com/jorgee16/investment_radar/releases/download/android-0.6.4-97f58ea86d98/investment-radar-0.6.4.apk -o ../dist/android-inputs/previous-release.apk
           echo "b3c23d2a49be81bdb1570ca1bcede538b0abf0384b3def7d3544b22ecd37c05c  ../dist/android-inputs/previous-release.apk" | sha256sum --check
-          python3 ../scripts/check_android_update.py ../dist/android-inputs/previous-release.apk ../dist/android-inputs/investment-radar-0.6.5.apk --build-tools "$ANDROID_HOME/build-tools/35.0.0" > ../dist/android-inputs/update-compatibility.json
-          ./gradlew :app:assembleRelease -PirVersionCode=13 -PirVersionName=0.6.5-upgrade-probe --no-daemon --console=plain
+          curl --fail --location --retry 3 https://github.com/jorgee16/investment_radar/releases/download/android-0.6.5-71922de9d9d8/investment-radar-0.6.5.apk -o ../dist/android-inputs/previous-plan-release.apk
+          echo "f91770f1cb70011bf506bc730343f0b19b7bdc1ebb6436de1ef4b52784daf0e4  ../dist/android-inputs/previous-plan-release.apk" | sha256sum --check
+          python3 ../scripts/check_android_update.py ../dist/android-inputs/previous-plan-release.apk ../dist/android-inputs/investment-radar-0.6.6.apk --build-tools "$ANDROID_HOME/build-tools/35.0.0" > ../dist/android-inputs/plan-update-compatibility.json
+          python3 ../scripts/check_android_update.py ../dist/android-inputs/previous-release.apk ../dist/android-inputs/investment-radar-0.6.6.apk --build-tools "$ANDROID_HOME/build-tools/35.0.0" > ../dist/android-inputs/update-compatibility.json
+          ./gradlew :app:assembleRelease -PirVersionCode=14 -PirVersionName=0.6.6-upgrade-probe --no-daemon --console=plain
           cp app/build/outputs/apk/release/app-release.apk ../dist/android-inputs/upgrade-probe.apk
       - name: Enable KVM for the emulator
         run: |
@@ -106,26 +109,30 @@ jobs:
           assert report['passed'] and report['tests'] == 27, report
           assert len(list((folder / 'screenshots').rglob('*.png'))) >= 15
           tools = pathlib.Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'
-          source = pathlib.Path('dist/android-inputs/investment-radar-0.6.5.apk')
+          source = pathlib.Path('dist/android-inputs/investment-radar-0.6.6.apk')
           identity = apk_identity(source, tools)
-          assert identity['package'] == 'com.investmentradar.app' and identity['versionCode'] == 12 and identity['versionName'] == '0.6.5'
+          assert identity['package'] == 'com.investmentradar.app' and identity['versionCode'] == 13 and identity['versionName'] == '0.6.6'
           public_certificate = subprocess.check_output(['keytool', '-exportcert', '-keystore', os.environ['IR_ANDROID_KEYSTORE'], '-storepass:env', 'IR_ANDROID_STORE_PASSWORD', '-alias', 'investment-radar'])
           assert identity['certificates'] == [hashlib.sha256(public_certificate).hexdigest()]
           assert report['apkSha256'] == identity['sha256']
           upgrade = json.loads((folder / 'future-upgrade/result.json').read_text())
           assert upgrade['passed'] and upgrade['syntheticProvidersVerified'] == 5 and upgrade['portfolioAndWatchlistPreserved'] and upgrade['investmentPlansPreserved']
           assert upgrade['compatibility']['previous']['sha256'] == identity['sha256']
-          assert upgrade['compatibility']['candidate']['versionCode'] == 13
+          assert upgrade['compatibility']['candidate']['versionCode'] == 14
           assert upgrade['compatibility']['candidate']['certificates'] == identity['certificates']
           previous_upgrade = json.loads((folder / 'previous-upgrade/result.json').read_text())
           assert previous_upgrade['passed'] and previous_upgrade['syntheticProvidersVerified'] == 5
           assert previous_upgrade['compatibility']['candidate']['sha256'] == identity['sha256']
           assert previous_upgrade['compatibility']['previous']['sha256'] == 'b3c23d2a49be81bdb1570ca1bcede538b0abf0384b3def7d3544b22ecd37c05c'
+          plan_upgrade = json.loads((folder / 'plan-upgrade/result.json').read_text())
+          assert plan_upgrade['passed'] and plan_upgrade['investmentPlansPreserved']
+          assert plan_upgrade['compatibility']['previous']['sha256'] == 'f91770f1cb70011bf506bc730343f0b19b7bdc1ebb6436de1ef4b52784daf0e4'
+          assert plan_upgrade['compatibility']['candidate']['sha256'] == identity['sha256']
           manifest = dict(identity, sourceCommit=os.environ['GITHUB_SHA'], instrumentationTests=27, futureUpgradeVerified=True,
-                          previous064UpgradeVerified=True, investmentPlansPreserved=True)
+                          previous064UpgradeVerified=True, previous065UpgradeVerified=True, investmentPlansPreserved=True)
           (folder / 'release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-          shutil.copy2(source, folder / 'investment-radar-0.6.5.apk')
-          (folder / 'investment-radar-0.6.5.apk.sha256').write_text(identity['sha256'] + '  investment-radar-0.6.5.apk\n')
+          shutil.copy2(source, folder / 'investment-radar-0.6.6.apk')
+          (folder / 'investment-radar-0.6.6.apk.sha256').write_text(identity['sha256'] + '  investment-radar-0.6.6.apk\n')
       - uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -144,6 +151,7 @@ jobs:
             dist/android-validation/runner-logs/*.txt
             dist/android-validation/future-upgrade/
             dist/android-validation/previous-upgrade/
+            dist/android-validation/plan-upgrade/
             android/app/build/reports/lint-results-release.*
             android/app/build/test-results/testReleaseUnitTest/
 
@@ -166,19 +174,21 @@ jobs:
         run: |
           set -euo pipefail
           cd validated
-          sha256sum --check investment-radar-0.6.5.apk.sha256
-          tag="android-0.6.5-${GITHUB_SHA:0:12}"
+          sha256sum --check investment-radar-0.6.6.apk.sha256
+          tag="android-0.6.6-${GITHUB_SHA:0:12}"
           cat > release-notes.md <<'NOTES'
-          Android 0.6.5 (versionCode 12), signed with the configured persistent release certificate.
+          Android 0.6.6 (versionCode 13), signed with the configured persistent release certificate.
           All 27 Android emulator tests passed, with screenshots, lint and unit checks.
           A real same-certificate future upgrade preserved five encrypted provider credentials, portfolio and watchlist.
           An in-place upgrade from the published 0.6.4 APK also preserved all five encrypted keys, portfolio and watchlist.
+          Includes the visual plan workspace with bundled Manrope typography, infographic allocation charts, strategy cards and consistent light/dark presentation.
+          Also validated an in-place update from the published 0.6.5 APK, preserving saved plans.
           Includes native investment plans with editable presets, sectors, custom allocations, asset discovery and monthly fixed-weight or contribution-only rebalancing. Saved plans are also preserved across package updates.
-          Download investment-radar-0.6.5.apk directly. The upgrade-probe APK is never distributed.
+          Download investment-radar-0.6.6.apk directly. The upgrade-probe APK is never distributed.
           NOTES
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" investment-radar-0.6.5.apk investment-radar-0.6.5.apk.sha256 release-manifest.json --clobber
+            gh release upload "$tag" investment-radar-0.6.6.apk investment-radar-0.6.6.apk.sha256 release-manifest.json --clobber
           else
-            gh release create "$tag" investment-radar-0.6.5.apk investment-radar-0.6.5.apk.sha256 release-manifest.json --target "$GITHUB_SHA" --title "Investment Radar 0.6.5" --notes-file release-notes.md --prerelease
+            gh release create "$tag" investment-radar-0.6.6.apk investment-radar-0.6.6.apk.sha256 release-manifest.json --target "$GITHUB_SHA" --title "Investment Radar 0.6.6" --notes-file release-notes.md --prerelease
           fi
-          echo "Standalone APK: https://github.com/$GH_REPO/releases/download/$tag/investment-radar-0.6.5.apk" >> "$GITHUB_STEP_SUMMARY"
+          echo "Standalone APK: https://github.com/$GH_REPO/releases/download/$tag/investment-radar-0.6.6.apk" >> "$GITHUB_STEP_SUMMARY"
