@@ -57,7 +57,7 @@ internal fun planWeight(value: String): Double = value.replace(',', '.').toDoubl
                 Text(money(plan.monthly.replace(',', '.').toDoubleOrNull(), "EUR"), style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold, letterSpacing = (-1.5).sp, fontFeatureSettings = "tnum"), modifier = Modifier.weight(1f))
                 Text("/ mês", Modifier.padding(bottom = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { PlanPill("${plan.years} anos"); PlanPill("${plan.groups.size} componentes"); if (plan.preferAccumulating) PlanPill("Acumulação") }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { PlanPill("${plan.years} anos"); PlanPill("${plan.groups.size} ${if (plan.groups.size == 1) "componente" else "componentes"}"); if (plan.preferAccumulating) PlanPill("Acumulação") }
             PlanStrip(plan.groups.map { planWeight(it.weight) })
             TextButton(edit, Modifier.testTag("plan-edit-settings"), contentPadding = PaddingValues(0.dp)) { Text("Ajustar orçamento e preferências  ↗") }
         }
@@ -71,7 +71,7 @@ internal fun planWeight(value: String): Double = value.replace(',', '.').toDoubl
         }
         Text(money(plan.monthly.replace(',', '.').toDoubleOrNull(), "EUR") + " / mês", style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"))
         PlanStrip(plan.groups.map { planWeight(it.weight) })
-        Text("${plan.years} anos  ·  ${plan.groups.size} componentes  ·  ${if (plan.mode == "fixed") "Pesos fixos" else "Corrigir desvios"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("${plan.years} anos  ·  ${plan.groups.size} ${if (plan.groups.size == 1) "componente" else "componentes"}  ·  ${if (plan.mode == "fixed") "Pesos fixos" else "Corrigir desvios"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(open, Modifier.testTag("edit-plan-${plan.id}")) { Text("Abrir plano ↗") }
             TextButton(duplicate, Modifier.testTag("duplicate-plan-${plan.id}")) { Text("Duplicar") }
@@ -99,7 +99,7 @@ internal fun planWeight(value: String): Double = value.replace(',', '.').toDoubl
         Surface(color = PlanPalette[index % PlanPalette.size].copy(alpha = .12f), shape = RoundedCornerShape(12.dp)) {
             Text((index + 1).toString().padStart(2, '0'), Modifier.padding(12.dp), color = PlanPalette[index % PlanPalette.size], style = MaterialTheme.typography.labelLarge)
         }
-        Column(Modifier.weight(1f)) { Text(group.name, style = MaterialTheme.typography.titleMedium); Text(if (group.kind == "reserve") "Reserva em euros" else "${group.items.size} instrumentos", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Column(Modifier.weight(1f)) { Text(group.name, style = MaterialTheme.typography.titleMedium); Text(if (group.kind == "reserve") "Reserva em euros" else "${group.items.size} ${if (group.items.size == 1) "instrumento" else "instrumentos"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         Column(horizontalAlignment = Alignment.End) {
             Text(decimal(group.weight.replace(',', '.').toDoubleOrNull(), 1) + "%", style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"))
             Text(money(amount, "EUR") + "/mês", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -56,7 +56,7 @@ import org.json.JSONObject
             PlanChoice("Região", listOf("Todos", "Mundial", "Europa", "EUA", "Ásia", "Desconhecida"), region, "plan-asset-region") { region = it }
             Row { Checkbox(accumulating, { accumulating = it }, Modifier.testTag("plan-asset-accumulating")); Text("Preferir ETF acumulativos") }
             }
-            Text("${candidates.size} resultados · catálogo e teus ativos", style = MaterialTheme.typography.labelMedium)
+            Text("${candidates.size} ${if (candidates.size == 1) "resultado" else "resultados"} · catálogo e teus ativos", style = MaterialTheme.typography.labelMedium)
             candidates.take(12).forEach { asset ->
                 Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
