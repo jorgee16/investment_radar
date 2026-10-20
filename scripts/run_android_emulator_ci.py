@@ -31,7 +31,7 @@ def main():
     logs = args.output / 'runner-logs'
     logs.mkdir(exist_ok=True)
     inputs = args.inputs.resolve()
-    for name in ('investment-radar-0.6.4.apk', 'instrumentation.apk', 'upgrade-probe.apk'):
+    for name in ('investment-radar-0.6.5.apk', 'instrumentation.apk', 'upgrade-probe.apk', 'previous-release.apk'):
         if not (inputs / name).is_file():
             annotation('error', 'Android inputs', f'Missing build input: {name}')
             return 1
@@ -95,12 +95,17 @@ def main():
             raise RuntimeError('Emulator/package service did not become ready within 900 seconds\n' + bootlog.read_text(errors='replace')[-9000:])
         for setting in ('window_animation_scale', 'transition_animation_scale', 'animator_duration_scale'):
             shell('settings', 'put', 'global', setting, '0')
-        run('Run all 24 installed APK UI tests',
-            [sys.executable, 'scripts/test_android_apk.py', inputs / 'investment-radar-0.6.4.apk',
+        run('Run all 27 installed APK UI tests',
+            [sys.executable, 'scripts/test_android_apk.py', inputs / 'investment-radar-0.6.5.apk',
              inputs / 'instrumentation.apk', '--adb', adb[0], '--serial', 'emulator-5554',
              '--output', args.output, '--test-class', 'com.investmentradar.app.AndroidFlowTest'], 1200)
+        run('Verify update from published 0.6.4 preserves encrypted keys and portfolio',
+            [sys.executable, 'scripts/test_android_upgrade.py', inputs / 'previous-release.apk',
+             inputs / 'investment-radar-0.6.5.apk', inputs / 'instrumentation.apk', '--adb', adb[0],
+             '--serial', 'emulator-5554', '--build-tools', args.sdk / 'build-tools/35.0.0',
+             '--output', args.output / 'previous-upgrade', '--reset-test-device'], 600)
         run('Verify future upgrade preserves encrypted keys and portfolio',
-            [sys.executable, 'scripts/test_android_upgrade.py', inputs / 'investment-radar-0.6.4.apk',
+            [sys.executable, 'scripts/test_android_upgrade.py', inputs / 'investment-radar-0.6.5.apk',
              inputs / 'upgrade-probe.apk', inputs / 'instrumentation.apk', '--adb', adb[0],
              '--serial', 'emulator-5554', '--build-tools', args.sdk / 'build-tools/35.0.0',
              '--output', args.output / 'future-upgrade', '--reset-test-device'], 600)
