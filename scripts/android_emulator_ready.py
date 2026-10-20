@@ -34,6 +34,9 @@ def prepare(adb, directory):
         return [line.strip() for line in shell('dumpsys', 'window').splitlines()
                 if 'mCurrentFocus=' in line or 'mFocusedApp=' in line]
     try:
+        for scale in ('window_animation_scale', 'transition_animation_scale', 'animator_duration_scale'):
+            shell('settings', 'put', 'global', scale, '0')
+        report['animationsDisabled'] = True
         report['initialFocus'] = focus()
         shell('am', 'force-stop', 'com.investmentradar.app')
         shell('input', 'keyevent', 'KEYCODE_WAKEUP')

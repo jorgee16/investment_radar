@@ -111,6 +111,17 @@ class AndroidFlowTest {
     private fun search(value: String) { click("open-search"); fill("search-input", value); click("search-submit") }
     private fun capture(name: String, expectLandscape: Boolean? = null) {
         ui.waitForIdle()
+        if (expectLandscape != null) {
+            await("Activity configuration and layout match screenshot orientation") {
+                var ready = false
+                instrumentation.runOnMainSync {
+                    val root = activity.window.decorView
+                    val expected = if (expectLandscape) android.content.res.Configuration.ORIENTATION_LANDSCAPE else android.content.res.Configuration.ORIENTATION_PORTRAIT
+                    ready = activity.resources.configuration.orientation == expected && root.width > 0 && root.height > 0 && (root.width > root.height) == expectLandscape
+                }
+                ready
+            }
+        }
         val frames = CountDownLatch(1)
         instrumentation.runOnMainSync {
             activity.window.decorView.postOnAnimation { activity.window.decorView.postOnAnimation { frames.countDown() } }
