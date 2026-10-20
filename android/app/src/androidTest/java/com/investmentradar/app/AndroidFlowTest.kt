@@ -389,6 +389,9 @@ class AndroidFlowTest {
     @Test fun dashboardSortAndResearchHierarchyKeepAssetIdentity() {
         await("favorite quotes") { state().watch.all { state().quotes.containsKey(it) } }
         capture("research-home-light")
+        ui.onNodeWithText("Sobre os dados").performClick()
+        ui.onNodeWithText("Os valores apresentados são sintéticos e não são cotações reais.").assertIsDisplayed()
+        ui.onNodeWithText("Fechar").performClick()
         click("watch-sort-up")
         val quotes = state().quotes
         val priced = state().watch.filter { quotes[it]?.number("changePct") != null }
@@ -405,6 +408,9 @@ class AndroidFlowTest {
         await("selected favorite research") { !state().loading && !state().historyLoading }
         ui.onNodeWithTag("asset-price").assertExists()
         capture("research-quote-light")
+        click("asset-tab-1")
+        ui.onNodeWithTag("asset-toolbar-price").assertIsDisplayed()
+        click("asset-tab-0")
         page(Page.Settings); click("dark-theme"); page(Page.Home)
         capture("research-home-dark")
         page(Page.Markets); capture("research-quote-dark")

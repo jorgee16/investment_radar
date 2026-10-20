@@ -58,7 +58,13 @@ import org.json.JSONObject
                         IconButton({ model.back() }, Modifier.testTag("back")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar") }
                         Surface(Modifier.weight(1f).testTag("open-search").clickable { search = true }, shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                             Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Search, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)); Text(state.symbol, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+                                Icon(Icons.Default.Search, null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(state.symbol, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
+                                    val quote = state.quotes[state.symbol]?.takeIf { it.has("cacheFetchedAt") }?.let { mergeQuote(state.snapshot, it) } ?: state.snapshot
+                                    quote?.number("price")?.let { value -> Text(money(value, quote.text("currency")), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, modifier = Modifier.testTag("asset-toolbar-price")) }
+                                }
                             }
                         }
                         IconButton({ model.toggleWatch() }, Modifier.testTag("toggle-watch")) { Icon(Icons.Default.Star, if (state.symbol in state.watch) "Remover da watchlist" else "Adicionar à watchlist", tint = if (state.symbol in state.watch) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -151,7 +157,7 @@ import org.json.JSONObject
 @Composable internal fun ModeBanner(state: RadarState, model: RadarViewModel) {
     var details by rememberSaveable { mutableStateOf(false) }
     Surface(shape = RoundedCornerShape(10.dp), color = if (state.demo) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (state.demo) "DEMO · Dados sintéticos" else "LIVE · Dados dos providers", Modifier.weight(1f).testTag("data-mode"), style = MaterialTheme.typography.labelSmall)
             TextButton({ details = true }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Sobre os dados", style = MaterialTheme.typography.labelSmall) }
         }

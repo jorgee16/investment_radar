@@ -32,8 +32,8 @@ import org.json.JSONObject
         Column(Modifier.background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha = .6f), MaterialTheme.colorScheme.surface))).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             PlanEyebrow("Património investido")
             if (totals.isEmpty()) {
-                Text("O teu futuro,\num investimento de cada vez.", style = MaterialTheme.typography.headlineSmall)
-                Text("Organiza a carteira e define o teu plano mensal.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Começa a tua carteira", style = MaterialTheme.typography.titleLarge)
+                Text("Investimentos e plano mensal num só lugar.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else totals.forEachIndexed { index, total ->
                 if (index > 0) HorizontalDivider()
                 Text(money(total.value, total.currency), style = MaterialTheme.typography.headlineLarge)
@@ -60,7 +60,6 @@ import org.json.JSONObject
     val unchanged = changes.size - rising - falling
     val missing = state.watch.size - changes.size
     FinanceCard(title = "Pulso dos favoritos", modifier = Modifier.testTag("watch-market-pulse")) {
-        Text("Variação reportada nas cotações disponíveis", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val segments = listOf(rising to FinanceGreen, falling to FinanceRed, unchanged to MaterialTheme.colorScheme.onSurfaceVariant, missing to MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().height(8.dp).semantics { contentDescription = "$rising a subir, $falling a descer, $unchanged sem variação e $missing sem dados" }, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             segments.filter { it.first > 0 }.forEach { (count, color) -> Box(Modifier.weight(count.toFloat()).fillMaxHeight().background(color, RoundedCornerShape(4.dp))) }
@@ -73,7 +72,7 @@ import org.json.JSONObject
                 }
             }
         }
-        Text("Cada cotação mantém a sua data. Este painel não é um índice de mercado.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Variações reportadas · datas nas cotações", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -117,10 +116,18 @@ import org.json.JSONObject
             Text(listOf(symbol, snapshot.text("sector")).filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-    Text(money(snapshot.number("price"), snapshot.text("currency")), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("asset-price"))
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        ChangeBadge(snapshot.number("changePct"))
-        Text("Variação da cotação", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= 280.dp && androidx.compose.ui.platform.LocalDensity.current.fontScale < 1.3f) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(money(snapshot.number("price"), snapshot.text("currency")), Modifier.weight(1f).testTag("asset-price"), style = MaterialTheme.typography.headlineLarge)
+                ChangeBadge(snapshot.number("changePct"))
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(money(snapshot.number("price"), snapshot.text("currency")), style = MaterialTheme.typography.headlineLarge, modifier = Modifier.testTag("asset-price"))
+                ChangeBadge(snapshot.number("changePct"))
+            }
+        }
     }
 }
 

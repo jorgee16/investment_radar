@@ -11,6 +11,7 @@ The native Compose presentation now uses the same Manrope type system and rounde
 
 ## Asset research
 
+- The toolbar retains the latest available quote while browsing analysis and financial tabs.
 - Company name, ticker, sector, quote, change badge, provider and timestamp precede the existing interactive chart and range controls.
 - The historical low/high range is labeled with the exact source period; it must never be called a 52-week range without that coverage.
 - Overview shows available P/E, forward P/E and growth metrics, plus heuristic score and coverage. Missing financial ratios are not fabricated or rendered as zero.
