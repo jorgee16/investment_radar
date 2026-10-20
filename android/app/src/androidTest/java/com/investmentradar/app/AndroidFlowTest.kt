@@ -409,7 +409,9 @@ class AndroidFlowTest {
         ui.onNodeWithTag("asset-price").assertExists()
         capture("research-quote-light")
         click("asset-tab-1")
-        ui.onNodeWithTag("asset-toolbar-price").assertIsDisplayed()
+        capture("research-analysis-toolbar")
+        // The search surface merges its descendants; inspect the actual price Text.
+        ui.onNodeWithTag("asset-toolbar-price", useUnmergedTree = true).assertIsDisplayed()
         click("asset-tab-0")
         page(Page.Settings); click("dark-theme"); page(Page.Home)
         capture("research-home-dark")

@@ -67,7 +67,7 @@ import org.json.JSONObject
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             listOf("A subir" to rising, "A descer" to falling, "Sem variação" to unchanged, "Sem dados" to missing).forEachIndexed { index, (label, count) ->
                 Column(Modifier.weight(1f)) {
-                    Text(count.toString(), style = MaterialTheme.typography.titleLarge, color = segments[index].second)
+                    Text(count.toString(), style = MaterialTheme.typography.titleLarge, color = if (index == 3) MaterialTheme.colorScheme.onSurfaceVariant else segments[index].second)
                     Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

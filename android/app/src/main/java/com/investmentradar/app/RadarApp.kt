@@ -192,8 +192,8 @@ import org.json.JSONObject
 @Composable internal fun HomeScreen(state: RadarState, model: RadarViewModel, addWatch: () -> Unit) {
     ModeBanner(state, model)
     PortfolioHero(state) { model.navigate(Page.Portfolio) }
-    if (state.watch.isNotEmpty()) WatchMarketPulse(state)
     WatchlistDashboard(state, model, addWatch)
+    if (state.watch.isNotEmpty()) WatchMarketPulse(state)
     FinanceCard(title = "Explorar") {
         TextButton({ model.navigate(Page.Screener) }) { Text("Comparar ativos no screener →") }
         TextButton({ model.navigate(Page.Calendar) }) { Text("Consultar calendário de resultados →") }
