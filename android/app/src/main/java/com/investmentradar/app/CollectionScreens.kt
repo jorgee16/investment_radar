@@ -1,6 +1,8 @@
 package com.investmentradar.app
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
@@ -129,6 +131,8 @@ import androidx.compose.ui.unit.sp
 }
 @Composable internal fun SettingsScreen(state: RadarState, model: RadarViewModel) {
     val context = LocalContext.current
+    var licenses by remember { mutableStateOf(false) }
+    val license = remember(context) { context.resources.openRawResource(R.raw.manrope_license).bufferedReader().use { it.readText() } }
     val version = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     FinanceCard(title = "Apresentação") {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -171,6 +175,8 @@ import androidx.compose.ui.unit.sp
     }
     FinanceCard(title = "Investment Radar · $version") {
         Text("Acompanha mercados e investimentos, com fontes identificadas e uma carteira guardada neste dispositivo.")
+        TextButton({ licenses = true }) { Text("Licença da tipografia · Manrope") }
         Text("Score e valuation são modelos heurísticos para investigação, não aconselhamento financeiro. Confirma sempre a fonte, a moeda e a data dos dados.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    if (licenses) AlertDialog(onDismissRequest = { licenses = false }, title = { Text("Manrope · SIL Open Font License") }, text = { Text(license, Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodySmall) }, confirmButton = { TextButton({ licenses = false }) { Text("Fechar") } })
 }

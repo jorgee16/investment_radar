@@ -1,4 +1,4 @@
-# Investment plans — Android 0.6.5
+# Investment plans — Android 0.6.6
 
 Portfolio separates recorded purchases from planned investments. Plans never
 create or modify purchases and never place orders with a broker.
@@ -72,7 +72,21 @@ formats are surfaced without overwriting them. Provider credentials remain in
 existing format. No credentials enter plan documents or APKs.
 
 Release validation requires 27 emulator flows, native and JVM tests, lint and
-screenshots, plus actual package upgrades from the SHA-pinned published 0.6.4 APK
+screenshots, plus actual package upgrades from the SHA-pinned published 0.6.4 and 0.6.5 APKs
 and to a private future-version probe. Upgrade fixtures verify five encrypted keys,
 portfolio, watchlist and the saved plan document. Only persistent-signer APKs that
 pass the compatibility guard may be published. Probe APKs are never distributed.
+
+## Visual presentation
+
+The plan workspace uses bundled Manrope variable fonts (SIL OFL; license included
+in Android raw resources), retaining the light/dark finance palette. Fonts load
+offline and add approximately 161 KiB, with no chart framework dependency.
+
+Strategy tiles show actual preset weights; custom/sector tiles are labelled as
+custom composition rather than displaying invented allocations. Saved plans show
+monthly budget, horizon and allocation strips. The editor prioritizes the budget
+hero and interactive composition; parameters are revealed on demand. Group colors
+are consistent between the donut, component cards and monthly contribution rows.
+Weights remain editable via fields and sliders. All amounts come from the shared
+core; illustrative visuals never substitute unavailable market data.

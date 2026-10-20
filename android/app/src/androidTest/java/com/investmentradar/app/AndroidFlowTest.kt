@@ -425,7 +425,7 @@ class AndroidFlowTest {
         ui.onNodeWithTag("portfolio-search").performScrollTo(); fill("portfolio-search", "inexistente"); finishInput("portfolio-search"); ui.onNodeWithText("Sem correspondências").performScrollTo().assertIsDisplayed()
         click("portfolio-clear"); click("portfolio-sector"); click("portfolio-sector-Tecnologia")
         assertEquals(1, state().positions.size)
-        click("portfolio-plan-tab"); click("preset-world")
+        click("portfolio-plan-tab"); capture("plan-presets-light"); click("preset-world"); capture("plan-editor-hero"); click("plan-edit-settings")
         ui.onNodeWithTag("plan-monthly").performScrollTo(); fill("plan-monthly", "1000"); finishInput("plan-monthly")
         click("group-add-world"); fill("plan-asset-query", "IE00BK5BQT80"); finishInput("plan-asset-query")
         capture("plan-instrument-search")
@@ -435,14 +435,14 @@ class AndroidFlowTest {
         click("plan-activate"); await("plan active") { activity.model.investmentPlanLibrary().activeId != null }
         val saved = activity.model.investmentPlanLibrary().plans.single()
         assertEquals("1000", saved.monthly); assertEquals("VWCE.DE", saved.groups.single().items.single().symbol)
-        click("plan-back"); click("duplicate-plan-${saved.id}")
+        click("plan-back"); capture("plan-library-light"); click("duplicate-plan-${saved.id}")
         click("plan-save"); await("duplicate persisted") { activity.model.investmentPlanLibrary().plans.size == 2 }
         assertEquals(saved.id, activity.model.investmentPlanLibrary().activeId)
         click("plan-back")
         val copy = activity.model.investmentPlanLibrary().plans.first { it.id != saved.id }
         click("delete-plan-${copy.id}"); click("confirm-delete-plan")
         await("duplicate removed") { activity.model.investmentPlanLibrary().plans.size == 1 }
-        restart(); page(Page.Portfolio); click("portfolio-plan-tab"); click("edit-plan-${saved.id}")
+        restart(); page(Page.Portfolio); click("portfolio-plan-tab"); click("edit-plan-${saved.id}"); click("plan-edit-settings")
         ui.onNodeWithTag("plan-monthly").assertTextContains("1000")
         ui.onNodeWithTag("plan-weight-world").performScrollTo(); fill("plan-weight-world", "99"); finishInput("plan-weight-world")
         ui.onNodeWithTag("plan-activate").performScrollTo().assertIsNotEnabled()
@@ -466,6 +466,10 @@ class AndroidFlowTest {
         assertEquals(listOf("50.0", "50.0"), saved.groups.map { it.weight })
         ui.onNodeWithTag("plan-allocation-chart").performScrollTo().performTouchInput { click(Offset(center.x, height * .1f)) }
         capture("plan-sector-chart")
+        instrumentation.runOnMainSync { activity.model.setDark(true) }
+        ui.waitForIdle(); capture("plan-sector-dark")
+        instrumentation.runOnMainSync { activity.model.setDark(false) }
+        ui.waitForIdle()
         instrumentation.runOnMainSync { activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
         ui.onNodeWithTag("plan-allocation-chart").performScrollTo(); capture("plan-sector-landscape", true)
         instrumentation.runOnMainSync { activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }

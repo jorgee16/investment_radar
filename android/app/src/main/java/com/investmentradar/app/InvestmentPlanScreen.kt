@@ -1,7 +1,10 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 package com.investmentradar.app
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -48,12 +52,16 @@ import kotlin.math.sqrt
     var busy by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<JSONObject?>(null) }
     var projection by rememberSaveable { mutableStateOf(false) }
+    var settingsExpanded by rememberSaveable { mutableStateOf(false) }
     var associations by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     fun change(plan: InvestmentPlan) { raw = plan.json().toString(); report = null; message = null }
+    val editorTop = remember { BringIntoViewRequester() }
     val plan = remember(raw) { raw.takeIf { it.isNotBlank() }?.let { InvestmentPlan.read(JSONObject(it)) } }
+    Spacer(Modifier.fillMaxWidth().height(1.dp).bringIntoViewRequester(editorTop))
+    LaunchedEffect(plan?.id) { editorTop.bringIntoView() }
     fun leave() {
         val original = library.plans.firstOrNull { it.id == plan?.id }?.json()?.toString()
         if (raw != original) confirmLeave = true else raw = ""
@@ -69,48 +77,58 @@ import kotlin.math.sqrt
     if (message != null) Text(message!!, color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("plan-message"))
     if (initial.isFailure) { Text("Não foi possível abrir os planos guardados. Os dados foram preservados."); return }
     if (plan == null) {
-        Text("Os meus planos", style = MaterialTheme.typography.headlineSmall)
-        Text("Define onde investir e como repartir cada reforço. As compras reais continuam na carteira.", style = MaterialTheme.typography.bodyMedium)
-        library.plans.forEach { saved -> FinanceCard(title = saved.name, modifier = Modifier.testTag("saved-plan-${saved.id}")) {
-            Text(if (library.activeId == saved.id) "Plano ativo" else "Rascunho / alternativa", color = MaterialTheme.colorScheme.primary)
-            Text("${saved.monthly} €/mês · ${saved.groups.size} grupos")
-            Row {
-                TextButton({ change(saved); selectedGroup = saved.groups.firstOrNull()?.id.orEmpty() }, Modifier.testTag("edit-plan-${saved.id}")) { Text("Abrir") }
-                TextButton({ change(saved.copy(id = planId(), name = saved.name + " · cópia")); selectedGroup = saved.groups.firstOrNull()?.id.orEmpty() }, Modifier.testTag("duplicate-plan-${saved.id}")) { Text("Duplicar") }
-                TextButton({ deleteId = saved.id }, Modifier.testTag("delete-plan-${saved.id}")) { Text("Eliminar") }
-            }
-        } }
-        FinanceCard(title = "Criar um plano") {
-            planPresets.forEach { preset ->
-                OutlinedButton({ change(createInvestmentPlan(preset.key)); selectedGroup = "world" }, Modifier.fillMaxWidth().testTag("preset-${preset.key}")) {
-                    Column(Modifier.fillMaxWidth()) { Text(preset.name, fontWeight = FontWeight.Bold); Text(preset.description, style = MaterialTheme.typography.bodySmall) }
+        PlanEyebrow("Investimento regular")
+        Text("Planos de investimento", style = MaterialTheme.typography.headlineMedium)
+        Text("Uma estratégia. Cada reforço no seu lugar.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        library.plans.forEach { saved ->
+            SavedPlanCard(saved, library.activeId == saved.id,
+                open = { change(saved); settingsExpanded = false; selectedGroup = saved.groups.firstOrNull()?.id.orEmpty() },
+                duplicate = { change(saved.copy(id = planId(), name = saved.name + " · cópia")); settingsExpanded = false; selectedGroup = saved.groups.firstOrNull()?.id.orEmpty() },
+                delete = { deleteId = saved.id })
+        }
+        PlanEyebrow("Começa com uma base")
+        Text("Escolhe a tua estratégia", style = MaterialTheme.typography.titleLarge)
+        BoxWithConstraints {
+            val columns = if (maxWidth >= 300.dp && LocalDensity.current.fontScale < 1.3f) 2 else 1
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                planPresets.withIndex().toList().chunked(columns).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { entry -> PresetTile(entry.value, entry.index, Modifier.weight(1f)) { change(createInvestmentPlan(entry.value.key)); settingsExpanded = false; selectedGroup = "world" } }
+                        if (row.size < columns) Spacer(Modifier.weight(1f))
+                    }
                 }
             }
-            Text("Modelos editáveis, não recomendações personalizadas. Mundial, Europa e ações individuais continuam expostos às quedas da bolsa.", style = MaterialTheme.typography.bodySmall)
         }
+        Text("Modelos editáveis. Os ETF de ações também podem sofrer quedas acentuadas.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     } else {
         TextButton({ focus.clearFocus(); leave() }, Modifier.testTag("plan-back")) { Text("← Os meus planos") }
-        FinanceCard(title = "Construir o plano") {
+        PlanHero(plan, library.activeId == plan.id) { settingsExpanded = !settingsExpanded }
+        if (settingsExpanded) PlanPanel(title = "Parâmetros do plano") {
             PlanInput("Nome do plano", plan.name, "plan-name", false) { change(plan.copy(name = it.take(80))) }
-            PlanInput("Reforço mensal (€)", plan.monthly, "plan-monthly") { change(plan.copy(monthly = it)) }
-            PlanInput("Horizonte (anos)", plan.years, "plan-years") { change(plan.copy(years = it)) }
-            Row { Checkbox(plan.preferAccumulating, { change(plan.copy(preferAccumulating = it)) }); Text("Preferir ETF acumulativos nas sugestões") }
-            Text("${if (plan.mode == "fixed") "Repartição fixa" else "Correção de desvios"} · orçamento em euros", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.weight(1f)) { PlanInput("Mensal (€)", plan.monthly, "plan-monthly") { change(plan.copy(monthly = it)) } }
+                Box(Modifier.weight(1f)) { PlanInput("Prazo (anos)", plan.years, "plan-years") { change(plan.copy(years = it)) } }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(plan.preferAccumulating, { change(plan.copy(preferAccumulating = it)) }); Text("Preferir ETF acumulativos", style = MaterialTheme.typography.bodyMedium) }
         }
-        if (plan.groups.isNotEmpty()) FinanceCard(title = "Distribuição planeada") {
+        if (plan.groups.isNotEmpty()) PlanPanel(title = "Distribuição planeada") {
             PlanDonut(plan.groups, selectedGroup) { selectedGroup = it }
             Text("Soma dos grupos: ${decimal(report?.number("totalWeight"), 2)}%", modifier = Modifier.testTag("plan-weight-total"))
             Text("Toca numa parcela para editar. A ativação exige uma soma de 100%.", style = MaterialTheme.typography.bodySmall)
         }
-        plan.groups.forEach { group ->
+        plan.groups.forEachIndexed { groupIndex, group ->
             fun update(updated: PlanGroup) = change(plan.copy(groups = plan.groups.map { if (it.id == group.id) updated else it }))
-            FinanceCard(title = group.name, modifier = Modifier.testTag("plan-group-${group.id}")) {
-                PlanInput("Peso no plano (%)", group.weight, "plan-weight-${group.id}") { update(group.copy(weight = it)) }
+            PlanPanel(modifier = Modifier.testTag("plan-group-${group.id}")) {
+                val groupRows = report?.optJSONArray("rows")?.objects()?.filter { it.text("groupId") == group.id }
+                val amountKey = if (plan.mode == "fixed") "fixedCents" else "rebalanceCents"
+                val amount = groupRows?.takeIf { report?.optBoolean("valid") == true && it.isNotEmpty() && it.all { row -> row.number(amountKey) != null } }?.sumOf { it.number(amountKey)!! }?.div(100)
+                PlanGroupHeading(group, groupIndex, amount)
                 Row {
                     TextButton({ selectedGroup = if (selectedGroup == group.id) "" else group.id }, Modifier.testTag("expand-group-${group.id}")) { Text(if (selectedGroup == group.id) "Recolher" else "Editar componentes") }
                     TextButton({ change(plan.copy(groups = plan.groups.filterNot { it.id == group.id })) }, Modifier.testTag("remove-group-${group.id}")) { Text("Remover grupo") }
                 }
                 if (selectedGroup == group.id) {
+                    PlanInput("Peso no plano (%)", group.weight, "plan-weight-${group.id}") { update(group.copy(weight = it)) }
                     Slider(value = group.weight.replace(',', '.').toFloatOrNull()?.takeIf { it.isFinite() }?.coerceIn(0f, 100f) ?: 0f, onValueChange = { update(group.copy(weight = it.toInt().toString())) }, valueRange = 0f..100f, modifier = Modifier.testTag("weight-slider-${group.id}"))
                     if (group.kind != "sector") PlanInput("Nome do grupo", group.name, "group-name-${group.id}", false) { update(group.copy(name = it.take(80))) }
                     if (group.kind == "reserve") {
@@ -126,14 +144,14 @@ import kotlin.math.sqrt
                         if (group.items.isEmpty()) Text("Escolhe os instrumentos deste grupo.")
                         Button({ focus.clearFocus(); keyboard?.hide(); pickGroup = group.id }, Modifier.testTag("group-add-${group.id}"), enabled = group.items.size < 50) { Text("Pesquisar ETF ou ações") }
                         if (group.items.size > 1) TextButton({ busy = true; scope.launch { try { val weights = model.equalPlanWeights(group.items.size); update(group.copy(items = group.items.mapIndexed { i, item -> item.copy(weight = weights[i]) })) } finally { busy = false } } }, enabled = !busy, modifier = Modifier.testTag("equal-items-${group.id}")) { Text("Distribuir igualmente no grupo") }
-                        Text("Ao adicionar instrumentos, os pesos internos são repartidos igualmente; depois podes ajustá-los.", style = MaterialTheme.typography.bodySmall)
+                        Text("Novos instrumentos recebem pesos iguais, editáveis.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
         OutlinedButton({ addGroup = true }, Modifier.fillMaxWidth().testTag("plan-add-group"), enabled = plan.groups.size < 30) { Text("Adicionar setor, grupo ou reserva +") }
         if (plan.groups.size > 1) TextButton({ busy = true; scope.launch { try { val weights = model.equalPlanWeights(plan.groups.size); change(plan.copy(groups = plan.groups.mapIndexed { i, g -> g.copy(weight = weights[i]) })) } finally { busy = false } } }, enabled = !busy, modifier = Modifier.testTag("plan-equal-groups")) { Text("Repartir igualmente entre grupos") }
-        FinanceCard(title = "Como distribuir os reforços") {
+        PlanPanel(title = "Método de reforço") {
             FilterChip(plan.mode == "fixed", { change(plan.copy(mode = "fixed")) }, label = { Text("Percentagens fixas") }, modifier = Modifier.testTag("plan-mode-fixed"))
             FilterChip(plan.mode == "rebalance", { change(plan.copy(mode = "rebalance")) }, label = { Text("Corrigir desvios, sem vender") }, modifier = Modifier.testTag("plan-mode-rebalance"))
             TextButton({ associations = !associations }, Modifier.testTag("plan-associations")) { Text("Associar compras da carteira (${plan.linkedPositionIds.size})") }
@@ -149,8 +167,8 @@ import kotlin.math.sqrt
         }
         report?.let { allocation ->
             val issues = allocation.optJSONArray("issues")?.strings().orEmpty()
-            if (issues.isNotEmpty()) FinanceCard(title = "Completar antes de ativar") { issues.forEach { Text(it, modifier = Modifier.testTag("plan-validation")) } }
-            if (allocation.optBoolean("valid")) FinanceCard(title = "O próximo reforço") {
+            if (issues.isNotEmpty()) PlanPanel(title = "Completar antes de ativar") { issues.forEach { Text(it, modifier = Modifier.testTag("plan-validation")) } }
+            if (allocation.optBoolean("valid")) PlanPanel(title = "O próximo reforço") {
                 val available = plan.mode == "fixed" || allocation.optBoolean("rebalanceAvailable")
                 if (!available) {
                     Text("A correção de desvios precisa de dados completos. A repartição fixa continua disponível.", modifier = Modifier.testTag("plan-rebalance-blocked"))
@@ -158,11 +176,10 @@ import kotlin.math.sqrt
                 } else {
                     Text("${money(allocation.number("budgetCents")?.div(100), "EUR")} a distribuir", style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("plan-budget"))
                     if (plan.mode == "rebalance" && state.demo) Text("DEMO · correção baseada em cotações sintéticas", color = MaterialTheme.colorScheme.error)
-                    allocation.getJSONArray("rows").objects().forEach { row ->
-                        MetricRow(row.text("name"), money(row.number(if (plan.mode == "fixed") "fixedCents" else "rebalanceCents")?.div(100), "EUR"), modifier = Modifier.testTag("allocation-row-${row.text("id")}"))
-                        Text("${row.text("groupName")} · objetivo ${decimal(row.number("targetPct"), 2)}%", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text("Montantes planeados. Não executa ordens nem pressupõe frações, câmbio ou comissões da XTB. Regista cada compra real na carteira.", style = MaterialTheme.typography.bodySmall)
+                    val rows = allocation.getJSONArray("rows").objects()
+                    PlanStrip(rows.map { it.number("targetPct") ?: 0.0 }, colors = rows.map { row -> PlanPalette[plan.groups.indexOfFirst { it.id == row.text("groupId") }.coerceAtLeast(0) % PlanPalette.size] })
+                    rows.forEach { row -> ContributionRow(row, plan.groups.indexOfFirst { it.id == row.text("groupId") }.coerceAtLeast(0), plan.mode) }
+                    Text("Distribuição planeada em euros. Confirma quantidades e custos antes de comprar na XTB.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         } ?: LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -206,7 +223,7 @@ import kotlin.math.sqrt
 }
 
 @Composable private fun PlanDonut(groups: List<PlanGroup>, selected: String, select: (String) -> Unit) {
-    val colors = listOf(Color(0xFF007D68), Color(0xFF2679C7), Color(0xFFF2AA38), Color(0xFF8B63C5), Color(0xFFE16C64), Color(0xFF5E8791))
+    val colors = PlanPalette
     val weights = groups.map { it.weight.replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 && it <= 100 } ?: 0.0 }
     val sum = weights.sum()
     Box(contentAlignment = Alignment.Center) {
@@ -233,7 +250,16 @@ import kotlin.math.sqrt
         Text(current?.name ?: "Plano", style = MaterialTheme.typography.labelSmall, maxLines = 2)
     }
     }
-    groups.forEach { group -> FilterChip(selected == group.id, { select(group.id) }, label = { Text("${group.name} · ${decimal(group.weight.replace(',', '.').toDoubleOrNull(), 1)}%") }, modifier = Modifier.testTag("select-group-${group.id}")) }
+    groups.forEachIndexed { index, group ->
+        Surface(onClick = { select(group.id) }, modifier = Modifier.fillMaxWidth().testTag("select-group-${group.id}"),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp), color = if (selected == group.id) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                androidx.compose.foundation.Canvas(Modifier.size(9.dp)) { drawCircle(colors[index % colors.size]) }
+                Text(group.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text(decimal(group.weight.replace(',', '.').toDoubleOrNull(), 1) + "%", style = MaterialTheme.typography.titleSmall)
+            }
+        }
+    }
 }
 
 @Composable private fun PlanProjection(plan: InvestmentPlan, model: RadarViewModel) {
@@ -246,7 +272,7 @@ import kotlin.math.sqrt
             result = model.calculatePlan(input)
         } catch (e: CancellationException) { throw e } catch (_: Exception) { error = "Confirma objetivo, prazo, retorno (−20 a 20%) e imposto (0 a 50%)." }
     }
-    FinanceCard(title = "Projeção opcional · novos reforços") {
+    PlanPanel(title = "Projeção opcional · novos reforços") {
         PlanInput("Objetivo líquido (€)", goal, "projection-goal") { goal = it }
         PlanInput("Retorno anual efetivo hipotético (%)", annual, "projection-annual") { annual = it }
         PlanInput("Imposto sobre ganhos (%)", tax, "projection-tax") { tax = it }
