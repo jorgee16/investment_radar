@@ -3,7 +3,7 @@ package com.investmentradar.app
 import java.text.Normalizer
 
 /** Offline discovery metadata only: never prices, recommendations or broker availability. */
-internal data class DirectoryAsset(val symbol: String, val name: String, val sector: String, val currency: String, val isin: String = "", val type: String = "Ação", val region: String = "EUA", val accumulating: Boolean? = null, val source: String = "Catálogo local", val exchange: String = "", val aliases: String = "")
+internal data class DirectoryAsset(val symbol: String, val name: String, val sector: String, val currency: String, val isin: String = "", val type: String = "Ação", val region: String = "EUA", val accumulating: Boolean? = null, val source: String = "Catálogo local", val exchange: String = "", val aliases: String = "", val country: String = "")
 internal val assetDirectory = listOf(
     DirectoryAsset("VWCE.DE", "Vanguard FTSE All-World UCITS ETF · Acumulação", "ETF diversificados", "EUR", "IE00BK5BQT80", "ETF", "Mundial", true, "Vanguard · FTSE All-World"),
     DirectoryAsset("VUAA.DE", "Vanguard S&P 500 UCITS ETF · Acumulação", "ETF diversificados", "EUR", "IE00BFMXXD54", "ETF", "EUA", true, "Vanguard · S&P 500"),

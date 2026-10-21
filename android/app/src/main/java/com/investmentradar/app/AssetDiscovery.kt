@@ -36,14 +36,20 @@ internal class AssetMetadataStore(context: Context) {
     }.getOrDefault(emptyList())
     fun save(assets: List<DirectoryAsset>) {
         val rows = assets.takeLast(500).map { a -> JSONObject().put("symbol", a.symbol).put("name", a.name).put("currency", a.currency)
-            .put("isin", a.isin).put("exchange", a.exchange).put("country", a.region).put("sector", a.sector)
+            .put("isin", a.isin).put("exchange", a.exchange).put("country", a.country).put("region", a.region).put("sector", a.sector)
             .put("accumulating", a.accumulating ?: JSONObject.NULL).put("aliases", a.aliases)
             .put("instrumentType", if (a.type == "ETF") "etf" else if (a.type == "Ação") "stock" else "unknown").put("source", a.source) }
         check(prefs.edit().putString("assets", JSONArray(rows).toString()).commit())
     }
 }
-internal fun directoryHit(row: JSONObject) = DirectoryAsset(row.text("symbol"), row.text("name"), row.text("sector").ifBlank { "Sem setor" }, row.text("currency"), row.text("isin"),
-    when (row.text("instrumentType")) { "etf" -> "ETF"; "stock", "equity" -> "Ação"; else -> "Desconhecido" }, row.text("country").ifBlank { "Por confirmar" }, accumulating = if (row.isNull("accumulating")) directoryAsset(row.text("symbol"))?.accumulating else row.optBoolean("accumulating"), source = row.text("source"), exchange = row.text("exchange"), aliases = row.text("aliases"))
+internal fun directoryHit(row: JSONObject): DirectoryAsset {
+    val known = directoryAsset(row.text("symbol"))?.takeIf { row.text("isin").isBlank() || it.isin.isBlank() || row.text("isin") == it.isin }
+    val type = when (row.text("instrumentType")) { "etf" -> "ETF"; "stock", "equity" -> "Ação"; else -> known?.type ?: "Desconhecido" }
+    return DirectoryAsset(row.text("symbol"), row.text("name"), row.text("sector").ifBlank { known?.sector ?: "Sem setor" }, row.text("currency"), row.text("isin"),
+        type, row.text("region").ifBlank { known?.region ?: "Desconhecida" },
+        accumulating = if (row.isNull("accumulating")) known?.accumulating else row.optBoolean("accumulating"),
+        source = row.text("source"), exchange = row.text("exchange"), aliases = row.text("aliases"), country = row.text("country"))
+}
 internal fun knownAssets(state: RadarState): List<DirectoryAsset> {
     val values = (assetDirectory + state.discovered).associateBy { it.symbol }.toMutableMap()
     (state.watch + state.positions.map { it.symbol } + state.quotes.keys).distinct().forEach { symbol ->

@@ -453,6 +453,11 @@ class AndroidFlowTest {
         ui.onNodeWithTag("quote-MSFT").performScrollTo().assertIsDisplayed()
     }
     @Test fun providerSearchFindsFullNamesOutsideCatalogueAndPersistsListing() {
+        val fund = directoryHit(JSONObject().put("symbol", "VWCE.DE").put("name", "Vanguard FTSE All-World").put("country", "Germany").put("currency", "EUR").put("instrumentType", "etf").put("isin", "IE00BK5BQT80"))
+        assertEquals("Mundial", fund.region); assertEquals("Germany", fund.country)
+        assertEquals("ETF diversificados", fund.sector); assertEquals(true, fund.accumulating)
+        AssetMetadataStore(context).save(listOf(fund))
+        assertEquals(fund, AssetMetadataStore(context).load().single())
         liveFixture(false)
         val url = "https://eodhd.com/api/search/Novo%20Nordisk?api_token=fixture-permission-denied&fmt=json&limit=25"
         ApiCache(context).use { it.put(url, """[{"Code":"NOVO-B","Exchange":"CO","Name":"Novo Nordisk A/S","Currency":"DKK","Country":"Denmark","Type":"Common Stock","ISIN":"DK0062498333"}]""") }
