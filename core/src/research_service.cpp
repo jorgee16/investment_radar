@@ -191,6 +191,33 @@ ResearchService::ResearchService(const ResearchConfig &c, HttpGet get) : config_
     manager_.set_routing(c.routing);
     demo_manager_.add(std::make_shared<DemoProvider>());
 }
+json ResearchService::search(const std::string &query) {
+    if (query.size() < 2 || query.size() > 120 ||
+        std::any_of(query.begin(), query.end(), [](unsigned char c) { return c < 32 || c == 127; }))
+        throw std::invalid_argument("Invalid search query");
+    auto &manager = active();
+    manager.clear_diagnostics();
+    auto rows = manager.search(query);
+    json result = json::array();
+    std::vector<std::string> seen;
+    for (const auto &hit : rows) {
+        if (result.size() >= 25)
+            break;
+        if (!valid_symbol(hit.symbol) || hit.name.empty() ||
+            std::find(seen.begin(), seen.end(), hit.symbol) != seen.end())
+            continue;
+        seen.push_back(hit.symbol);
+        result.push_back({{"symbol", hit.symbol},
+                          {"name", hit.name},
+                          {"currency", hit.currency},
+                          {"exchange", hit.exchange},
+                          {"isin", hit.isin},
+                          {"country", hit.country},
+                          {"instrumentType", hit.instrument_type},
+                          {"source", hit.source}});
+    }
+    return {{"results", result}, {"warnings", manager.diagnostics()}, {"demo", config_.demo}};
+}
 json ResearchService::test_providers(const std::string &symbol, const std::string &provider) {
     if (!valid_symbol(symbol))
         throw std::invalid_argument("Invalid symbol");

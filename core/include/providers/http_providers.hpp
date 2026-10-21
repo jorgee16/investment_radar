@@ -10,6 +10,10 @@ class EodhdProvider final : public IMarketDataProvider {
   public:
     EodhdProvider(std::string key, HttpGet get) : key_(std::move(key)), get_(std::move(get)) {}
     ProviderDescriptor descriptor() const override;
+    bool supports_search() const override {
+        return true;
+    }
+    std::vector<AssetSearchHit> search(const std::string &) override;
     std::optional<Quote> quote(const std::string &) override;
     std::optional<Quote> quote_light(const std::string &s) override {
         return quote_impl(s, false);
@@ -52,6 +56,10 @@ class AlphaVantageProvider final : public IMarketDataProvider {
     AlphaVantageProvider(std::string key, HttpGet get)
         : key_(std::move(key)), get_(std::move(get)) {}
     ProviderDescriptor descriptor() const override;
+    bool supports_search() const override {
+        return true;
+    }
+    std::vector<AssetSearchHit> search(const std::string &) override;
     std::optional<Quote> quote(const std::string &) override;
     std::optional<Quote> quote_light(const std::string &s) override {
         return quote_impl(s, false);
@@ -71,6 +79,10 @@ class FinnhubProvider final : public IMarketDataProvider {
   public:
     FinnhubProvider(std::string key, HttpGet get) : key_(std::move(key)), get_(std::move(get)) {}
     ProviderDescriptor descriptor() const override;
+    bool supports_search() const override {
+        return true;
+    }
+    std::vector<AssetSearchHit> search(const std::string &) override;
     std::optional<Quote> quote(const std::string &) override;
     std::optional<Fundamentals> fundamentals(const std::string &) override;
     std::optional<EstimateSnapshot> estimates(const std::string &) override;

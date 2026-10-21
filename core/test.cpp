@@ -1181,5 +1181,77 @@ int main() {
         p["groups"][0]["items"] = json::array();
         CHECK(ir::allocate_plan({{"plan", p}})["valid"] == false);
     });
+    test("search normalizes EODHD listings without merging an ISIN across exchanges", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "test-search-key";
+        int calls = 0;
+        ir::ResearchService service(c, [&](const std::string &url) {
+            ++calls;
+            CHECK(url.find("/search/Vanguard%20World?") != url.npos);
+            return R"([{"Code":"VWCE","Exchange":"XETRA","Name":"Vanguard FTSE All-World","Type":"ETF","Currency":"EUR","ISIN":"IE00BK5BQT80"},{"Code":"VWCE","Exchange":"LSE","Name":"Vanguard FTSE All-World","Type":"ETF","ISIN":"IE00BK5BQT80"},{"Code":"BAD SYMBOL","Exchange":"US","Name":"Invalid"},{"Code":"VWCE","Exchange":"XETRA","Name":"Duplicate"}])";
+        });
+        auto result = service.search("Vanguard World");
+        CHECK(calls == 1);
+        CHECK(result["results"].size() == 2);
+        CHECK(result["results"][0]["symbol"] == "VWCE.DE");
+        CHECK(result["results"][1]["symbol"] == "VWCE.L");
+        CHECK(result["results"][1]["currency"] == "");
+        CHECK(result["results"][0]["instrumentType"] == "etf");
+        CHECK(result["results"][0]["isin"] == "IE00BK5BQT80");
+    });
+    test("search falls back on denied and throttled providers without exposing credentials", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "private-search-token";
+        c.alpha_key = "alpha-test";
+        c.finnhub_key = "finn-test";
+        int calls = 0;
+        ir::ResearchService service(c, [&](const std::string &url) -> std::string {
+            ++calls;
+            if (url.find("eodhd.com") != url.npos)
+                throw ir::ProviderError("subscription", 403);
+            if (url.find("alphavantage.co") != url.npos)
+                throw ir::ProviderError("rate_limit", 429);
+            return R"({"result":[{"symbol":"NOVO-B.CO","description":"Novo Nordisk A/S","type":"Common Stock"}]})";
+        });
+        auto result = service.search("Novo Nordisk");
+        CHECK(calls == 3);
+        CHECK(result["results"].size() == 1);
+        CHECK(result["results"][0]["name"] == "Novo Nordisk A/S");
+        CHECK(result["results"][0]["currency"] == "");
+        CHECK(result["warnings"].size() == 2);
+        CHECK(result.dump().find("private-search-token") == std::string::npos);
+    });
+    test("search rejects malformed requests and never uses unconfigured transports", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        int calls = 0;
+        ir::ResearchService service(c, [&](const std::string &) {
+            ++calls;
+            return "[]";
+        });
+        CHECK(service.search("Microsoft")["results"].empty());
+        CHECK(calls == 0);
+        for (auto query : {std::string("a"), std::string(121, 'x'), std::string("bad\nquery")}) {
+            bool rejected = false;
+            try {
+                service.search(query);
+            } catch (const std::invalid_argument &) {
+                rejected = true;
+            }
+            CHECK(rejected);
+        }
+    });
+    test("Alpha symbol discovery maps supported exchange aliases and keeps metadata", [] {
+        ir::AlphaVantageProvider provider("test", [](const std::string &url) {
+            CHECK(url.find("function=SYMBOL_SEARCH&keywords=Siemens") != url.npos);
+            return R"({"bestMatches":[{"1. symbol":"SIE.DEX","2. name":"Siemens AG","3. type":"Equity","4. region":"Germany","8. currency":"EUR"}]})";
+        });
+        auto rows = provider.search("Siemens");
+        CHECK(rows.size() == 1);
+        CHECK(rows[0].symbol == "SIE.DE");
+        CHECK(rows[0].instrument_type == "equity");
+    });
     std::cout << passed << " tests passed\n";
 }

@@ -1094,4 +1094,59 @@ std::vector<PriceBar> TwelveDataProvider::history(const std::string &s, int days
     sort_bars(out);
     return out;
 }
+std::vector<AssetSearchHit> EodhdProvider::search(const std::string &query) {
+    auto rows = request(get_, "https://eodhd.com/api/search/" + enc(query) +
+                                  "?api_token=" + enc(key_) + "&fmt=json&limit=25");
+    if (!rows.is_array())
+        throw ProviderError("invalid_response");
+    std::vector<AssetSearchHit> out;
+    for (const auto &row : rows) {
+        auto code = str(row, "Code"), exchange = str(row, "Exchange");
+        if (code.empty() || exchange.empty() || str(row, "Name").empty())
+            continue;
+        auto suffix = exchange == "XETRA" ? "DE" : exchange == "LSE" ? "L" : exchange;
+        auto symbol = exchange == "US" && code.find('.') == code.npos ? code : code + "." + suffix;
+        out.push_back({symbol, str(row, "Name"), str(row, "Currency"), exchange, str(row, "ISIN"),
+                       str(row, "Country"), instrument_type(str(row, "Type")), "EODHD"});
+    }
+    return out;
+}
+std::vector<AssetSearchHit> FinnhubProvider::search(const std::string &query) {
+    auto payload =
+        request(get_, "https://finnhub.io/api/v1/search?q=" + enc(query) + "&token=" + enc(key_));
+    auto rows = payload.find("result");
+    if (rows == payload.end() || !rows->is_array())
+        throw ProviderError("invalid_response");
+    std::vector<AssetSearchHit> out;
+    for (const auto &row : *rows) {
+        if (str(row, "symbol").empty() || str(row, "description").empty())
+            continue;
+        out.push_back({str(row, "symbol"), str(row, "description"), "", "", "", "",
+                       instrument_type(str(row, "type")), "Finnhub"});
+    }
+    return out;
+}
+std::vector<AssetSearchHit> AlphaVantageProvider::search(const std::string &query) {
+    auto payload = request(
+        get_, "https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=" + enc(query) +
+                  "&apikey=" + enc(key_));
+    auto rows = payload.find("bestMatches");
+    if (rows == payload.end() || !rows->is_array())
+        throw ProviderError("invalid_response");
+    std::vector<AssetSearchHit> out;
+    for (const auto &row : *rows) {
+        auto code = str(row, "1. symbol");
+        for (auto [suffix, canonical] : {std::pair{".PAR", ".PA"}, {".DEX", ".DE"}, {".LON", ".L"}})
+            if (code.ends_with(suffix)) {
+                code = code.substr(0, code.size() - std::string(suffix).size()) + canonical;
+                break;
+            }
+        if (code.empty() || str(row, "2. name").empty())
+            continue;
+        out.push_back({code, str(row, "2. name"), str(row, "8. currency"), "", "",
+                       str(row, "4. region"), instrument_type(str(row, "3. type")),
+                       "Alpha Vantage"});
+    }
+    return out;
+}
 } // namespace ir

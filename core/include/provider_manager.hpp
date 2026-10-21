@@ -47,6 +47,7 @@ class ProviderManager {
         return issues_;
     }
 
+    std::vector<AssetSearchHit> search(const std::string &query);
     std::optional<Quote> quote(const std::string &symbol, bool lightweight = false);
     std::optional<Fundamentals> fundamentals(const std::string &symbol);
     std::optional<EstimateSnapshot> estimates(const std::string &symbol);

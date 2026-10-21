@@ -11,6 +11,30 @@ void ProviderManager::add(std::shared_ptr<IMarketDataProvider> p) {
 void ProviderManager::set_routing(ProviderRouting r) {
     routing_ = std::move(r);
 }
+std::vector<AssetSearchHit> ProviderManager::search(const std::string &query) {
+    for (const auto &provider : providers_) {
+        const auto d = provider->descriptor();
+        if (!d.enabled || !provider->supports_search())
+            continue;
+        auto blocked = cooldowns_.find(d.id + ":search");
+        if (blocked != cooldowns_.end() && blocked->second.first > std::time(nullptr)) {
+            diagnostics_.push_back(d.name + ": " + provider_error_message(blocked->second.second));
+            continue;
+        }
+        try {
+            auto rows = provider->search(query);
+            if (!rows.empty())
+                return rows; // One successful provider per explicit search.
+        } catch (const ProviderError &error) {
+            diagnostics_.push_back(d.name + ": " + error.what());
+            cooldowns_[d.id + ":search"] = {
+                std::time(nullptr) + (error.code == "rate_limit" ? 60 : 30), error.code};
+        } catch (...) {
+            diagnostics_.push_back(d.name + ": " + provider_error_message("invalid_response"));
+        }
+    }
+    return {};
+}
 bool ProviderManager::supports(const ProviderDescriptor &d, DataCapability c) {
     return std::find(d.capabilities.begin(), d.capabilities.end(), c) != d.capabilities.end();
 }

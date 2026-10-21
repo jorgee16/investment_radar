@@ -42,6 +42,10 @@ struct AnalystConsensus {
     std::optional<double> strong_buy, buy, hold, sell, strong_sell;
 };
 
+struct AssetSearchHit {
+    std::string symbol, name, currency, exchange, isin, country, instrument_type, source;
+};
+
 struct Quote {
     std::string symbol;
     std::string name;
@@ -123,6 +127,12 @@ class IMarketDataProvider {
   public:
     virtual ~IMarketDataProvider() = default;
     virtual ProviderDescriptor descriptor() const = 0;
+    virtual bool supports_search() const {
+        return false;
+    }
+    virtual std::vector<AssetSearchHit> search(const std::string &) {
+        return {};
+    }
     virtual std::optional<Quote> quote(const std::string &) {
         return std::nullopt;
     }
