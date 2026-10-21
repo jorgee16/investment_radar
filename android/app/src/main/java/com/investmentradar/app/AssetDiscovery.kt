@@ -89,7 +89,7 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
     fun save() {
         val match = selected?.takeIf { it.symbol == symbol(query) } ?: candidates.singleOrNull()
             ?: local.firstOrNull { it.symbol == symbol(query) }
-        val ticker = match?.symbol ?: symbol(query).takeIf { validSymbol(it) && query.trim() == it }
+        val ticker = match?.symbol ?: symbol(query).takeIf { validSymbol(it) && query.trim() == it && !it.matches(Regex("[A-Z]{2}[A-Z0-9]{9}[0-9]")) }
         if (ticker == null) { error = "Seleciona um resultado para confirmar o instrumento e a bolsa."; return }
         error = submit(ticker)
         if (error == null) {

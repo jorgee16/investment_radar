@@ -421,6 +421,9 @@ class AndroidFlowTest {
     }
     @Test fun watchlistFindsFullNamesIsinAndCanUndoRemoval() {
         page(Page.Watchlist); click("add-watch")
+        fill("watch-input", "US9999999999"); click("watch-submit")
+        ui.onNodeWithTag("form-error").assertIsDisplayed()
+        assertFalse("An unresolved ISIN must never be saved as a ticker", "US9999999999" in state().watch)
         fill("watch-input", "Microsoft Corporation"); click("watch-submit")
         await("full company name resolved") { "MSFT" in state().watch }
         fill("watchlist-search", "Microsoft Corporation"); finishInput("watchlist-search")
