@@ -134,6 +134,18 @@ std::string eod_symbol(std::string s) {
         s += ".US";
     return s;
 }
+// Canonical listing identifiers shared by discovery and unfiltered calendars.
+std::string canonical_eod_symbol(std::string symbol) {
+    for (auto [suffix, canonical] : {std::pair{".XETRA", ".DE"}, {".LSE", ".L"}})
+        if (symbol.ends_with(suffix))
+            return symbol.substr(0, symbol.size() - std::string(suffix).size()) + canonical;
+    if (symbol.ends_with(".US")) {
+        const auto code = symbol.substr(0, symbol.size() - 3);
+        if (code.find('.') == code.npos)
+            return code;
+    }
+    return symbol;
+}
 std::string listing_currency_hint(const std::string &s) {
     if (s.ends_with(".PA") || s.ends_with(".DE") || s.ends_with(".XETRA"))
         return "EUR";
@@ -512,7 +524,7 @@ std::vector<EarningsEvent> EodhdProvider::earnings(const std::string &s, const s
             if (d < from || d > to || (!s.empty() && sym != eod_symbol(s)))
                 continue;
             out.push_back({d,
-                           s.empty() ? sym : s,
+                           s.empty() ? canonical_eod_symbol(sym) : s,
                            "Earnings",
                            "EPS actual vs estimate",
                            num(x, "actual"),
@@ -1104,8 +1116,7 @@ std::vector<AssetSearchHit> EodhdProvider::search(const std::string &query) {
         auto code = str(row, "Code"), exchange = str(row, "Exchange");
         if (code.empty() || exchange.empty() || str(row, "Name").empty())
             continue;
-        auto suffix = exchange == "XETRA" ? "DE" : exchange == "LSE" ? "L" : exchange;
-        auto symbol = exchange == "US" && code.find('.') == code.npos ? code : code + "." + suffix;
+        auto symbol = canonical_eod_symbol(code + "." + exchange);
         out.push_back({symbol, str(row, "Name"), str(row, "Currency"), exchange, str(row, "ISIN"),
                        str(row, "Country"), instrument_type(str(row, "Type")), "EODHD"});
     }

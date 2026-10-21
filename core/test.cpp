@@ -1253,5 +1253,19 @@ int main() {
         CHECK(rows[0].symbol == "SIE.DE");
         CHECK(rows[0].instrument_type == "equity");
     });
+    test("global EODHD calendar uses the same listing identifiers as favorites", [] {
+        ir::EodhdProvider provider("test", [](const std::string &) {
+            return R"({"earnings":[{"code":"AAPL.US","report_date":"2026-10-28"},{"code":"VWCE.XETRA","report_date":"2026-10-28"},{"code":"AIR.PA","report_date":"2026-10-28"},{"code":"LLOY.LSE","report_date":"2026-10-28"}]})";
+        });
+        auto rows = provider.earnings("", "2026-10-01", "2026-10-31");
+        CHECK(rows.size() == 4);
+        CHECK(rows[0].symbol == "AAPL");
+        CHECK(rows[1].symbol == "VWCE.DE");
+        CHECK(rows[2].symbol == "AIR.PA");
+        CHECK(rows[3].symbol == "LLOY.L");
+        rows = provider.earnings("AAPL", "2026-10-01", "2026-10-31");
+        CHECK(rows.size() == 1);
+        CHECK(rows[0].symbol == "AAPL");
+    });
     std::cout << passed << " tests passed\n";
 }

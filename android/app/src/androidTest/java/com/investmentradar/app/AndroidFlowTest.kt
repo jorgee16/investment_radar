@@ -57,6 +57,9 @@ class AndroidFlowTest {
         scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java))
         scenario.onActivity { activity = it }
         await("native data initialized") { state().ready && state().snapshot != null && !state().loading }
+        ui.waitUntil(90000) {
+            ui.onAllNodesWithTag("native-app").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+        }
     }
     @After fun close() {
         if (::scenario.isInitialized) { scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }; scenario.close() }
@@ -69,6 +72,11 @@ class AndroidFlowTest {
         }
     }
     private fun click(tag: String) {
+        // A new Activity/Dialog window registers its Compose root asynchronously.
+        // Wait for the target to exist before testing visibility and scrolling it.
+        ui.waitUntil(15000) {
+            ui.onAllNodesWithTag(tag).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+        }
         val node = ui.onNodeWithTag(tag)
         // Scroll only when offscreen; dialog and navigation nodes have no scroll parent.
         runCatching { node.assertIsDisplayed() }.onFailure {

@@ -20,7 +20,7 @@ Up to three loaded instruments can be compared side by side, including currency,
 
 ## Calendar
 
-A monthly grid marks received earnings-event dates, with month navigation limited to the fetched window. Date selection, 7-day/month/90-day ranges, name search and favorite/holding universes filter received data. Events are grouped by date and show actual/estimated EPS only when supplied. Loading a new event context clears prior-context events so a failed request cannot display a previous asset's events as the global calendar.
+A monthly grid marks received earnings-event dates, with month navigation limited to the fetched window. Date selection, 7-day/month/90-day ranges, name search and favorite/holding universes filter received data. EODHD exchange suffixes are normalized consistently with discovery so favorite/holding filters match live events. Events are grouped by date and show actual/estimated EPS only when supplied. Loading a new event context clears prior-context events so a failed request cannot display a previous asset's events as the global calendar.
 
 ## Portfolio
 
@@ -30,4 +30,4 @@ Native allocation rings and accessible clickable legends filter positions by ass
 
 ## Validation and release
 
-The flow suite has 33 Android tests, including five new collection/discovery flows, real JNI transport-cache fixtures, local metadata persistence, filters, comparison, dates and grouped lots. Native tests cover normalized search, exchange aliases, fallback, unknown metadata, query validation and credential-safe errors (70 core cases in total). Release gates include JVM/lint, emulator screenshots, and real package updates from published 0.6.4/0.6.7 plus a private future-upgrade probe. Update tests retain five encrypted provider keys, plans, portfolio, favorites and discovered metadata. Only the persistent production-signed APK may be distributed.
+The flow suite has 33 Android tests, including five new collection/discovery flows, real JNI transport-cache fixtures, local metadata persistence, filters, comparison, dates and grouped lots. Native tests cover normalized search, exchange aliases, fallback, unknown metadata, query validation and credential-safe errors (71 core cases in total). Release gates include JVM/lint, emulator screenshots, and real package updates from published 0.6.4/0.6.7 plus a private future-upgrade probe. Update tests retain five encrypted provider keys, plans, portfolio, favorites and discovered metadata. Only the persistent production-signed APK may be distributed.
