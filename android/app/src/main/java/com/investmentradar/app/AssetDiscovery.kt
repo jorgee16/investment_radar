@@ -12,11 +12,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -97,8 +100,13 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
             focus.clearFocus(); dismiss()
         }
     }
-    AlertDialog(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.surface, title = { Text(title) }, text = {
-        Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)).padding(16.dp), contentAlignment = Alignment.Center) {
+            Surface(Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(max = maxHeight), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(title, Modifier.padding(20.dp), style = MaterialTheme.typography.titleLarge)
+                    // Only results scroll; confirmation stays inside the visible IME-safe viewport.
+                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(query, { query = it.take(120); selected = null; error = null; searchMessage = null }, label = { Text("Nome completo, ticker ou ISIN") },
                 singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = {
                     if (selected != null || candidates.size == 1 || local.any { it.symbol == symbol(query) }) save()
@@ -136,5 +144,12 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
             if (candidates.isEmpty()) Text("Não encontraste? Altera o nome ou os filtros${if (!state.demo) ", ou pesquisa nos providers" else ""}.", style = MaterialTheme.typography.bodySmall)
             Text("Confirma a bolsa e a moeda. A pesquisa não confirma disponibilidade na XTB.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }, confirmButton = { TextButton({ save() }, Modifier.testTag("$tag-submit")) { Text(action) } }, dismissButton = { TextButton(dismiss) { Text("Cancelar") } })
+                    Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.End) {
+                        TextButton(dismiss) { Text("Cancelar") }
+                        TextButton({ save() }, Modifier.testTag("$tag-submit")) { Text(action) }
+                    }
+                }
+            }
+        }
+    }
 }

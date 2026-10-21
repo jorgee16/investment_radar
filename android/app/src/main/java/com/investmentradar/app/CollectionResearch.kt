@@ -180,7 +180,7 @@ import org.json.JSONObject
         FinanceCard(modifier = Modifier.testTag("screened-$ticker")) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ScreenerScore(snapshot)
-                Column(Modifier.weight(1f).padding(horizontal = 10.dp).clickable { model.selectAsset(ticker) }) {
+                Column(Modifier.weight(1f).padding(horizontal = 10.dp).testTag("quote-$ticker").clickable { model.selectAsset(ticker) }) {
                     Text(snapshot.text("name").ifBlank { ticker }, style = MaterialTheme.typography.titleMedium)
                     Text("$ticker · ${money(snapshot.number("price"), snapshot.text("currency"))}", style = MaterialTheme.typography.bodySmall)
                 }

@@ -546,6 +546,7 @@ class AndroidFlowTest {
         page(Page.Watchlist); click("add-watch"); fill("watch-input", "<bad>"); click("watch-submit")
         ui.onNodeWithTag("form-error").assertIsDisplayed(); assertEquals(6, state().watch.size)
         fill("watch-input", "AIR.PA"); click("watch-submit"); ui.onNodeWithTag("form-error").assertTextContains("já", substring = true)
+        ui.onNodeWithTag("watch-submit").assertIsDisplayed(); capture("collections-discovery-validation-keyboard")
         fill("watch-input", "aapl"); click("watch-submit"); await("watch added") { "AAPL" in state().watch }
         ui.onNodeWithTag("quote-AAPL").performScrollTo().performClick(); await("AAPL loaded") { state().snapshot?.text("symbol") == "AAPL" }
         restart(); assertTrue("AAPL" in state().watch)
