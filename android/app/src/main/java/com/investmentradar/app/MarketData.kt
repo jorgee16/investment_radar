@@ -46,6 +46,9 @@ class HttpClient(private val cache: ApiCache) {
         if (!bypassCache) cache.get(url, ProviderPolicy.ttlSeconds(url))?.let { return it }
         val quote = ProviderPolicy.isQuoteUrl(url)
         val scope = quoteCredentialScope(parsed)
+        // Fresh cached responses remain usable even during an account backoff.
+        val rateScope = "provider-rate:$scope"
+        if (cache.quoteBlocked(rateScope)) throw ProviderHttpException(429)
         val context = QuoteRequestContext.current.get()
         if (quote && !bypassCache && cache.quoteBlocked(scope)) throw ProviderHttpException(429)
         // Polling bypasses quote response cache, but never bypasses account backoff.
@@ -62,6 +65,14 @@ class HttpClient(private val cache: ApiCache) {
         }
         try {
             if (connection.responseCode != 200) {
+                if (connection.responseCode == 429) {
+                    val rawRetry = connection.getHeaderField("Retry-After")
+                    val retry = rawRetry?.toLongOrNull() ?: runCatching {
+                        java.time.ZonedDateTime.parse(rawRetry, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
+                            .toEpochSecond() - Instant.now().epochSecond
+                    }.getOrDefault(60L)
+                    cache.blockQuote(rateScope, "rate_limit", retrySeconds = retry)
+                }
                 if (quote && connection.responseCode in listOf(401, 403, 429)) cache.blockQuote(scope, when(connection.responseCode) { 429 -> "rate_limit"; 403 -> "subscription"; else -> "authentication" })
                 throw ProviderHttpException(connection.responseCode)
             }
@@ -70,6 +81,12 @@ class HttpClient(private val cache: ApiCache) {
             val value = if (body.trimStart().startsWith("[")) JSONArray(body) else JSONObject(body)
             val rejected = value is JSONObject && (value.has("error") || value.has("Error Message") || value.has("Note") || value.has("Information") || value.optString("status") == "error")
             // C++ classifies provider errors. Error payloads must never enter the cache.
+            if (rejected && value is JSONObject) {
+                val message = listOf("Note", "Information", "error", "Error Message").map { value.optString(it) }
+                    .joinToString(" ").lowercase(java.util.Locale.ROOT)
+                if (listOf("limit", "credits", "frequency").any(message::contains))
+                    cache.blockQuote(rateScope, "rate_limit", retrySeconds = 60L)
+            }
             if (!rejected) cache.put(url, body)
             return body
         } finally { connection.disconnect() }

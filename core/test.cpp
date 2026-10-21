@@ -209,6 +209,43 @@ int main() {
         CHECK(snapshot["pe"] == 24);
         CHECK(snapshot["metricSources"]["pe"]["source"] == "EODHD");
     });
+    test("snapshot requests selected history once before research quota failure", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "fixture-history-quota";
+        int history_calls = 0;
+        bool research_attempted = false;
+        ir::ResearchService service(c, [&](const std::string &url) -> std::string {
+            if (url.find("/real-time/") != url.npos)
+                return R"({"close":133,"currency":"EUR","name":"Vanguard","type":"ETF"})";
+            if (url.find("/eod/") != url.npos) {
+                CHECK(!research_attempted);
+                CHECK(url.find("period=d&from=") != url.npos);
+                ++history_calls;
+                return R"([{"date":"2025-12-31","close":120}])";
+            }
+            research_attempted = true;
+            throw ir::ProviderError("rate_limit", 429);
+        });
+        const auto data = service.snapshot("VUAA.DE", 365);
+        CHECK(history_calls == 1 && research_attempted);
+        CHECK(data["history"].size() == 1);
+        CHECK(data["availability"]["history"]["status"] == "available");
+        CHECK(data["availability"]["fundamentals"]["issues"][0]["code"] == "rate_limit");
+    });
+    test("history details retain quota cause without exposing credentials", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "private-fixture-must-not-escape";
+        ir::ResearchService service(
+            c, [](const auto &) -> std::string { throw ir::ProviderError("rate_limit", 429); });
+        const auto data = service.history_details("VUAA.DE", 365);
+        CHECK(data["history"].empty() && data["days"] == 365);
+        CHECK(data["issues"][0]["code"] == "rate_limit");
+        CHECK(data["issues"][0]["provider"] == "EODHD");
+        CHECK(data.dump().find("private-fixture") == std::string::npos);
+        CHECK(data.dump().find("https://") == std::string::npos);
+    });
     test("EODHD chooses latest completed earnings; growth is not revision", [] {
         ir::EodhdProvider p("fixture", [](auto &) {
             return R"({"History":{"2024-03-31":{"epsActual":1,"epsEstimate":1},"2025-03-31":{"epsActual":1.2,"epsEstimate":1},"2099-03-31":{"epsActual":99,"epsEstimate":1}},"Trend":{"Annual":{"2027":{"earningsEstimateGrowth":0.9}}}})";

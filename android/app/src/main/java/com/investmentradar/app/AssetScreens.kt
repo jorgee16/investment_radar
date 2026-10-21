@@ -61,7 +61,10 @@ import org.json.JSONObject
         val timestamp = snapshot.number("timestamp")?.takeIf { it > 0 }?.let { java.time.Instant.ofEpochSecond(it.toLong()).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm z")) }
         Text("${state.symbol} · ${currency.ifBlank { "moeda desconhecida" }} · ${if (source == "none") "Sem cotação" else source}${timestamp?.let { "\n$it" }.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         if (snapshot.has("cacheFetchedAt") && !state.demo) Text(quoteCacheLabel(snapshot), style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("asset-cache-time"))
-        PriceChart(state.history, currency, state.historyLoading, candle && hasOHLC)
+        if (state.historyMessage != null && state.history.isNotEmpty()) Text(state.historyMessage,
+            style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("history-status"))
+        PriceChart(state.history, currency, (state.historyLoading || state.loading) && state.history.isEmpty(), candle && hasOHLC, emptyMessage = state.historyMessage)
+        if (state.historyMessage != null && !state.loading && !state.historyLoading) TextButton({ model.setRange(state.days) }, Modifier.testTag("history-retry")) { Text("Tentar novamente") }
         ChartControls(state, model, candle && hasOHLC, { candle = it }, { expanded = true })
         Text(if (state.demo) "Histórico sintético de demonstração; os períodos não representam negociação real." else "Histórico diário. A disponibilidade de velas e datas depende do provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -88,7 +91,8 @@ import org.json.JSONObject
         Surface(Modifier.fillMaxWidth().padding(12.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(state.symbol, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                PriceChart(state.history, currency, state.historyLoading, candle && hasOHLC, height = 260)
+                if (state.historyMessage != null && state.history.isNotEmpty()) Text(state.historyMessage, style = MaterialTheme.typography.bodySmall)
+                PriceChart(state.history, currency, (state.historyLoading || state.loading) && state.history.isEmpty(), candle && hasOHLC, height = 260, emptyMessage = state.historyMessage)
                 TextButton({ expanded = false }, Modifier.testTag("close-chart")) { Text("Fechar gráfico") }
             }
         }

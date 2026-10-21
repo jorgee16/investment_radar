@@ -97,9 +97,14 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_investmentradar_app_NativeCore_nat
             data = service.quotes(json::parse(sym).get<std::vector<std::string>>());
         else if (op == "/api/quote")
             data = service.quote(sym.empty() ? "AIR.PA" : sym);
-        else if (op == "/api/snapshot")
-            data = service.snapshot(sym.empty() ? "AIR.PA" : sym);
-        else if (op == "/api/history") {
+        else if (op == "/api/snapshot") {
+            if (!sym.empty() && sym.front() == '{') {
+                auto request = json::parse(sym);
+                data =
+                    service.snapshot(request.value("symbol", "AIR.PA"), request.value("days", 120));
+            } else
+                data = service.snapshot(sym.empty() ? "AIR.PA" : sym);
+        } else if (op == "/api/history" || op == "/api/history-details") {
             std::string history_symbol = "AIR.PA";
             int history_days = 120;
             if (!sym.empty() && sym.front() == '{') {
@@ -109,7 +114,9 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_investmentradar_app_NativeCore_nat
             } else if (!sym.empty()) {
                 history_symbol = sym;
             }
-            data = service.history(history_symbol, history_days);
+            data = op == "/api/history-details"
+                       ? service.history_details(history_symbol, history_days)
+                       : service.history(history_symbol, history_days);
         } else if (op == "/api/earnings")
             data = service.earnings(sym, date_offset(-7), date_offset(90));
         else if (op == "/api/news")

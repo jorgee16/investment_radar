@@ -45,3 +45,25 @@ for a user's private API subscription. The existing CI builds desktop/core and
 Android, runs the Android emulator suite, checks screenshots and validates package
 upgrades before its APK publication gate. This workspace has no Android SDK or
 emulator installed; Android validation must be obtained from that CI run.
+
+
+## History under quota failures (0.6.10)
+
+Android requests its selected chart period in the initial snapshot, avoiding the
+previous default 120-day fetch followed by another request for the selected range.
+The shared service loads history before optional fundamentals/estimates, so a
+research quota failure does not suppress that same snapshot's available chart.
+`history_details` preserves typed, safe provider diagnostics; the existing history
+array contract remains available to desktop clients.
+
+The ViewModel retains up to 32 successfully loaded symbol/range charts for its
+lifetime. A failed refresh retains only a chart for the exact same symbol/range,
+with an explicit saved-history message. Changing provider configuration or mode
+clears this in-memory cache; it never bridges Demo and Live. This is not a claim
+of persistent chart storage across application restarts.
+
+Transport checks successful cached payloads before account rate-limit backoff.
+HTTP 429 respects Retry-After (seconds or HTTP date), bounded to 60 seconds through
+24 hours. Quota error payloads also establish a minimum 60-second pause. These
+backoff records survive repeated screen openings and process restarts without
+storing raw credential-bearing URLs. They cannot increase a provider's allowance.

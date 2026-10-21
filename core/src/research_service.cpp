@@ -339,18 +339,31 @@ json ResearchService::history(const std::string &s, int days) {
     return out;
 }
 
-json ResearchService::snapshot(const std::string &s) {
+json ResearchService::history_details(const std::string &s, int days) {
+    auto bars = history(s, days);
+    json issues = json::array();
+    for (const auto &issue : active().issues())
+        if (issue.capability == DataCapability::History)
+            issues.push_back({{"provider", issue.provider},
+                              {"code", issue.code},
+                              {"message", provider_error_message(issue.code)}});
+    return {{"history", bars}, {"issues", issues}, {"days", std::clamp(days, 1, 5000)}};
+}
+
+json ResearchService::snapshot(const std::string &s, int history_days) {
     if (!valid_symbol(s))
         throw std::invalid_argument("Invalid symbol");
     active().clear_diagnostics();
     auto q = active().quote(s);
+    // Read the requested chart before optional research calls can exhaust a
+    // provider quota. Android must not fetch a throwaway 120-day chart first.
+    auto h = active().history(s, std::clamp(history_days, 1, 5000));
     auto f = active().fundamentals(s);
     const auto type = f && f->instrument_type != "unknown" ? f->instrument_type
                       : q                                  ? q->instrument_type
                                                            : "unknown";
     const bool fund = type == "etf" || type == "fund";
     auto e = fund ? std::optional<EstimateSnapshot>{} : active().estimates(s);
-    auto h = active().history(s, 120);
     Metrics m;
     if (q)
         m.price = q->price;

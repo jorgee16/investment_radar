@@ -30,7 +30,7 @@ internal data class RadarState(
     val providers: List<JSONObject> = emptyList(), val configured: Set<String> = emptySet(),
     val routing: Map<String, String> = capabilities.keys.associateWith { "auto" },
     val reports: List<JSONObject> = emptyList(), val screening: Map<String, JSONObject> = emptyMap(),
-    val loading: Boolean = false, val historyLoading: Boolean = false, val auxiliaryLoading: Boolean = false,
+    val loading: Boolean = false, val historyLoading: Boolean = false, val historyMessage: String? = null, val auxiliaryLoading: Boolean = false,
     val saving: Boolean = false, val testing: Boolean = false, val screeningBusy: Boolean = false,
     val error: String? = null, val notice: String? = null,
     val pollingEnabled: Boolean = true, val pollingMinutes: Int = 15, val pollingBackground: Boolean = false,
@@ -89,6 +89,20 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     private var quotesPending = false
     private var forcePending = false
     private val assetCache = mutableMapOf<String, JSONObject>()
+    private val historyCache = linkedMapOf<Pair<String, Int>, List<JSONObject>>()
+    private fun historyFailure(issues: JSONArray?): String = issues?.objects().orEmpty()
+        .map { "${it.text("provider")}: ${it.text("message")}" }.distinct().take(3).joinToString("\n")
+        .ifBlank { "Não foram recebidos dados históricos para este período. Tenta atualizar mais tarde." }
+    private fun acceptHistory(symbol: String, days: Int, rows: List<JSONObject>, issues: JSONArray?) {
+        if (rows.isNotEmpty()) {
+            historyCache[symbol to days] = rows
+            if (historyCache.size > 32) historyCache.remove(historyCache.keys.first())
+        }
+        val cached = historyCache[symbol to days].orEmpty()
+        mutable.update { it.copy(history = rows.ifEmpty { cached }, historyLoading = false,
+            historyMessage = if (rows.isNotEmpty()) null else historyFailure(issues) +
+                if (cached.isNotEmpty()) "\nA mostrar o histórico guardado deste período; atualização indisponível." else "") }
+    }
     private val backStack = ArrayDeque<Page>()
     init { if (local.migrated || !application.getDir("webview", 0).resolve("Default/Local Storage").exists()) completeMigration(JSONObject()) }
     fun completeMigration(raw: JSONObject) {
@@ -167,20 +181,22 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     }
     private fun loadAsset() {
         assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel()
-        val selected = state.value.symbol; val epoch = generation
-        mutable.update { it.copy(snapshot = assetCache[selected], history = emptyList(), news = emptyList(), events = emptyList(), loading = true, historyLoading = false, auxiliaryLoading = false) }
+        val selected = state.value.symbol; val epoch = generation; val requestedDays = state.value.days
+        val cachedHistory = historyCache[selected to requestedDays].orEmpty()
+        mutable.update { it.copy(snapshot = assetCache[selected], history = cachedHistory, historyMessage = null, news = emptyList(), events = emptyList(), loading = true, historyLoading = false, auxiliaryLoading = false) }
         assetJob = viewModelScope.launch {
             try {
                 val cached = repository.cachedQuotes(listOf(selected))
                 if (generation == epoch && state.value.symbol == selected) mutable.update { current ->
                     current.copy(quotes = current.quotes.toMutableMap().apply { cached.forEach { (s, q) -> put(s, mergeQuote(get(s), q)) } })
                 }
-                val result = repository.request("/api/snapshot", selected) as JSONObject
+                val result = repository.request("/api/snapshot", JSONObject().put("symbol", selected).put("days", requestedDays).toString()) as JSONObject
                 if (generation == epoch && state.value.symbol == selected) {
                     assetCache[selected] = result
                     mutable.update { it.copy(snapshot = result, loading = false, quotes = it.quotes + (selected to (it.quotes[selected]?.takeIf { q -> q.number("cacheFetchedAt") != null } ?: result))) }
-                    if (state.value.days == 120) mutable.update { it.copy(history = result.optJSONArray("history")?.objects().orEmpty()) }
-                    else setRange(state.value.days)
+                    if (state.value.days == requestedDays) acceptHistory(selected, requestedDays,
+                        result.optJSONArray("history")?.objects().orEmpty(),
+                        result.optJSONObject("availability")?.optJSONObject("history")?.optJSONArray("issues"))
                     if (state.value.tab >= 3) loadAuxiliary()
                 }
             } catch (e: CancellationException) { throw e } catch (_: Exception) {
@@ -190,13 +206,15 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     }
     fun setRange(days: Int) {
         historyJob?.cancel(); val selected = state.value.symbol; val epoch = generation
-        mutable.update { it.copy(days = days, history = emptyList(), historyLoading = true) }
+        mutable.update { it.copy(days = days, history = historyCache[selected to days].orEmpty(), historyLoading = true, historyMessage = null) }
         historyJob = viewModelScope.launch {
             try {
-                val data = repository.request("/api/history", JSONObject().put("symbol", selected).put("days", days).toString()) as JSONArray
-                if (generation == epoch && state.value.symbol == selected && state.value.days == days) mutable.update { it.copy(history = data.objects(), historyLoading = false) }
+                val data = repository.request("/api/history-details", JSONObject().put("symbol", selected).put("days", days).toString()) as JSONObject
+                if (generation == epoch && state.value.symbol == selected && state.value.days == days)
+                    acceptHistory(selected, days, data.optJSONArray("history")?.objects().orEmpty(), data.optJSONArray("issues"))
             } catch (e: CancellationException) { throw e } catch (_: Exception) {
-                if (generation == epoch) mutable.update { it.copy(historyLoading = false, error = "Histórico indisponível para este período.") }
+                if (generation == epoch && state.value.symbol == selected && state.value.days == days)
+                    acceptHistory(selected, days, emptyList(), JSONArray().put(JSONObject().put("provider", "Ligação").put("message", "Não foi possível atualizar o histórico. Tenta novamente mais tarde.")))
             }
         }
     }
@@ -276,7 +294,7 @@ internal class RadarViewModel(application: Application, private val saved: Saved
         viewModelScope.launch {
             try {
                 val config = repository.save(update)
-                generation++; quotesPending=false; forcePending=false; assetCache.clear(); assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel(); quotesJob?.cancel(); quotesJob=null; screeningJob?.cancel()
+                generation++; quotesPending=false; forcePending=false; assetCache.clear(); historyCache.clear(); assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel(); quotesJob?.cancel(); quotesJob=null; screeningJob?.cancel()
                 mutable.update { it.copy(demo = config.optBoolean("demo", true), configured = configured(config), snapshot = null, history = emptyList(), quotes = emptyMap(), screening = emptyMap(), reports = emptyList(), events = emptyList(), news = emptyList(), screeningBusy = false, testing = false) }
                 val status = repository.request("/api/status") as JSONObject
                 mutable.update { it.copy(routing = routes(status), saving = false, notice = "Configuração guardada no dispositivo.") }

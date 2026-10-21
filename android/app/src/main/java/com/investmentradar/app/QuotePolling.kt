@@ -68,14 +68,14 @@ internal fun ApiCache.saveQuote(scope: String, quote: JSONObject, now: Long) {
     writableDatabase.execSQL("UPDATE quote_values SET body=?,fetched_at=? WHERE scope=? AND symbol=?", arrayOf(quote.toString(), now, scope, quote.text("symbol")))
 }
 internal fun ApiCache.quoteBlocked(scope: String, now: Long = Instant.now().epochSecond): Boolean = readableDatabase.rawQuery("SELECT until_at FROM quote_backoff WHERE scope=?", arrayOf(scope)).use { it.moveToFirst() && it.getLong(0) > now }
-internal fun ApiCache.blockQuote(scope: String, code: String, now: Long = Instant.now().epochSecond) {
+internal fun ApiCache.blockQuote(scope: String, code: String, now: Long = Instant.now().epochSecond, retrySeconds: Long? = null) {
     val db=writableDatabase
     db.beginTransaction()
     try {
         var count=0; var until=0L
         db.rawQuery("SELECT until_at,failures FROM quote_backoff WHERE scope=?", arrayOf(scope)).use { c -> if(c.moveToFirst()) { until=c.getLong(0); count=c.getInt(1) } }
         if (until <= now) {
-            val seconds = if(code == "authentication") 300L else if(code == "subscription") 21600L else (3600L * (1L shl count.coerceAtMost(5))).coerceAtMost(86400L)
+            val seconds = retrySeconds?.coerceIn(60L, 86400L) ?: if(code == "authentication") 300L else if(code == "subscription") 21600L else (3600L * (1L shl count.coerceAtMost(5))).coerceAtMost(86400L)
             db.execSQL("INSERT OR REPLACE INTO quote_backoff VALUES(?,?,?)", arrayOf(scope, now+seconds, count+1))
         }
         db.setTransactionSuccessful()

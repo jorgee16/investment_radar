@@ -30,12 +30,12 @@ internal fun decimal(value: Double?, digits: Int = 2): String = value?.takeIf { 
 internal fun money(value: Double?, currency: String): String = if (value == null) "—" else decimal(value) + if (currency == "EUR") " €" else if (currency.isNotBlank()) " $currency" else " · moeda desconhecida"
 internal fun percent(value: Double?): String = if (value == null) "—" else (if (value > 0) "+" else "") + decimal(value) + "%"
 
-@Composable internal fun PriceChart(rows: List<JSONObject>, currency: String, loading: Boolean, candle: Boolean = false, height: Int = 210) {
+@Composable internal fun PriceChart(rows: List<JSONObject>, currency: String, loading: Boolean, candle: Boolean = false, height: Int = 210, emptyMessage: String? = null) {
     val points = remember(rows) { rows.filter { it.number("price") != null } }
     var selection by remember(points) { mutableIntStateOf(-1) }
     val color = if (points.size < 2 || points.last().number("price")!! >= points.first().number("price")!!) FinanceGreen else FinanceRed
     if (loading) { Box(Modifier.fillMaxWidth().height(height.dp), contentAlignment = androidx.compose.ui.Alignment.Center) { CircularProgressIndicator(Modifier.size(28.dp)) }; return }
-    if (points.isEmpty()) { EmptyState("Histórico indisponível", "O provider ou o plano não disponibiliza dados para este ativo e período."); return }
+    if (points.isEmpty()) { EmptyState("Histórico indisponível", emptyMessage ?: "Não foram recebidos dados históricos para este período."); return }
     val values = points.flatMap { if (candle) listOfNotNull(it.number("high"), it.number("low")) else listOf(it.number("price")!!) }
     val minimum = values.minOrNull()!!; val maximum = values.maxOrNull()!!
     val spread = (maximum - minimum).takeIf { it > 0 } ?: (kotlin.math.abs(minimum) * .02).coerceAtLeast(1.0)

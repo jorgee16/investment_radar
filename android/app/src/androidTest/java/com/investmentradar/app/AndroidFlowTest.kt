@@ -726,6 +726,46 @@ class AndroidFlowTest {
         ui.onNodeWithTag("screened-JPM").assertDoesNotExist(); capture("screener-filtered")
         click("quote-AIR.PA"); await("AIR selected") { state().snapshot?.text("symbol") == "AIR.PA" }
     }
+    @Test fun historyQuotaExplainsFailureAndRetainsOnlyMatchingCachedRange() {
+        liveFixture(true)
+        page(Page.Markets)
+        assertTrue(state().history.isNotEmpty())
+        val key = "fixture-etf-profile"
+        val root = "https://eodhd.com/api/eod/VUAA.XETRA?api_token=$key&fmt=json&period=d&from="
+        val today = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+        ApiCache(context).use { cache ->
+            for (offset in -1L..1L) cache.put(root + today.minusDays(365).plusDays(offset), """{"Note":"API request limit reached"}""")
+        }
+        click("range-365")
+        await("history quota diagnosed") { !state().historyLoading && state().historyMessage?.contains("Limite de pedidos") == true }
+        assertTrue(state().history.isEmpty())
+        ui.onNodeWithText("O provider ou o plano não disponibiliza dados para este ativo e período.").assertDoesNotExist()
+        ui.onNodeWithTag("history-retry").assertExists()
+        capture("history-quota-empty")
+        click("range-90")
+        await("matching history restored") { !state().historyLoading && state().history.isNotEmpty() }
+        val previous = state().history.map { it.toString() }
+        ApiCache(context).use { cache ->
+            cache.writableDatabase.delete("http_cache_v2", null, null)
+            cache.blockQuote("provider-rate:" + quoteCredentialScope("eodhd.com", key), "rate_limit", retrySeconds = 60L)
+        }
+        click("range-90")
+        await("history cache retained after quota") { !state().historyLoading && state().historyMessage?.contains("histórico guardado") == true }
+        assertEquals(previous, state().history.map { it.toString() })
+        ui.onNodeWithTag("history-status").assertExists()
+        capture("history-quota-cached")
+        click("range-30")
+        await("different range stays unknown") { !state().historyLoading && state().days == 30 }
+        assertTrue(state().history.isEmpty())
+        ApiCache(context).use { cache ->
+            val url = root + today.minusDays(30)
+            cache.put(url, "[]")
+            assertEquals("[]", HttpClient(cache).get(url)) // No network during backoff.
+            val now = java.time.Instant.now().epochSecond
+            assertTrue(cache.quoteBlocked("provider-rate:" + quoteCredentialScope("eodhd.com", key), now))
+            assertFalse(cache.quoteBlocked("provider-rate:" + quoteCredentialScope("eodhd.com", key), now + 61))
+        }
+    }
     @Test fun chartRangesAndExpansion() {
         page(Page.Markets); click("range-365"); await("one year history") { !state().historyLoading && state().days == 365 && state().history.isNotEmpty() }
         ui.onNodeWithTag("price-chart").performScrollTo().performTouchInput { click(center) }
