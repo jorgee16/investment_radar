@@ -1,6 +1,7 @@
 package com.investmentradar.app
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -47,13 +48,16 @@ import org.json.JSONObject
     }
 }
 
-@Composable internal fun WatchlistScreen(state: RadarState, model: RadarViewModel, add: () -> Unit) {
+@Composable internal fun WatchlistScreen(state: RadarState, model: RadarViewModel, add: () -> Unit, screenScroll: ScrollState) {
     var query by rememberSaveable { mutableStateOf("") }
     var type by rememberSaveable { mutableStateOf("Todos") }
     var sector by rememberSaveable { mutableStateOf("Todos") }
     var sorting by rememberSaveable { mutableStateOf("A minha ordem") }
     var removed by rememberSaveable { mutableStateOf<String?>(null) }
     var filtersOpen by rememberSaveable { mutableStateOf(false) }
+    // Filtering can shorten the list while retaining the old scroll offset.
+    // Return to the top so the new search results remain visible.
+    LaunchedEffect(query, type, sector, sorting) { screenScroll.scrollTo(0) }
     val directory = knownAssets(state).associateBy { it.symbol }
     val visible = state.watch.filter { symbol -> directory[symbol]?.let { it.matches(query, sector) && (type == "Todos" || it.type == type) } == true }.let { list ->
         when (sorting) {
@@ -71,7 +75,7 @@ import org.json.JSONObject
     CollectionSearch(query, { query = it }, "watchlist-search")
     CollectionChips(listOf("Todos", "Ação", "ETF", "Desconhecido"), type, "watchlist-type") { type = it }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("${visible.size} de ${state.watch.size}", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+        Text("${visible.size} de ${state.watch.size}", Modifier.weight(1f).testTag("watchlist-result-count"), style = MaterialTheme.typography.labelMedium)
         TextButton({ filtersOpen = !filtersOpen }, Modifier.testTag("watchlist-filters")) { Text(if (filtersOpen) "Ocultar filtros" else "Filtros e ordem") }
         if (query.isNotBlank() || type != "Todos" || sector != "Todos") TextButton({ query = ""; type = "Todos"; sector = "Todos" }, Modifier.testTag("watchlist-clear")) { Text("Limpar") }
     }

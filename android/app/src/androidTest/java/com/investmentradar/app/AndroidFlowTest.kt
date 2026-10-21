@@ -435,6 +435,8 @@ class AndroidFlowTest {
         fill("watch-input", "Microsoft Corporation"); click("watch-submit")
         await("full company name resolved") { "MSFT" in state().watch }
         fill("watchlist-search", "Microsoft Corporation"); finishInput("watchlist-search")
+        ui.onNodeWithTag("watchlist-result-count").assertTextEquals("1 de ${state().watch.size}")
+        ui.onNodeWithTag("quote-MSFT").assertExists()
         ui.onNodeWithTag("quote-MSFT").performScrollTo().assertIsDisplayed()
         ui.onNodeWithTag("quote-AIR.PA").assertDoesNotExist()
         capture("collections-watch-full-name")
@@ -444,12 +446,15 @@ class AndroidFlowTest {
         fill("watch-input", "IE00BK5BQT80"); click("watch-suggestion-VWCE.DE"); click("watch-submit")
         await("ISIN resolved") { "VWCE.DE" in state().watch }
         fill("watchlist-search", "IE00BK5BQT80"); finishInput("watchlist-search")
+        ui.onNodeWithTag("watchlist-result-count").assertTextEquals("1 de ${state().watch.size}")
         ui.onNodeWithTag("quote-VWCE.DE").performScrollTo().assertIsDisplayed()
         capture("collections-watch-isin")
         click("remove-watch-VWCE.DE"); assertFalse("VWCE.DE" in state().watch)
         click("watchlist-undo"); assertTrue("VWCE.DE" in state().watch)
         restart(); page(Page.Watchlist)
         fill("watchlist-search", "Microsoft Corporation"); finishInput("watchlist-search")
+        ui.onNodeWithTag("watchlist-result-count").assertTextEquals("1 de ${state().watch.size}")
+        ui.onNodeWithTag("quote-MSFT").assertExists()
         ui.onNodeWithTag("quote-MSFT").performScrollTo().assertIsDisplayed()
     }
     @Test fun providerSearchFindsFullNamesOutsideCatalogueAndPersistsListing() {

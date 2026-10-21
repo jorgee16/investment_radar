@@ -13,6 +13,15 @@ class AssetDirectoryTest {
         assertEquals("USD", directoryAsset("MSFT")!!.currency)
         assertNull(directoryAsset("UNKNOWN"))
     }
+    @Test fun fullCompanyNamesAndIsinsRemainSearchableWithListingMetadata() {
+        val microsoft = directoryAsset("MSFT")!!
+        assertTrue(microsoft.matches("Microsoft Corporation"))
+        assertTrue(microsoft.copy(country = "United States").matches("MICROSOFT corporation"))
+        assertFalse(microsoft.matches("Microsoft Corporation", "Finanças"))
+        val fund = directoryAsset("VWCE.DE")!!
+        assertTrue(fund.matches("IE00BK5BQT80"))
+        assertTrue(fund.copy(country = "Germany", region = "Mundial").matches("IE00BK5BQT80"))
+    }
     @Test fun catalogueHasUniqueIdentifiersAndEtfsAreNotCorporateSectors() {
         assertEquals(assetDirectory.size, assetDirectory.map { it.symbol }.distinct().size)
         assertEquals("ETF diversificados", directoryAsset("VWCE.DE")!!.sector)

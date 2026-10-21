@@ -122,12 +122,13 @@ import org.json.JSONObject
                     }
                 }
                 key(state.page, if (state.page == Page.Markets) "${state.symbol}-${state.tab}" else "") {
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp).widthIn(max = 840.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    val screenScroll = rememberScrollState()
+                    Column(Modifier.fillMaxSize().verticalScroll(screenScroll).padding(horizontal = 16.dp, vertical = 16.dp).widthIn(max = 840.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         when (state.page) {
                             Page.Home -> HomeScreen(state, model, { addWatch = true })
                             Page.Markets -> AssetScreen(state, model, { addPosition = true })
                             Page.Portfolio -> PortfolioScreen(state, model, { addPosition = true })
-                            Page.Watchlist -> WatchlistScreen(state, model, { addWatch = true })
+                            Page.Watchlist -> WatchlistScreen(state, model, { addWatch = true }, screenScroll)
                             Page.Screener -> ScreenerScreen(state, model)
                             Page.Calendar -> CalendarScreen(state, model)
                             Page.Providers -> ProvidersScreen(state, model)
