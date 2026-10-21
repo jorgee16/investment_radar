@@ -101,7 +101,7 @@ jobs:
       - name: Require successful tests and screenshots before packaging candidate
         shell: python
         run: |
-          import hashlib, json, os, pathlib, shutil, subprocess, sys
+          import hashlib, json, os, pathlib, shutil, subprocess, sys, zipfile
           sys.path.insert(0, 'scripts')
           from check_android_update import apk_identity
           folder = pathlib.Path('dist/android-validation')
@@ -131,6 +131,14 @@ jobs:
           manifest = dict(identity, sourceCommit=os.environ['GITHUB_SHA'], instrumentationTests=33, futureUpgradeVerified=True,
                           previous064UpgradeVerified=True, previous068UpgradeVerified=True, investmentPlansPreserved=True, discoveryMetadataPreserved=True)
           (folder / 'release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          review_names = {'visual-analyst-distribution.png', 'visual-financial-annual.png', 'visual-financial-dark.png', 'visual-metric-details.png'}
+          review_images = [p for p in (folder / 'screenshots').rglob('*.png') if p.name in review_names]
+          assert {p.name for p in review_images} == review_names
+          with zipfile.ZipFile(folder / 'android-ui-review.zip', 'w', zipfile.ZIP_DEFLATED) as review:
+              for path in review_images:
+                  review.write(path, path.name)
+              review.write(folder / 'result.json', 'result.json')
+              review.write(folder / 'release-manifest.json', 'release-manifest.json')
           shutil.copy2(source, folder / 'investment-radar-0.6.9.apk')
           (folder / 'investment-radar-0.6.9.apk.sha256').write_text(identity['sha256'] + '  investment-radar-0.6.9.apk\n')
       - uses: actions/upload-artifact@v4
@@ -181,14 +189,15 @@ jobs:
           All 33 Android emulator tests passed, with screenshots, lint and unit checks.
           A real same-certificate future upgrade preserved five encrypted provider credentials, portfolio and watchlist.
           An in-place upgrade from the published 0.6.4 APK also preserved all five encrypted keys, portfolio and watchlist.
+          Adds Finnhub and Alpha Vantage analyst consensus, target ranges and additional overview growth metrics with independent source dates.
           Includes provider-backed name/ISIN discovery, searchable watchlists, an interactive earnings calendar, screener filters and side-by-side comparisons, plus aggregated portfolio positions and interactive allocation charts.
           Also validated an in-place update from the published 0.6.8 APK, preserving saved plans.
           Includes native investment plans with editable presets, sectors, custom allocations, asset discovery and monthly fixed-weight or contribution-only rebalancing. Saved plans are also preserved across package updates.
           Download investment-radar-0.6.9.apk directly. The upgrade-probe APK is never distributed.
           NOTES
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" investment-radar-0.6.9.apk investment-radar-0.6.9.apk.sha256 release-manifest.json --clobber
+            gh release upload "$tag" investment-radar-0.6.9.apk investment-radar-0.6.9.apk.sha256 release-manifest.json android-ui-review.zip --clobber
           else
-            gh release create "$tag" investment-radar-0.6.9.apk investment-radar-0.6.9.apk.sha256 release-manifest.json --target "$GITHUB_SHA" --title "Investment Radar 0.6.9" --notes-file release-notes.md --prerelease
+            gh release create "$tag" investment-radar-0.6.9.apk investment-radar-0.6.9.apk.sha256 release-manifest.json android-ui-review.zip --target "$GITHUB_SHA" --title "Investment Radar 0.6.9" --notes-file release-notes.md --prerelease
           fi
           echo "Standalone APK: https://github.com/$GH_REPO/releases/download/$tag/investment-radar-0.6.9.apk" >> "$GITHUB_STEP_SUMMARY"
