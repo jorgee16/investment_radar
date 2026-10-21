@@ -104,6 +104,10 @@ class DemoProvider final : public IMarketDataProvider {
             }
             f.analysts = AnalystConsensus{
                 d->currency, "Demo", "2025-12-31", d->price * 1.18, 8, 12, 5, 2, 1};
+            f.analysts->target_low = d->price * .9;
+            f.analysts->target_high = d->price * 1.4;
+            f.analysts->target_median = d->price * 1.15;
+            f.analysts->target_as_of = "2025-12-31";
         }
         return f;
     }
@@ -467,6 +471,10 @@ json ResearchService::snapshot(const std::string &s) {
                         {"source", a.source},
                         {"asOf", a.as_of},
                         {"target", nullable(a.target)},
+                        {"targetLow", nullable(a.target_low)},
+                        {"targetHigh", nullable(a.target_high)},
+                        {"targetMedian", nullable(a.target_median)},
+                        {"targetAsOf", a.target_as_of},
                         {"strongBuy", nullable(a.strong_buy)},
                         {"buy", nullable(a.buy)},
                         {"hold", nullable(a.hold)},

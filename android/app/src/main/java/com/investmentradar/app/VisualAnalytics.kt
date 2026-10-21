@@ -199,7 +199,13 @@ internal fun metricExplanation(key: String) = when (key) {
     val colors = listOf(FinanceGreen, Color(0xFF65A66E), Color(0xFFD29A26), Color(0xFFDD8055), FinanceRed)
     val maximum = labels.mapNotNull { data.number(it.first) }.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
     FinanceCard(title = "Opinião dos analistas", modifier = Modifier.testTag("analyst-consensus")) {
-        labels.forEachIndexed { i, (key, label) ->
+        val counts = labels.map { data.number(it.first) }
+        if (counts.all { it != null }) {
+            Text("${decimal(counts.filterNotNull().sum(), 0)} recomendações", style = MaterialTheme.typography.titleMedium)
+        }
+        if (counts.all { it == null }) {
+            Text("Distribuição de recomendações indisponível nesta fonte.", style = MaterialTheme.typography.bodySmall)
+        } else labels.forEachIndexed { i, (key, label) ->
             val n = data.number(key)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(label, Modifier.width(106.dp), style = MaterialTheme.typography.labelMedium)
@@ -225,7 +231,17 @@ internal fun metricExplanation(key: String) = when (key) {
                 Text("● Atual ${money(current, data.text("currency"))}    ○ Alvo ${money(target, data.text("currency"))}", style = MaterialTheme.typography.labelMedium)
             }
         }
-        Text(listOf(data.text("source"), data.text("asOf")).filter(String::isNotBlank).joinToString(" · ").ifBlank { "Período não indicado" }, style = MaterialTheme.typography.labelSmall)
+        if (data.number("targetLow") != null || data.number("targetHigh") != null || data.number("targetMedian") != null) {
+            MetricRow("Alvo mínimo", money(data.number("targetLow"), data.text("currency")))
+            MetricRow("Alvo mediano", money(data.number("targetMedian"), data.text("currency")))
+            MetricRow("Alvo máximo", money(data.number("targetHigh"), data.text("currency")))
+        }
+        if (data.number("target") == null) {
+            Text("Preço-alvo não disponibilizado pelo provider para este ativo ou plano.", style = MaterialTheme.typography.bodySmall)
+        }
+        Text(data.text("source").ifBlank { "Fonte não indicada" }, style = MaterialTheme.typography.labelSmall)
+        if (counts.any { it != null }) Text("Recomendações · ${data.text("asOf").ifBlank { "Período não indicado" }}", style = MaterialTheme.typography.labelSmall)
+        if (data.number("target") != null) Text("Preço-alvo · ${data.text("targetAsOf").ifBlank { "Período não indicado" }}", style = MaterialTheme.typography.labelSmall)
     }
 }
 

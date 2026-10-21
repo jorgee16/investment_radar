@@ -426,6 +426,7 @@ std::optional<Fundamentals> EodhdProvider::fundamentals(const std::string &s) {
     consensus.source = f.source;
     consensus.currency = str(g, "CurrencyCode");
     consensus.as_of = str(g, "UpdatedAt");
+    consensus.target_as_of = consensus.as_of;
     consensus.target = num(ratings, "TargetPrice");
     auto count = [&](const char *key) -> std::optional<double> {
         auto n = num(ratings, key);
@@ -805,6 +806,30 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
     tag(f, "pe", f.pe, latest_quarter, "reported TTM ratio");
     tag(f, "forwardPE", f.forward_pe, latest_quarter, "reported forward ratio");
     tag(f, "roe", f.roe_pct, latest_quarter, "reported TTM ratio");
+    f.revenue_growth_pct = pct(num(overview, "QuarterlyRevenueGrowthYOY"));
+    f.eps_growth_pct = pct(num(overview, "QuarterlyEarningsGrowthYOY"));
+    tag(f, "revenueGrowth", f.revenue_growth_pct, latest_quarter, "quarterly YoY");
+    tag(f, "epsGrowth", f.eps_growth_pct, latest_quarter, "quarterly YoY");
+    // OVERVIEW already contains consensus fields: no extra API quota consumed.
+    AnalystConsensus consensus;
+    consensus.source = f.source;
+    consensus.currency = str(overview, "Currency");
+    consensus.target = num(overview, "AnalystTargetPrice");
+    if (consensus.target && *consensus.target <= 0)
+        consensus.target.reset();
+    auto count = [&](const char *key) -> std::optional<double> {
+        auto n = num(overview, key);
+        return n && *n >= 0 && std::floor(*n) == *n ? n : std::nullopt;
+    };
+    consensus.strong_buy = count("AnalystRatingStrongBuy");
+    consensus.buy = count("AnalystRatingBuy");
+    consensus.hold = count("AnalystRatingHold");
+    consensus.sell = count("AnalystRatingSell");
+    consensus.strong_sell = count("AnalystRatingStrongSell");
+    // LatestQuarter is a financial reporting period, not a consensus update date.
+    if (consensus.target || consensus.strong_buy || consensus.buy || consensus.hold ||
+        consensus.sell || consensus.strong_sell)
+        f.analysts = consensus;
 
     auto rows = [](const json &j, const char *key) {
         return completed_rows(j.is_object() && j.contains(key) && j[key].is_array() ? j[key]
@@ -877,13 +902,17 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
         tag(f, "roe", f.roe_pct, period, "TTM net income / latest equity");
     }
     if (aInc.size() >= 2) {
-        f.revenue_growth_pct = growth(num(aInc[0], "totalRevenue"), num(aInc[1], "totalRevenue"));
-        tag(f, "revenueGrowth", f.revenue_growth_pct, str(aInc[0], "fiscalDateEnding"),
-            "annual YoY");
+        if (auto annual = growth(num(aInc[0], "totalRevenue"), num(aInc[1], "totalRevenue"))) {
+            f.revenue_growth_pct = annual;
+            tag(f, "revenueGrowth", f.revenue_growth_pct, str(aInc[0], "fiscalDateEnding"),
+                "annual YoY");
+        }
     }
     if (aEarn.size() >= 2) {
-        f.eps_growth_pct = growth(num(aEarn[0], "reportedEPS"), num(aEarn[1], "reportedEPS"));
-        tag(f, "epsGrowth", f.eps_growth_pct, str(aEarn[0], "fiscalDateEnding"), "annual YoY");
+        if (auto annual = growth(num(aEarn[0], "reportedEPS"), num(aEarn[1], "reportedEPS"))) {
+            f.eps_growth_pct = annual;
+            tag(f, "epsGrowth", f.eps_growth_pct, str(aEarn[0], "fiscalDateEnding"), "annual YoY");
+        }
     }
     requests.require_if_empty(useful(f));
     return useful(f) ? std::optional<Fundamentals>(f) : std::nullopt;
@@ -987,6 +1016,9 @@ std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) 
     f.currency = str(profile, "currency", listing_currency_hint(s));
     f.pe = metric_num(m, {"peBasicExclExtraTTM", "peExclExtraTTM", "peTTM", "peAnnual"});
     f.forward_pe = metric_num(m, {"forwardPE", "forwardPe"});
+    f.eps_ttm = metric_num(m, {"epsTTM"});
+    // profile2 currency is the listing currency; it does not establish the
+    // reporting currency of EPS. Keep it unknown to prevent unsafe P/E derivation.
     f.revenue_growth_pct = metric_num(m, {"revenueGrowthTTMYoy", "revenueGrowthQuarterlyYoy"});
     f.eps_growth_pct = metric_num(m, {"epsGrowthTTMYoy", "epsGrowthQuarterlyYoy"});
     f.roe_pct = metric_num(m, {"roeTTM", "roeRfy", "roeAnnual"});
@@ -1001,6 +1033,56 @@ std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) 
     tag(f, "epsGrowth", f.eps_growth_pct, period, "provider metric");
     tag(f, "roe", f.roe_pct, period, "provider metric");
     tag(f, "debtToEquity", f.debt_to_equity, period, "provider metric");
+    tag(f, "epsTTM", f.eps_ttm, period, "trailing EPS; provider reporting period unavailable");
+    // These endpoints have independent entitlements. A denied target must not
+    // discard the basic financials or the available recommendation distribution.
+    AnalystConsensus consensus;
+    consensus.source = f.source;
+    consensus.currency = str(profile, "currency");
+    const auto recommendations = completed_rows(
+        requests.get("https://finnhub.io/api/v1/stock/recommendation?symbol=" + enc(s) +
+                     "&token=" + enc(key_)),
+        "period");
+    for (const auto &row : recommendations) {
+        if (str(row, "symbol") != s)
+            continue;
+        auto count = [&](const char *key) -> std::optional<double> {
+            auto n = num(row, key);
+            return n && *n >= 0 && std::floor(*n) == *n ? n : std::nullopt;
+        };
+        consensus.strong_buy = count("strongBuy");
+        consensus.buy = count("buy");
+        consensus.hold = count("hold");
+        consensus.sell = count("sell");
+        consensus.strong_sell = count("strongSell");
+        if (consensus.strong_buy || consensus.buy || consensus.hold || consensus.sell ||
+            consensus.strong_sell) {
+            consensus.as_of = str(row, "period");
+            break;
+        }
+    }
+    const auto targets = requests.get(
+        "https://finnhub.io/api/v1/stock/price-target?symbol=" + enc(s) + "&token=" + enc(key_));
+    if (str(targets, "symbol") == s) {
+        auto positive = [&](const char *key) -> std::optional<double> {
+            auto n = num(targets, key);
+            return n && *n > 0 ? n : std::nullopt;
+        };
+        consensus.target = positive("targetMean");
+        consensus.target_low = positive("targetLow");
+        consensus.target_high = positive("targetHigh");
+        consensus.target_median = positive("targetMedian");
+        consensus.target_as_of = str(targets, "lastUpdated");
+        if (consensus.target_low && consensus.target_high &&
+            *consensus.target_low > *consensus.target_high) {
+            consensus.target_low.reset();
+            consensus.target_high.reset();
+        }
+    }
+    if (consensus.target || consensus.target_low || consensus.target_high ||
+        consensus.target_median || consensus.strong_buy || consensus.buy || consensus.hold ||
+        consensus.sell || consensus.strong_sell)
+        f.analysts = consensus;
     requests.require_if_empty(useful(f));
     return useful(f) ? std::optional<Fundamentals>(f) : std::nullopt;
 }

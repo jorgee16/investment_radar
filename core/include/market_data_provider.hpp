@@ -40,6 +40,9 @@ struct AnalystConsensus {
     std::string currency, source, as_of;
     std::optional<double> target;
     std::optional<double> strong_buy, buy, hold, sell, strong_sell;
+    std::optional<double> target_low, target_high, target_median;
+    // Recommendation period and target update date can differ.
+    std::string target_as_of;
 };
 
 struct AssetSearchHit {

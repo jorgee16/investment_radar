@@ -302,6 +302,72 @@ int main() {
         auto q = p.quote("AIR.PA");
         CHECK(q && q->price == 200);
     });
+    test("Finnhub selects latest matching analyst period and preserves target dates", [] {
+        ir::FinnhubProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("profile2") != url.npos)
+                return R"({"name":"Apple","currency":"USD"})";
+            if (url.find("/stock/metric") != url.npos)
+                return R"({"metric":{"peTTM":28.5,"forwardPE":25,"epsTTM":6.5,"revenueGrowthTTMYoy":8,"roeTTM":40}})";
+            if (url.find("/recommendation") != url.npos)
+                return R"([{"symbol":"AAPL","period":"2024-01-01","strongBuy":1},{"symbol":"MSFT","period":"2025-06-01","strongBuy":99},{"symbol":"AAPL","period":"2099-01-01","strongBuy":99},{"symbol":"AAPL","period":"2025-05-01","strongBuy":8,"buy":12,"hold":5,"sell":0,"strongSell":1}])";
+            return R"({"symbol":"AAPL","targetMean":230,"targetLow":180,"targetHigh":280,"targetMedian":225,"lastUpdated":"2025-05-12"})";
+        });
+        const auto f = p.fundamentals("AAPL");
+        CHECK(f && f->pe == 28.5 && f->forward_pe == 25 && f->eps_ttm == 6.5);
+        CHECK(f->eps_currency.empty() && f->metrics.at("epsTTM").period.empty());
+        CHECK(f->analysts && f->analysts->buy == 12 && f->analysts->sell == 0);
+        CHECK(f->analysts->as_of == "2025-05-01");
+        CHECK(f->analysts->target_as_of == "2025-05-12");
+        CHECK(f->analysts->target == 230 && f->analysts->target_low == 180);
+        CHECK(f->analysts->target_high == 280 && f->analysts->target_median == 225);
+    });
+    test("Finnhub restricted targets retain PE and valid recommendation counts", [] {
+        ir::FinnhubProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("/stock/metric") != url.npos)
+                return R"({"metric":{"peTTM":30}})";
+            if (url.find("/recommendation") != url.npos)
+                return R"([{"symbol":"AAPL","period":"2025-05-01","strongBuy":-1,"buy":2.5,"hold":0,"sell":"nan","strongSell":3}])";
+            if (url.find("/price-target") != url.npos)
+                throw ir::ProviderError("subscription", 403);
+            return "{}";
+        });
+        const auto f = p.fundamentals("AAPL");
+        CHECK(f && f->pe == 30 && f->analysts);
+        CHECK(!f->analysts->strong_buy && !f->analysts->buy && !f->analysts->sell);
+        CHECK(f->analysts->hold == 0 && f->analysts->strong_sell == 3);
+        CHECK(!f->analysts->target && f->analysts->currency.empty());
+    });
+    test("Finnhub rejects another symbol's targets and does not invent EPS currency", [] {
+        ir::FinnhubProvider p("fixture", [](const std::string &url) -> std::string {
+            if (url.find("/stock/metric") != url.npos)
+                return R"({"metric":{"epsTTM":4}})";
+            if (url.find("/price-target") != url.npos)
+                return R"({"symbol":"MSFT","targetMean":500})";
+            return "[]";
+        });
+        const auto f = p.fundamentals("AAPL");
+        CHECK(f && f->eps_ttm == 4 && f->eps_currency.empty() && !f->analysts);
+    });
+    test("Alpha overview exposes analyst consensus without more requests", [] {
+        int calls = 0;
+        ir::AlphaVantageProvider p("fixture", [&](const std::string &url) -> std::string {
+            ++calls;
+            if (url.find("function=OVERVIEW") != url.npos)
+                return R"({"Symbol":"AAPL","PERatio":"29","QuarterlyRevenueGrowthYOY":"0.08","QuarterlyEarningsGrowthYOY":"0.12","Currency":"USD","LatestQuarter":"2025-03-31","AnalystTargetPrice":"240","AnalystRatingStrongBuy":"8","AnalystRatingBuy":"12","AnalystRatingHold":"5","AnalystRatingSell":"0","AnalystRatingStrongSell":"1"})";
+            if (url.find("function=INCOME_STATEMENT") != url.npos)
+                return R"({"annualReports":[{"fiscalDateEnding":"2025-01-01"},{"fiscalDateEnding":"2024-01-01"}]})";
+            if (url.find("function=EARNINGS") != url.npos)
+                return R"({"annualEarnings":[{"fiscalDateEnding":"2025-01-01"},{"fiscalDateEnding":"2024-01-01"}]})";
+            return "{}";
+        });
+        const auto f = p.fundamentals("AAPL");
+        CHECK(calls == 5 && f && f->pe == 29 && f->analysts);
+        CHECK(f->revenue_growth_pct == 8 && f->eps_growth_pct == 12);
+        CHECK(f->metrics.at("epsGrowth").basis == "quarterly YoY");
+        CHECK(f->analysts->target == 240 && f->analysts->buy == 12);
+        CHECK(f->analysts->currency == "USD");
+        CHECK(f->analysts->as_of.empty() && f->analysts->target_as_of.empty());
+    });
     test("Twelve normalizes symbol and rejects malformed numbers", [] {
         std::string url;
         ir::TwelveDataProvider p("fixture", [&](auto &u) {
