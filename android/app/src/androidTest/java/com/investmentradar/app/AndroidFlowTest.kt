@@ -482,6 +482,10 @@ class AndroidFlowTest {
         page(Page.Screener); click("run-screener")
         await("collection screening") { !state().screeningBusy && state().screening.size == state().watch.size }
         val snapshots = state().screening.mapValues { it.value.toString() }
+        click("screener-filters"); click("screener-type-ETF")
+        ui.onNodeWithTag("screened-6AQQ.DE").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("screened-AIR.PA").assertDoesNotExist()
+        click("screener-type-Todos"); click("screener-filters")
         click("screener-preset-P/E positivo")
         ui.onNodeWithTag("screened-AIR.PA").performScrollTo().assertIsDisplayed()
         ui.onNodeWithTag("screened-VUAA.DE").assertDoesNotExist()

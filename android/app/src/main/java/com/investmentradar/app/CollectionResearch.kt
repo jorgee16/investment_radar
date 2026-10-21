@@ -126,8 +126,11 @@ import org.json.JSONObject
     var selected by rememberSaveable(universe) { mutableStateOf(emptyList<String>()) }; var compare by rememberSaveable { mutableStateOf(false) }
     val symbols = if (universe == "Favoritos") state.watch else state.positions.map { it.symbol }.distinct()
     val directory = knownAssets(state).map { asset ->
-        val sectorName = state.screening[asset.symbol]?.text("sector").orEmpty()
-        if (asset.sector == "Sem setor" && sectorName.isNotBlank()) asset.copy(sector = sectorName) else asset
+        val snapshot = state.screening[asset.symbol]
+        val sectorName = snapshot?.text("sector").orEmpty()
+        val detectedType = when (snapshot?.text("instrumentType")) { "etf" -> "ETF"; "equity" -> "Ação"; else -> asset.type }
+        asset.copy(sector = if (asset.sector == "Sem setor" && sectorName.isNotBlank()) sectorName else asset.sector,
+            type = if (asset.type == "Desconhecido") detectedType else asset.type)
     }.associateBy { it.symbol }
     val results = state.screening.values.filter { s ->
         val asset = directory[s.text("symbol")] ?: DirectoryAsset(s.text("symbol"), s.text("name"), s.text("sector"), s.text("currency"))
