@@ -39,11 +39,7 @@ import org.json.JSONObject
     var loading by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val extra = (state.watch + state.positions.map { it.symbol }).distinct().filter { directoryAsset(it) == null }.map { symbol ->
-        val quote = state.quotes[symbol]
-        DirectoryAsset(symbol, quote?.text("name")?.ifBlank { symbol } ?: symbol, "Sem setor", quote?.text("currency").orEmpty(), type = "Desconhecido", region = "Desconhecida", source = "Favoritos / carteira")
-    }
-    val candidates = (assetDirectory + extra).filter {
+    val candidates = knownAssets(state).filter {
         it.matches(query, sector) && (type == "Todos" || it.type == type) && (region == "Todos" || it.region == region) && (!accumulating || it.type != "ETF" || it.accumulating == true)
     }
     AlertDialog(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.surface, title = { Text("Escolher instrumento", style = MaterialTheme.typography.titleLarge) }, text = {

@@ -136,8 +136,8 @@ import org.json.JSONObject
             }
         }
     }
-    if (search) EntryDialog("Pesquisar ativo", "Abrir análise", "search", { search = false }, { raw -> if (model.selectAsset(raw)) { search = false; null } else "Ticker inválido." })
-    if (addWatch) EntryDialog("Adicionar à watchlist", "Adicionar", "watch", { addWatch = false }, { raw -> model.addWatch(raw).also { if (it == null) addWatch = false } })
+    if (search) DiscoveryDialog(state, model, "search", "Pesquisar investimento", "Abrir análise", { search = false }) { raw -> if (model.selectAsset(raw)) null else "Ticker inválido." }
+    if (addWatch) DiscoveryDialog(state, model, "watch", "Descobrir investimentos", "Adicionar aos favoritos", { addWatch = false }, model::addWatch)
     if (addPosition) PositionDialog(state.symbol, { addPosition = false }) { ticker, qty, avg, currency -> model.addPosition(ticker, qty, avg, currency).also { if (it == null) addPosition = false } }
 }
 
@@ -201,19 +201,6 @@ import org.json.JSONObject
     }
 }
 
-@Composable internal fun EntryDialog(title: String, action: String, tag: String, dismiss: () -> Unit, submit: (String) -> String?) {
-    var value by rememberSaveable { mutableStateOf("") }; var error by rememberSaveable { mutableStateOf<String?>(null) }
-    val focus = LocalFocusManager.current
-    fun save() { error = submit(value); focus.clearFocus() }
-    AlertDialog(onDismissRequest = dismiss, title = { Text(title) }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value, { value = it.take(80); error = null }, label = { Text("Nome ou ticker") }, placeholder = { Text("AIR.PA, AAPL…") }, singleLine = true,
-                isError = error != null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { save() }), modifier = Modifier.fillMaxWidth().testTag("$tag-input"))
-            if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("form-error"))
-            AssetSuggestions(value, tag) { value = it.symbol; error = null; focus.clearFocus() }
-        }
-    }, confirmButton = { TextButton({ save() }, Modifier.testTag("$tag-submit")) { Text(action) } }, dismissButton = { TextButton(dismiss) { Text("Cancelar") } })
-}
 @Composable internal fun PositionDialog(initial: String, dismiss: () -> Unit, submit: (String, String, String, String) -> String?) {
     var ticker by rememberSaveable { mutableStateOf(initial) }; var qty by rememberSaveable { mutableStateOf("") }; var avg by rememberSaveable { mutableStateOf("") }; var currency by rememberSaveable { mutableStateOf("EUR") }; var error by rememberSaveable { mutableStateOf<String?>(null) }
     var choosing by rememberSaveable { mutableStateOf(false) }

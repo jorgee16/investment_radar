@@ -21,6 +21,7 @@ internal enum class Page(val label: String) {
     Screener("Screener"), Calendar("Calendário"), Providers("Providers"), Settings("Definições")
 }
 internal data class RadarState(
+    val discovered: List<DirectoryAsset> = emptyList(),
     val ready: Boolean = false, val page: Page = Page.Home, val symbol: String = "AIR.PA", val tab: Int = 0,
     val demo: Boolean = true, val dark: Boolean = false, val watch: List<String> = defaultWatch,
     val positions: List<Position> = emptyList(), val quotes: Map<String, JSONObject> = emptyMap(),
@@ -40,8 +41,9 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     private val repository = ResearchRepository(application)
     internal val local = LocalPortfolio(application)
     private val prefs = application.getSharedPreferences("radar_appearance", 0)
+    private val assetMetadata = AssetMetadataStore(application)
     private val polling = QuotePollingSettings(application)
-    private val mutable = MutableStateFlow(RadarState(
+    private val mutable = MutableStateFlow(RadarState(discovered = assetMetadata.load(),
         page = runCatching { Page.valueOf(saved.get<String>("page") ?: "Home") }.getOrDefault(Page.Home),
         symbol = saved.get<String>("symbol")?.takeIf(::validSymbol) ?: "AIR.PA",
         tab = (saved.get<Int>("tab") ?: 0).coerceIn(0,4), dark = prefs.getBoolean("dark", false),
@@ -230,7 +232,7 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     }
     private fun loadAuxiliary() {
         auxiliaryJob?.cancel(); val epoch = generation; val selected = state.value.symbol; val calendar = state.value.page == Page.Calendar; val tab = state.value.tab
-        mutable.update { it.copy(auxiliaryLoading = true) }
+        mutable.update { it.copy(auxiliaryLoading = true, events = if (calendar || tab == 3) emptyList() else it.events, news = if (!calendar && tab != 3) emptyList() else it.news) }
         auxiliaryJob = viewModelScope.launch {
             try {
                 if (calendar || tab == 3) {
@@ -242,6 +244,12 @@ internal class RadarViewModel(application: Application, private val saved: Saved
                 }
             } catch (e: CancellationException) { throw e } catch (_: Exception) { mutable.update { it.copy(auxiliaryLoading = false, error = "Dados indisponíveis. Verifica a cobertura do provider.") } }
         }
+    }
+    internal suspend fun discoverAssets(query: String): JSONObject = repository.request("/api/search", query) as JSONObject
+    internal fun rememberAsset(asset: DirectoryAsset) {
+        val assets = state.value.discovered.filterNot { it.symbol == asset.symbol } + asset
+        assetMetadata.save(assets)
+        mutable.update { it.copy(discovered = assets) }
     }
     fun addWatch(raw: String): String? {
         val selected = symbol(raw)
@@ -290,8 +298,9 @@ internal class RadarViewModel(application: Application, private val saved: Saved
         }
         return null
     }
-    fun screenWatch() {
-        screeningJob?.cancel(); val epoch = generation; val watch = state.value.watch
+    fun screenWatch() = screenSymbols(state.value.watch)
+    fun screenSymbols(symbols: List<String>) {
+        screeningJob?.cancel(); val epoch = generation; val watch = symbols.distinct().filter(::validSymbol)
         mutable.update { it.copy(screeningBusy = true, screening = emptyMap()) }
         screeningJob = viewModelScope.launch {
             try { watch.forEach { selected ->

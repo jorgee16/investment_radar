@@ -48,7 +48,7 @@ class AndroidFlowTest {
         instrumentation.uiAutomation.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1").use { fd ->
             android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
         }
-        listOf("secure_providers", "providers", "radar_native", "radar_appearance", "quote_polling", "investment_plan", "investment_plans_v1").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
+        listOf("secure_providers", "providers", "radar_native", "radar_appearance", "quote_polling", "investment_plan", "investment_plans_v1", "asset_directory_v1").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
         ApiCache(context).use { cache -> listOf("quote_values", "quote_budget", "quote_backoff").forEach { cache.writableDatabase.delete(it, null, null) } }
         LocalPortfolio(context).write(defaultWatch, emptyList(), true)
         start()
@@ -419,6 +419,109 @@ class AndroidFlowTest {
         orient(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
         capture("research-quote-landscape", true)
     }
+    @Test fun watchlistFindsFullNamesIsinAndCanUndoRemoval() {
+        page(Page.Watchlist); click("add-watch")
+        fill("watch-input", "Microsoft Corporation"); click("watch-submit")
+        await("full company name resolved") { "MSFT" in state().watch }
+        fill("watchlist-search", "Microsoft Corporation"); finishInput("watchlist-search")
+        ui.onNodeWithTag("quote-MSFT").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("quote-AIR.PA").assertDoesNotExist()
+        capture("collections-watch-full-name")
+        click("watchlist-clear"); click("watchlist-filters"); click("watchlist-sector"); click("watchlist-sector-Tecnologia")
+        ui.onNodeWithTag("quote-AIR.PA").assertDoesNotExist()
+        click("watchlist-clear"); click("watchlist-filters"); click("add-watch")
+        fill("watch-input", "IE00BK5BQT80"); click("watch-suggestion-VWCE.DE"); click("watch-submit")
+        await("ISIN resolved") { "VWCE.DE" in state().watch }
+        fill("watchlist-search", "IE00BK5BQT80"); finishInput("watchlist-search")
+        ui.onNodeWithTag("quote-VWCE.DE").performScrollTo().assertIsDisplayed()
+        capture("collections-watch-isin")
+        click("remove-watch-VWCE.DE"); assertFalse("VWCE.DE" in state().watch)
+        click("watchlist-undo"); assertTrue("VWCE.DE" in state().watch)
+        restart(); page(Page.Watchlist)
+        fill("watchlist-search", "Microsoft Corporation"); finishInput("watchlist-search")
+        ui.onNodeWithTag("quote-MSFT").performScrollTo().assertIsDisplayed()
+    }
+    @Test fun providerSearchFindsFullNamesOutsideCatalogueAndPersistsListing() {
+        liveFixture(false)
+        val url = "https://eodhd.com/api/search/Novo%20Nordisk?api_token=fixture-permission-denied&fmt=json&limit=25"
+        ApiCache(context).use { it.put(url, """[{"Code":"NOVO-B","Exchange":"CO","Name":"Novo Nordisk A/S","Currency":"DKK","Country":"Denmark","Type":"Common Stock","ISIN":"DK0062498333"}]""") }
+        page(Page.Watchlist); click("add-watch"); fill("watch-input", "Novo Nordisk")
+        ui.onNodeWithTag("watch-input").performImeAction()
+        ui.waitUntil(90000) { ui.onAllNodesWithTag("watch-suggestion-NOVO-B.CO").fetchSemanticsNodes().isNotEmpty() }
+        capture("collections-provider-discovery")
+        click("watch-suggestion-NOVO-B.CO"); click("watch-submit")
+        await("provider result added") { "NOVO-B.CO" in state().watch && state().discovered.any { it.symbol == "NOVO-B.CO" } }
+        val asset = state().discovered.first { it.symbol == "NOVO-B.CO" }
+        assertEquals("DKK", asset.currency); assertEquals("DK0062498333", asset.isin); assertEquals("CO", asset.exchange); assertEquals("Ação", asset.type)
+        restart(); page(Page.Watchlist)
+        fill("watchlist-search", "Novo Nordisk A/S"); finishInput("watchlist-search")
+        ui.onNodeWithTag("quote-NOVO-B.CO").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("Cotação indisponível").assertExists()
+        capture("collections-provider-result-persisted")
+    }
+    @Test fun calendarSelectsDatesFiltersUniverseAndOpensTheRightAsset() {
+        page(Page.Calendar)
+        await("calendar events") { !state().auxiliaryLoading && state().events.isNotEmpty() }
+        val date = java.time.LocalDate.parse(state().events.first().text("date"))
+        var month = java.time.YearMonth.now(java.time.ZoneOffset.UTC)
+        while (month < java.time.YearMonth.from(date)) { click("calendar-next"); month = month.plusMonths(1) }
+        click("calendar-day-$date")
+        ui.onNodeWithTag("calendar-selection").performScrollTo().assertTextEquals(date.toString())
+        capture("collections-calendar-selected-date")
+        click("calendar-universe-Carteira")
+        ui.onNodeWithText("Sem eventos neste período").performScrollTo().assertIsDisplayed()
+        click("calendar-universe-Todos")
+        fill("calendar-search", "Airbus SE"); finishInput("calendar-search")
+        ui.onNodeWithTag("calendar-event-JPM-$date").assertDoesNotExist()
+        ui.onNodeWithTag("calendar-event-AIR.PA-$date").performScrollTo().assertIsDisplayed()
+        capture("collections-calendar-filtered")
+        click("calendar-open-AIR.PA-$date")
+        assertEquals(Page.Markets, state().page); assertEquals("AIR.PA", state().symbol)
+    }
+    @Test fun screenerFiltersSectorAndComparesLoadedMetricsWithoutNewRequests() {
+        page(Page.Screener); click("run-screener")
+        await("collection screening") { !state().screeningBusy && state().screening.size == state().watch.size }
+        val snapshots = state().screening.mapValues { it.value.toString() }
+        click("screener-preset-P/E positivo")
+        ui.onNodeWithTag("screened-AIR.PA").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("screened-VUAA.DE").assertDoesNotExist()
+        click("screener-preset-Todos"); click("screener-filters")
+        click("screener-sector"); click("screener-sector-Finanças")
+        ui.onNodeWithTag("screened-AIR.PA").assertDoesNotExist()
+        click("compare-select-JPM"); click("compare-select-GS"); click("screener-compare")
+        ui.onNodeWithTag("screener-comparison-close").assertIsDisplayed()
+        capture("collections-screener-comparison")
+        click("screener-comparison-close")
+        assertEquals(snapshots, state().screening.mapValues { it.value.toString() })
+        capture("collections-screener-filtered")
+        page(Page.Settings); click("dark-theme"); page(Page.Screener)
+        capture("collections-screener-dark")
+    }
+    @Test fun portfolioAggregatesLotsAndAllocationFiltersWithoutMixingCurrencies() {
+        ui.runOnIdle {
+            assertNull(activity.model.addPosition("AIR.PA", "2,5", "180,50", "EUR"))
+            assertNull(activity.model.addPosition("AIR.PA", "1,5", "200", "EUR"))
+            assertNull(activity.model.addPosition("JPM", "2", "300", "USD"))
+        }
+        await("portfolio grouped quotes") { state().positions.size == 3 && state().quotes["AIR.PA"]?.number("price") != null && state().quotes["JPM"]?.number("price") != null }
+        page(Page.Portfolio)
+        ui.onNodeWithTag("total-EUR").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("total-USD").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("portfolio-allocation-EUR").performScrollTo().assertIsDisplayed()
+        capture("collections-portfolio-allocation")
+        click("portfolio-slice-EUR-AIR.PA")
+        ui.onNodeWithTag("holding-AIR.PA-EUR").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("holding-JPM-USD").assertDoesNotExist()
+        capture("collections-portfolio-grouped-lots")
+        click("holding-lots-AIR.PA-EUR")
+        val airLots = state().positions.filter { it.symbol == "AIR.PA" }
+        airLots.forEach { ui.onNodeWithTag("position-${it.id}").performScrollTo().assertIsDisplayed() }
+        click("remove-position-${airLots.first().id}")
+        assertEquals(2, state().positions.size); assertTrue(state().positions.any { it.id == airLots.last().id })
+        click("portfolio-clear"); click("portfolio-allocation-mode-Setores")
+        click("portfolio-slice-USD-Finanças")
+        capture("collections-portfolio-sector-filter")
+    }
     @Test fun allNavigationAndAssetTabs() {
         for (target in listOf(Page.Portfolio, Page.Watchlist, Page.Screener, Page.Calendar, Page.Providers, Page.Settings)) {
             page(target); capture("nav-${target.name}")
@@ -450,9 +553,9 @@ class AndroidFlowTest {
         await("second lot saved") { state().positions.size == 2 && state().quotes["AIR.PA"]?.number("price") != null }
         val total = portfolioTotals(state().positions, state().quotes).single()
         assertEquals(751.25, total.invested, .001); assertEquals(752.0, total.value!!, .001)
-        ui.onNodeWithTag("total-EUR").performScrollTo(); ui.onNodeWithText("752,00 €").assertExists()
+        ui.onNodeWithTag("total-EUR").performScrollTo(); ui.onNode(hasText("752,00 €") and hasAnyAncestor(hasTestTag("total-EUR"))).assertExists()
         capture("portfolio-multiple-lots"); restart(); assertEquals(2, state().positions.size)
-        page(Page.Portfolio); val ids = state().positions.map { it.id }
+        page(Page.Portfolio); click("portfolio-view-Compras"); val ids = state().positions.map { it.id }
         ids.forEach { click("remove-position-$it") }; assertTrue(state().positions.isEmpty()); capture("portfolio-empty")
     }
     @Test fun portfolioDiscoveryFiltersAndPlanPersist() {
@@ -464,7 +567,7 @@ class AndroidFlowTest {
         fill("position-qty", "2"); fill("position-avg", "300"); click("position-submit")
         await("Microsoft position") { state().positions.size == 1 }
         ui.onNodeWithTag("portfolio-search").performScrollTo(); fill("portfolio-search", "Microsoft"); finishInput("portfolio-search")
-        ui.onNodeWithTag("position-${state().positions.single().id}").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("holding-MSFT-USD").performScrollTo().assertIsDisplayed()
         capture("portfolio-discovery-name")
         ui.onNodeWithTag("portfolio-search").performScrollTo(); fill("portfolio-search", "inexistente"); finishInput("portfolio-search"); ui.onNodeWithText("Sem correspondências").performScrollTo().assertIsDisplayed()
         click("portfolio-clear"); click("portfolio-sector"); click("portfolio-sector-Tecnologia")

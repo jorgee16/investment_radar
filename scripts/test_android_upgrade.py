@@ -55,7 +55,7 @@ def main():
     result = {"passed": True, "serial": a.serial, "syntheticProvidersVerified": 5,
               "encryptedBlobPreserved": True, "appUidPreserved": True, "keystoreDecryptionPreserved": True,
               "partialSettingsSavePreservesKeys": True, "uiRecognizesSavedKeys": True,
-              "portfolioAndWatchlistPreserved": True, "investmentPlansPreserved": True,
+              "portfolioAndWatchlistPreserved": True, "investmentPlansPreserved": True, "discoveryMetadataPreserved": True,
               "uninstalledBetweenVersions": False, "compatibility": compatibility}
     result_path.write_text(json.dumps(result, indent=2) + "\n")
     print("PASS: all five encrypted provider keys survived the APK update")
