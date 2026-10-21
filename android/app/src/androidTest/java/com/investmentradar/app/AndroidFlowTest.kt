@@ -955,6 +955,7 @@ class AndroidFlowTest {
         assertEquals(200,merged.getInt("price")); assertEquals(70,merged.getInt("score")); assertEquals(20,merged.getInt("pe")); assertEquals("Company",merged.text("name"))
     }
     @Test fun pollingControlsLifecycleAndBackgroundScheduling() {
+        assertEquals(10, QuotePollingSettings(context).dailyLimit)
         page(Page.Settings)
         click("polling-interval"); click("polling-interval-5")
         click("polling-budget"); click("polling-budget-50")

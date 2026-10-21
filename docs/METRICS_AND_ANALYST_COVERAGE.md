@@ -67,3 +67,8 @@ HTTP 429 respects Retry-After (seconds or HTTP date), bounded to 60 seconds thro
 24 hours. Quota error payloads also establish a minimum 60-second pause. These
 backoff records survive repeated screen openings and process restarts without
 storing raw credential-bearing URLs. They cannot increase a provider's allowance.
+
+The automatic quote budget now defaults to 10 requests/day instead of 240, leaving
+room for manual research on small free allowances. Explicitly saved user budgets
+are retained. The setting counts only automatic quote attempts, not total account
+usage; other devices and manual requests still consume provider allowances.

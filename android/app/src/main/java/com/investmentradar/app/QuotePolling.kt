@@ -37,7 +37,7 @@ internal class QuotePollingSettings(context: Context) {
     var enabled: Boolean get() = prefs.getBoolean("enabled", true); set(v) { prefs.edit().putBoolean("enabled", v).apply() }
     var background: Boolean get() = prefs.getBoolean("background", false); set(v) { prefs.edit().putBoolean("background", v).apply() }
     var intervalMinutes: Int get() = prefs.getInt("interval", 15).takeIf { it in listOf(5,15,30,60) } ?: 15; set(v) { require(v in listOf(5,15,30,60)); prefs.edit().putInt("interval", v).apply() }
-    var dailyLimit: Int get() = prefs.getInt("daily", 240).coerceIn(20, 1000); set(v) { require(v in 20..1000); prefs.edit().putInt("daily", v).apply() }
+    var dailyLimit: Int get() = prefs.getInt("daily", 10).coerceIn(10, 1000); set(v) { require(v in 10..1000); prefs.edit().putInt("daily", v).apply() }
 }
 
 internal fun createQuoteTables(db: SQLiteDatabase) {

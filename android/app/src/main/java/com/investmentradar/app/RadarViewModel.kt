@@ -34,7 +34,7 @@ internal data class RadarState(
     val saving: Boolean = false, val testing: Boolean = false, val screeningBusy: Boolean = false,
     val error: String? = null, val notice: String? = null,
     val pollingEnabled: Boolean = true, val pollingMinutes: Int = 15, val pollingBackground: Boolean = false,
-    val pollingDailyLimit: Int = 240, val pollingActive: Boolean = false, val pollingMessage: String? = null
+    val pollingDailyLimit: Int = 10, val pollingActive: Boolean = false, val pollingMessage: String? = null
 )
 
 internal class RadarViewModel(application: Application, private val saved: SavedStateHandle) : AndroidViewModel(application) {

@@ -56,7 +56,7 @@ import androidx.compose.ui.unit.sp
         Box {
             OutlinedButton({ budgetMenu=true }, Modifier.testTag("polling-budget")) { Text("Limite automático: ${state.pollingDailyLimit} pedidos/dia") }
             DropdownMenu(budgetMenu, { budgetMenu=false }) {
-                listOf(20,50,100,240,500,1000).forEach { limit -> DropdownMenuItem(text = { Text("$limit pedidos/dia") }, onClick = { budgetMenu=false; model.savePolling(dailyLimit=limit) }, modifier = Modifier.testTag("polling-budget-$limit")) }
+                listOf(10,20,50,100,240,500,1000).forEach { limit -> DropdownMenuItem(text = { Text("$limit pedidos/dia") }, onClick = { budgetMenu=false; model.savePolling(dailyLimit=limit) }, modifier = Modifier.testTag("polling-budget-$limit")) }
             }
         }
         Text("O limite conta os pedidos automáticos de cotação, incluindo tentativas de fallback, em todos os providers neste dispositivo (dia UTC). Não substitui as quotas do teu plano; testes e carregamentos manuais usam pedidos adicionais.", style = MaterialTheme.typography.bodySmall)
