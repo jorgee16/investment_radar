@@ -42,7 +42,7 @@ internal class QuotePollingSettings(context: Context) {
 
 internal fun createQuoteTables(db: SQLiteDatabase) {
     db.execSQL("CREATE TABLE IF NOT EXISTS quote_values(scope TEXT NOT NULL,symbol TEXT NOT NULL,body TEXT,fetched_at INTEGER NOT NULL DEFAULT 0,attempt_at INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(scope,symbol))")
-    db.execSQL("CREATE TABLE IF NOT EXISTS quote_backoff(scope TEXT PRIMARY KEY,until_at INTEGER NOT NULL,failures INTEGER NOT NULL)")
+    db.execSQL("CREATE TABLE IF NOT EXISTS quote_backoff(scope TEXT PRIMARY KEY,until_at INTEGER NOT NULL,failures INTEGER NOT NULL,reason TEXT NOT NULL DEFAULT 'unknown')")
     db.execSQL("CREATE TABLE IF NOT EXISTS quote_budget(day TEXT PRIMARY KEY,requests INTEGER NOT NULL)")
 }
 internal fun ApiCache.readQuotes(scope: String, symbols: List<String>, ttl: Long, now: Long = Instant.now().epochSecond): Map<String, JSONObject> = buildMap {
@@ -67,7 +67,8 @@ internal fun ApiCache.saveQuote(scope: String, quote: JSONObject, now: Long) {
     attemptQuote(scope, quote.text("symbol"), now)
     writableDatabase.execSQL("UPDATE quote_values SET body=?,fetched_at=? WHERE scope=? AND symbol=?", arrayOf(quote.toString(), now, scope, quote.text("symbol")))
 }
-internal fun ApiCache.quoteBlocked(scope: String, now: Long = Instant.now().epochSecond): Boolean = readableDatabase.rawQuery("SELECT until_at FROM quote_backoff WHERE scope=?", arrayOf(scope)).use { it.moveToFirst() && it.getLong(0) > now }
+internal fun ApiCache.quoteBlockCode(scope: String, now: Long = Instant.now().epochSecond): String? = readableDatabase.rawQuery("SELECT until_at,reason FROM quote_backoff WHERE scope=?", arrayOf(scope)).use { if (it.moveToFirst() && it.getLong(0) > now) it.getString(1) else null }
+internal fun ApiCache.quoteBlocked(scope: String, now: Long = Instant.now().epochSecond): Boolean = quoteBlockCode(scope, now) != null
 internal fun ApiCache.blockQuote(scope: String, code: String, now: Long = Instant.now().epochSecond, retrySeconds: Long? = null) {
     val db=writableDatabase
     db.beginTransaction()
@@ -76,7 +77,7 @@ internal fun ApiCache.blockQuote(scope: String, code: String, now: Long = Instan
         db.rawQuery("SELECT until_at,failures FROM quote_backoff WHERE scope=?", arrayOf(scope)).use { c -> if(c.moveToFirst()) { until=c.getLong(0); count=c.getInt(1) } }
         if (until <= now) {
             val seconds = retrySeconds?.coerceIn(60L, 86400L) ?: if(code == "authentication") 300L else if(code == "subscription") 21600L else (3600L * (1L shl count.coerceAtMost(5))).coerceAtMost(86400L)
-            db.execSQL("INSERT OR REPLACE INTO quote_backoff VALUES(?,?,?)", arrayOf(scope, now+seconds, count+1))
+            db.execSQL("INSERT OR REPLACE INTO quote_backoff(scope,until_at,failures,reason) VALUES(?,?,?,?)", arrayOf(scope, now+seconds, count+1, code))
         }
         db.setTransactionSuccessful()
     } finally { db.endTransaction() }

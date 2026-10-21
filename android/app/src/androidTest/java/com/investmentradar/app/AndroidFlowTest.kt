@@ -727,6 +727,31 @@ class AndroidFlowTest {
         click("quote-AIR.PA"); await("AIR selected") { state().snapshot?.text("symbol") == "AIR.PA" }
     }
     @Test fun historyQuotaExplainsFailureAndRetainsOnlyMatchingCachedRange() {
+        val migrationName = "history-backoff-migration-test.db"
+        context.deleteDatabase(migrationName)
+        val now = java.time.Instant.now().epochSecond
+        android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(migrationName), null).use { db ->
+            db.execSQL("CREATE TABLE http_cache_v2(cache_key TEXT PRIMARY KEY, body TEXT NOT NULL, fetched_at INTEGER NOT NULL)")
+            db.execSQL("CREATE TABLE quote_backoff(scope TEXT PRIMARY KEY,until_at INTEGER NOT NULL,failures INTEGER NOT NULL)")
+            db.execSQL("INSERT INTO quote_backoff VALUES(?,?,?)", arrayOf("legacy", now + 600, 2))
+            db.version = 3
+        }
+        ApiCache(context, migrationName).use { cache ->
+            assertEquals("unknown", cache.quoteBlockCode("legacy", now))
+            assertTrue(cache.quoteBlocked("legacy", now))
+            for ((code, status) in listOf("authentication" to 401, "subscription" to 403, "rate_limit" to 429, "unknown" to 503)) {
+                val url = "https://finnhub.io/api/v1/quote?symbol=AAPL&token=fixture-$code"
+                cache.blockQuote(quoteCredentialScope(java.net.URL(url)), code, now)
+                try {
+                    HttpClient(cache).get(url)
+                    fail("A blocked request must not use the network")
+                } catch (error: ProviderHttpException) { assertEquals(status, error.status) }
+            }
+            cache.readableDatabase.rawQuery("SELECT failures FROM quote_backoff WHERE scope='legacy'", null).use { c ->
+                assertTrue(c.moveToFirst()); assertEquals(2, c.getInt(0))
+            }
+        }
+        context.deleteDatabase(migrationName)
         liveFixture(true)
         page(Page.Markets)
         assertTrue(state().history.isNotEmpty())

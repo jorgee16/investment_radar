@@ -19,7 +19,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** Platform transport/storage only. Provider normalization and routing live in C++. */
-class ApiCache(ctx: Context) : SQLiteOpenHelper(ctx, "investment_radar_cache.db", null, 3) {
+class ApiCache(ctx: Context, name: String = "investment_radar_cache.db") : SQLiteOpenHelper(ctx, name, null, 4) {
     override fun onCreate(db: SQLiteDatabase) { db.execSQL("CREATE TABLE http_cache_v2(cache_key TEXT PRIMARY KEY, body TEXT NOT NULL, fetched_at INTEGER NOT NULL)"); createQuoteTables(db) }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
@@ -28,6 +28,10 @@ class ApiCache(ctx: Context) : SQLiteOpenHelper(ctx, "investment_radar_cache.db"
             db.execSQL("CREATE TABLE IF NOT EXISTS http_cache_v2(cache_key TEXT PRIMARY KEY, body TEXT NOT NULL, fetched_at INTEGER NOT NULL)")
         }
         createQuoteTables(db)
+        val hasReason = db.rawQuery("PRAGMA table_info(quote_backoff)", null).use { cursor ->
+            generateSequence { if (cursor.moveToNext()) cursor.getString(1) else null }.any { it == "reason" }
+        }
+        if (!hasReason) db.execSQL("ALTER TABLE quote_backoff ADD COLUMN reason TEXT NOT NULL DEFAULT 'unknown'")
     }
     private fun key(url: String) = MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
     fun get(url: String, ttl: Int): String? {
@@ -40,6 +44,12 @@ class ApiCache(ctx: Context) : SQLiteOpenHelper(ctx, "investment_radar_cache.db"
 }
 class ProviderHttpException(val status: Int) : Exception("Provider HTTP error")
 class HttpClient(private val cache: ApiCache) {
+    private fun backoffStatus(code: String) = when (code) {
+        "authentication" -> 401
+        "subscription" -> 403
+        "rate_limit" -> 429
+        else -> 503 // Legacy pauses have no recorded cause; never invent a quota.
+    }
     fun get(url: String, bypassCache: Boolean = false): String {
         val parsed = URL(url)
         require(ProviderPolicy.allowsProviderUrl(parsed)) { "Unsupported provider URL" }
@@ -50,10 +60,10 @@ class HttpClient(private val cache: ApiCache) {
         val rateScope = "provider-rate:$scope"
         if (cache.quoteBlocked(rateScope)) throw ProviderHttpException(429)
         val context = QuoteRequestContext.current.get()
-        if (quote && !bypassCache && cache.quoteBlocked(scope)) throw ProviderHttpException(429)
+        if (quote && !bypassCache) cache.quoteBlockCode(scope)?.let { throw ProviderHttpException(backoffStatus(it)) }
         // Polling bypasses quote response cache, but never bypasses account backoff.
         if (quote && context != null) {
-            if (cache.quoteBlocked(scope)) throw ProviderHttpException(429)
+            cache.quoteBlockCode(scope)?.let { throw ProviderHttpException(backoffStatus(it)) }
             if (context.automatic && !cache.takeQuoteBudget(context.dailyLimit)) {
                 context.budgetReached = true
                 throw ProviderHttpException(429)

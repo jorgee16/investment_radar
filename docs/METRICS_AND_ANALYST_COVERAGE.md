@@ -72,3 +72,10 @@ The automatic quote budget now defaults to 10 requests/day instead of 240, leavi
 room for manual research on small free allowances. Explicitly saved user budgets
 are retained. The setting counts only automatic quote attempts, not total account
 usage; other devices and manual requests still consume provider allowances.
+
+Cache schema 4 preserves the cause of account pauses. Authentication and
+subscription pauses retain HTTP 401/403 semantics, rather than being rethrown as
+429. Schema 3 records retain their expiry/failure count and migrate to an unknown
+cause, reported generically instead of inventing quota exhaustion. The Android
+history regression test exercises this migration in an isolated database and
+checks all four error classifications without network access.
