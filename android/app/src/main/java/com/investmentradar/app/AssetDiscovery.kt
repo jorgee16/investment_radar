@@ -2,6 +2,8 @@ package com.investmentradar.app
 
 import android.content.Context
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,13 +17,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -56,7 +58,7 @@ internal fun knownAssets(state: RadarState): List<DirectoryAsset> {
 internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = knownAssets(state).firstOrNull { it.symbol == symbol }
     ?: DirectoryAsset(symbol, symbol, "Sem setor", "", type = "Desconhecido", region = "Por confirmar")
 
-@Composable internal fun DiscoveryDialog(state: RadarState, model: RadarViewModel, tag: String, title: String, action: String, dismiss: () -> Unit, submit: (String) -> String?) {
+@Composable internal fun DiscoveryOverlay(state: RadarState, model: RadarViewModel, tag: String, title: String, action: String, dismiss: () -> Unit, submit: (String) -> String?) {
     var query by rememberSaveable { mutableStateOf("") }
     var sector by rememberSaveable { mutableStateOf("Todos") }
     var type by rememberSaveable { mutableStateOf("Todos") }
@@ -102,12 +104,11 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
             focus.clearFocus(); dismiss()
         }
     }
-    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = true)) {
-        val view = LocalView.current
-        SideEffect {
-            (view.parent as? DialogWindowProvider)?.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        }
-        BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout)).padding(16.dp), contentAlignment = Alignment.Center) {
+    // Share the Activity's IME insets so the action footer cannot be covered by a separate dialog window.
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .4f))
+        .pointerInput(Unit) { detectTapGestures { focus.clearFocus() } }
+        .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)).padding(16.dp)
+        .semantics { paneTitle = title }, contentAlignment = Alignment.Center) {
             Surface(Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(max = maxHeight), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxWidth()) {
                     Text(title, Modifier.padding(20.dp), style = MaterialTheme.typography.titleLarge)
@@ -156,6 +157,5 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
                     }
                 }
             }
-        }
     }
 }

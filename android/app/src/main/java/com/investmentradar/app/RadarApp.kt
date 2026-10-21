@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -50,7 +51,8 @@ import org.json.JSONObject
         focus.clearFocus()
         when { more -> more = false; search -> search = false; addWatch -> addWatch = false; addPosition -> addPosition = false; else -> model.back() }
     }
-    Scaffold(modifier = Modifier.fillMaxSize().testTag("native-app").imePadding(), containerColor = MaterialTheme.colorScheme.background,
+    Box(Modifier.fillMaxSize().testTag("native-app")) {
+    Scaffold(modifier = Modifier.fillMaxSize().imePadding().then(if (search || addWatch) Modifier.clearAndSetSemantics { } else Modifier), containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column(Modifier.background(MaterialTheme.colorScheme.surface).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -136,9 +138,10 @@ import org.json.JSONObject
             }
         }
     }
-    if (search) DiscoveryDialog(state, model, "search", "Pesquisar investimento", "Abrir análise", { search = false }) { raw -> if (model.selectAsset(raw)) null else "Ticker inválido." }
-    if (addWatch) DiscoveryDialog(state, model, "watch", "Descobrir investimentos", "Adicionar aos favoritos", { addWatch = false }, model::addWatch)
+    if (search) DiscoveryOverlay(state, model, "search", "Pesquisar investimento", "Abrir análise", { search = false }) { raw -> if (model.selectAsset(raw)) null else "Ticker inválido." }
+    if (addWatch) DiscoveryOverlay(state, model, "watch", "Descobrir investimentos", "Adicionar aos favoritos", { addWatch = false }, model::addWatch)
     if (addPosition) PositionDialog(state.symbol, { addPosition = false }) { ticker, qty, avg, currency -> model.addPosition(ticker, qty, avg, currency).also { if (it == null) addPosition = false } }
+    }
 }
 
 @Composable internal fun FinanceCard(modifier: Modifier = Modifier, title: String? = null, content: @Composable ColumnScope.() -> Unit) {
