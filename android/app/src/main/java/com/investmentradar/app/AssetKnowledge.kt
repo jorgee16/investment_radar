@@ -50,7 +50,8 @@ internal fun sectorContext(sector: String): Pair<String, String> = when (sector)
     val description = providerDescription.ifBlank { asset.summary }
     val providerOrigin = profile?.text("source").orEmpty()
     val sector = snapshot?.text("sector")?.takeIf(String::isNotBlank) ?: asset.sector
-    val isFund = asset.type == "ETF" || snapshot?.text("instrumentType") in listOf("etf", "fund")
+    val note = asset.type == "ETC/ETN" || snapshot?.text("instrumentType") == "note"
+    val isFund = asset.type in listOf("ETF", "Fundo", "ETC/ETN") || snapshot?.text("instrumentType") in listOf("etf", "fund")
     var expanded by rememberSaveable(asset.symbol) { mutableStateOf(false) }
     FinanceCard {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -64,7 +65,7 @@ internal fun sectorContext(sector: String): Pair<String, String> = when (sector)
             PlanPill(asset.type); if (sector != "Sem setor") PlanPill(sector)
             if (asset.country.isNotBlank()) PlanPill(asset.country)
         }
-        Text(if (isFund) "O que acompanha este fundo" else "O que faz esta empresa", style = MaterialTheme.typography.titleMedium)
+        Text(if (isFund) "Objetivo e exposição" else if (asset.type == "Ação") "O que faz esta empresa" else "Descrição do ativo", style = MaterialTheme.typography.titleMedium)
         if (description.isNotBlank()) {
             Text(if (expanded) description else description.take(420) + if (description.length > 420) "…" else "", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("asset-profile-description"))
             if (description.length > 420) TextButton({ expanded = !expanded }, Modifier.testTag("asset-profile-expand")) { Text(if (expanded) "Ler menos −" else "Ler descrição completa +") }
@@ -98,9 +99,9 @@ internal fun sectorContext(sector: String): Pair<String, String> = when (sector)
         if (website.isNotBlank() && ProviderPolicy.mayOpenExternal(uri.scheme, uri.host, true, true)) TextButton({ openArticle(context, uri.toString()) }, Modifier.testTag("asset-official-site")) { Text("Site da empresa / gestora ↗") }
     }
     if (isFund) {
-        FundComposition(fund)
-        FinanceCard(title = "Antes de comparar ETFs") {
-            Text("Compara índice, custos correntes, método de réplica, dimensão, tracking difference e política de rendimentos no documento do emitente. ETFs temáticos ou alavancados podem ter riscos diferentes de um fundo mundial diversificado.", style = MaterialTheme.typography.bodyMedium)
+        FundComposition(fund, note)
+        FinanceCard(title = if (note) "Entende a estrutura" else "Antes de comparar ETFs") {
+            Text(if (note) "ETCs e ETNs não são fundos UCITS. Confirma a exposição, as garantias, os custos e o risco de crédito do emitente na documentação do produto." else "Compara índice, custos correntes, método de réplica, dimensão, tracking difference e política de rendimentos no documento do emitente. ETFs temáticos ou alavancados podem ter riscos diferentes de um fundo mundial diversificado.", style = MaterialTheme.typography.bodyMedium)
         }
     } else {
         val (title, text) = sectorContext(asset.sector)
@@ -118,13 +119,13 @@ internal fun sectorContext(sector: String): Pair<String, String> = when (sector)
     }
 }
 
-@Composable internal fun FundComposition(fund: JSONObject?) {
+@Composable internal fun FundComposition(fund: JSONObject?, note: Boolean = false) {
     val holdings = fund?.optJSONArray("holdings")?.objects().orEmpty()
     val sectors = fund?.optJSONArray("sectors")?.objects().orEmpty()
-    FinanceCard(title = "Composição do fundo") {
+    FinanceCard(title = if (note) "Exposição do produto" else "Composição do fundo") {
         if (holdings.isEmpty() && sectors.isEmpty()) {
             Text("Sem composição recebida", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("fund-composition-unavailable"))
-            Text("Os pesos das empresas e setores precisam de dados da carteira do ETF. Não são deduzidos do nome, do índice ou da moeda.", style = MaterialTheme.typography.bodySmall)
+            Text("Os pesos das empresas e setores precisam de dados da composição do produto. Não são deduzidos do nome, do índice ou da moeda.", style = MaterialTheme.typography.bodySmall)
         } else {
             Text("${fund?.text("compositionSource").orEmpty()} · ${fund?.text("compositionDate")?.takeIf(String::isNotBlank) ?: "Data da composição não fornecida"}", style = MaterialTheme.typography.labelSmall)
             if (holdings.isNotEmpty()) {

@@ -366,10 +366,11 @@ json ResearchService::snapshot(const std::string &s, int history_days,
     // A reference catalogue may identify a fund when the provider exposes only
     // ratios. It cannot override an explicit provider classification.
     const bool reference_classified =
-        type == "unknown" && (reference_type == "etf" || reference_type == "fund");
+        type == "unknown" &&
+        (reference_type == "etf" || reference_type == "fund" || reference_type == "note");
     if (reference_classified)
         type = reference_type;
-    const bool fund = type == "etf" || type == "fund";
+    const bool fund = type == "etf" || type == "fund" || type == "note";
     auto e = fund ? std::optional<EstimateSnapshot>{} : active().estimates(s);
     Metrics m;
     if (q)

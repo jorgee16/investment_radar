@@ -164,9 +164,9 @@ import org.json.JSONObject
         if (hasScore) return
     }
     if (!hasScore) {
-        FinanceCard(title = if (applicable) "Análise fundamental indisponível" else "Análise de ETF / fundo") {
+        FinanceCard(title = if (applicable) "Análise fundamental indisponível" else if (snapshot.text("instrumentType") == "note") "Análise de ETC / ETN" else "Análise de ETF / fundo") {
             Text(if (applicable) "Score e valor justo precisam de fundamentais. Explora o histórico no painel Mercado."
-                else "Explora o histórico em Mercado. O modelo de empresas não se aplica a este fundo.", style = MaterialTheme.typography.bodyMedium)
+                else "Explora o histórico em Mercado. O modelo de empresas não se aplica a este instrumento.", style = MaterialTheme.typography.bodyMedium)
         }
         return
     }
@@ -186,8 +186,8 @@ import org.json.JSONObject
 }
 @Composable private fun FinancialsScreen(snapshot: JSONObject) {
     val fund = !snapshot.optBoolean("analysisApplicable", true)
-    if (fund) FinanceCard(title = "Perfil do ETF / fundo") {
-        MetricRow("Tipo de instrumento", if (snapshot.text("instrumentType") == "etf") "ETF" else "Fundo")
+    if (fund) FinanceCard(title = if (snapshot.text("instrumentType") == "note") "Perfil do ETC / ETN" else "Perfil do ETF / fundo") {
+        MetricRow("Tipo de instrumento", when (snapshot.text("instrumentType")) { "etf" -> "ETF"; "note" -> "ETC/ETN"; else -> "Fundo" })
         val profile = snapshot.optJSONObject("fund")
         val fields = linkedMapOf("isin" to "ISIN", "issuer" to "Gestora", "domicile" to "Domicílio", "index" to "Índice de referência", "inceptionDate" to "Data de lançamento")
         fields.forEach { (key, label) ->

@@ -63,7 +63,7 @@ internal class ResearchRepository(context: Context) {
             val selected = payload.text("symbol")
             val type = directoryAsset(selected)?.type ?: runCatching { GlobalCatalogue.instrumentType(applicationContext, selected) }.getOrNull()
             // Transport reference metadata only; classification and scoring remain in C++.
-            payload.put("referenceType", if (type == "ETF") "etf" else if (type == "Fundo") "fund" else "unknown").toString()
+            payload.put("referenceType", if (type == "ETF") "etf" else if (type == "Fundo") "fund" else if (type == "ETC/ETN") "note" else "unknown").toString()
         } else argument, config))
     }
     suspend fun save(update: JSONObject): JSONObject = withContext(dispatcher) {

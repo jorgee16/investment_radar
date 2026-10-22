@@ -789,13 +789,15 @@ int main() {
                 return R"({"metric":{"peTTM":20,"roeTTM":15}})";
             return "{}";
         });
-        auto j = service.snapshot("NEWFUND.DE", 30, "etf");
-        CHECK(j["instrumentType"] == "etf");
-        CHECK(j["instrumentClassificationSource"] == "catalogue");
-        CHECK(j["analysisApplicable"] == false);
-        CHECK(j["score"].is_null());
-        CHECK(j["pe"].is_null());
-        CHECK(j["availability"]["estimates"]["status"] == "not_applicable");
+        for (const auto reference : {"etf", "note"}) {
+            auto j = service.snapshot("NEWFUND.DE", 30, reference);
+            CHECK(j["instrumentType"] == reference);
+            CHECK(j["instrumentClassificationSource"] == "catalogue");
+            CHECK(j["analysisApplicable"] == false);
+            CHECK(j["score"].is_null());
+            CHECK(j["pe"].is_null());
+            CHECK(j["availability"]["estimates"]["status"] == "not_applicable");
+        }
     });
     test("reference fund hints cannot replace a known provider classification", [] {
         ir::ResearchService service({}, [](const std::string &) { return "{}"; });

@@ -149,7 +149,7 @@ import org.json.JSONObject
                 }
             }
         } else {
-            PlanPill(if (snapshot.text("instrumentType") == "etf") "ETF" else "Fundo", active = true)
+            PlanPill(when (snapshot.text("instrumentType")) { "etf" -> "ETF"; "note" -> "ETC/ETN"; else -> "Fundo" }, active = true)
             Text("O score de empresas não se aplica a este instrumento.", style = MaterialTheme.typography.bodySmall)
         }
         TextButton(openAnalysis) { Text("Explorar análise →") }
