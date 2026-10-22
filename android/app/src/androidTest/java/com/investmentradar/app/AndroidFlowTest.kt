@@ -92,6 +92,18 @@ class AndroidFlowTest {
                 node.performScrollTo()
             }
         }
+        if (tag in setOf("search-submit", "watch-submit")) {
+            // IME insets animate outside Compose's idle clock. Wait for the actual
+            // touch target to stop moving before injecting a real pointer click.
+            var previous = androidx.compose.ui.geometry.Rect.Zero
+            var stableSince = SystemClock.uptimeMillis()
+            ui.waitUntil(15000) {
+                val bounds = node.fetchSemanticsNode().boundsInRoot
+                val now = SystemClock.uptimeMillis()
+                if (bounds != previous) { previous = bounds; stableSince = now }
+                now - stableSince >= 500
+            }
+        }
         node.assertIsDisplayed().performClick()
         ui.waitForIdle()
     }
@@ -120,6 +132,7 @@ class AndroidFlowTest {
         click("open-search"); fill("search-input", value); click("search-submit")
         val input = ui.onAllNodesWithTag("search-input").fetchSemanticsNodes().mapNotNull { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.EditableText)?.text }
         val errors = ui.onAllNodesWithTag("form-error").fetchSemanticsNodes().map { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text) }
+        if (state().symbol != symbol(value)) capture("failure-search-confirmation")
         assertEquals("Search confirmation must select immediately; input=$input; errors=$errors", symbol(value), state().symbol)
         assertEquals(Page.Markets, state().page)
     }

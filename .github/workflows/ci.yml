@@ -42,7 +42,17 @@ jobs:
           java-version: '21'
       - name: Compile and unit-test Compose desktop
         shell: pwsh
-        run: .\android\gradlew.bat -p desktop-compose --no-daemon test
+        run: |
+          $desktopLog = Join-Path $env:RUNNER_TEMP 'compose-desktop-tests.txt'
+          & .\android\gradlew.bat -p desktop-compose --no-daemon --console=plain --stacktrace test 2>&1 | Tee-Object -FilePath $desktopLog
+          $desktopExitCode = $LASTEXITCODE
+          if ($desktopExitCode -ne 0) {
+            $desktopErrors = Select-String -Path $desktopLog -Pattern '^e:|FAILURE:|Execution failed|Could not|Caused by:|Exception|error' | Select-Object -First 12 | ForEach-Object { $_.Line }
+            $desktopDetail = (($desktopErrors + (Get-Content $desktopLog -Tail 35)) -join "`n")
+            $desktopDetail = $desktopDetail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=Compose desktop test failure::$desktopDetail"
+            exit $desktopExitCode
+          }
       - name: Build Compose distributable
         shell: pwsh
         run: .\android\gradlew.bat -p desktop-compose --no-daemon createDistributable
@@ -75,7 +85,17 @@ jobs:
           java-version: '21'
       - name: Compile and unit-test Compose desktop
         shell: pwsh
-        run: .\android\gradlew.bat -p desktop-compose --no-daemon test
+        run: |
+          $desktopLog = Join-Path $env:RUNNER_TEMP 'compose-desktop-tests.txt'
+          & .\android\gradlew.bat -p desktop-compose --no-daemon --console=plain --stacktrace test 2>&1 | Tee-Object -FilePath $desktopLog
+          $desktopExitCode = $LASTEXITCODE
+          if ($desktopExitCode -ne 0) {
+            $desktopErrors = Select-String -Path $desktopLog -Pattern '^e:|FAILURE:|Execution failed|Could not|Caused by:|Exception|error' | Select-Object -First 12 | ForEach-Object { $_.Line }
+            $desktopDetail = (($desktopErrors + (Get-Content $desktopLog -Tail 35)) -join "`n")
+            $desktopDetail = $desktopDetail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=Compose desktop test failure::$desktopDetail"
+            exit $desktopExitCode
+          }
       - name: Create Compose desktop distributable
         shell: pwsh
         run: .\android\gradlew.bat -p desktop-compose --no-daemon createDistributable
