@@ -512,6 +512,8 @@ class AndroidFlowTest {
         await("global company selected") { state().symbol == "ALTR.LS" && !state().loading }
         click("asset-tab-5")
         await("company description loaded offline") { ui.onAllNodesWithTag("asset-profile-description").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("asset-profile-reference").assertExists()
+        ui.onNodeWithText("LIVE · Dados dos providers").assertDoesNotExist()
         ui.onNodeWithTag("asset-profile-name").assertTextEquals("Altri, SGPS, S.A.")
         ui.onNodeWithTag("asset-profile-description").assertTextContains("pulp", substring = true)
         capture("global-company-profile")

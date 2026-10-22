@@ -249,7 +249,7 @@ std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) 
             if (dst.empty() && !src.empty()) {
                 dst = src;
                 contributed = true;
-                m.metrics[key] = {v.source, "", "fund profile"};
+                m.metrics[key] = {v.source, "", "provider profile"};
             }
         };
         copy_text(m.description, v.description, "description");

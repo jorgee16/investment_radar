@@ -37,7 +37,7 @@ internal data class CatalogueLoad(val page: CataloguePage = CataloguePage(emptyL
     val provider = snapshot?.optJSONObject("profile")
     return metadata.copy(
         name = assetDisplayName(state.symbol, snapshot?.text("name").orEmpty(), metadata),
-        type = if (metadata.type == "Desconhecido") when (snapshot?.text("instrumentType")) { "etf" -> "ETF"; "stock" -> "Ação"; else -> metadata.type } else metadata.type,
+        type = if (metadata.type == "Desconhecido") when (snapshot?.text("instrumentType")) { "etf" -> "ETF"; "stock", "equity" -> "Ação"; "fund" -> "Fundo"; else -> metadata.type } else metadata.type,
         country = metadata.country.ifBlank { provider?.text("country").orEmpty() },
         industry = metadata.industry.ifBlank { provider?.text("industry").orEmpty() },
         website = metadata.website.ifBlank { provider?.text("website").orEmpty() })

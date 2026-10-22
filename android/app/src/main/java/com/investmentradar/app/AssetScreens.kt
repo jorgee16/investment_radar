@@ -20,9 +20,14 @@ import org.json.JSONObject
 @Composable internal fun AssetScreen(state: RadarState, model: RadarViewModel, addPosition: () -> Unit) {
     val snapshot = state.snapshot
     val profile = rememberAssetProfile(state)
+    if (state.tab == 5) {
+        Text("Ficha de referência · informação do catálogo e fontes disponíveis", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("asset-profile-reference"))
+        if (snapshot?.text("mode") == "demo") Text("DEMO · métricas e previsões dos painéis financeiros são sintéticas.", style = MaterialTheme.typography.labelSmall)
+        AssetKnowledgeScreen(profile, snapshot)
+        return
+    }
     ModeBanner(state, model)
     if (state.loading) { LinearProgressIndicator(Modifier.fillMaxWidth().testTag("asset-loading")); Text("A carregar ${state.symbol}…") }
-    if (state.tab == 5) { AssetKnowledgeScreen(profile, snapshot); return }
     val cached = state.quotes[state.symbol]?.takeIf { it.number("cacheFetchedAt") != null && it.number("price") != null }
     if (snapshot == null) {
         if (cached != null) FinanceCard(title = state.symbol) {
