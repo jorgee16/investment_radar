@@ -54,6 +54,8 @@ jobs:
       - name: Build Release and instrumentation APKs and run lint
         working-directory: android
         run: ./gradlew :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease :app:testReleaseUnitTest -PirTestBuildType=release --no-daemon --console=plain
+      - name: Verify the packaged offline catalogue before emulator tests
+        run: python3 scripts/check_android_catalogue.py android/app/build/outputs/apk/release/app-release.apk
       - name: Preserve release inputs and build future-upgrade probe
         working-directory: android
         run: |

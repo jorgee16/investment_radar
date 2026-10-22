@@ -63,7 +63,7 @@ def build(source):
      if country:countries.add(country)
   db.commit(); db.execute("INSERT INTO search(search) VALUES('optimize')");db.commit();db.execute('VACUUM');db.close()
   data=dbpath.read_bytes(); compressed=gzip.compress(data,compresslevel=9,mtime=0)
-  (OUT/'assets.sqlite.gz').write_bytes(compressed)
+  (OUT/'assets.sqlite.bin').write_bytes(compressed)
   manifest={'source':'FinanceDatabase','sourceUrl':'https://github.com/JerBouma/FinanceDatabase','revision':REVISION,'snapshotDate':'2026-10-20','descriptionLanguage':'en','descriptionDates':'Individual descriptions have no observation dates; snapshot date is repository version only.','counts':count,'total':sum(count.values()),'countries':sorted(countries),'excluded':excluded,'sha256':hashlib.sha256(data).hexdigest(),'compressedBytes':len(compressed),'databaseBytes':len(data),'inputHashes':digests}
   (OUT/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
   (OUT/'FINANCEDATABASE-LICENSE.txt').write_bytes((source/'LICENSE').read_bytes())

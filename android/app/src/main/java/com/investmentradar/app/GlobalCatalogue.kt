@@ -25,7 +25,7 @@ internal object GlobalCatalogue {
             val temporary = File(folder, "assets.tmp")
             val digest = MessageDigest.getInstance("SHA-256")
             try {
-                context.assets.open("catalogue/assets.sqlite.gz").use { raw -> GZIPInputStream(raw).use { source ->
+                context.assets.open("catalogue/assets.sqlite.bin").use { raw -> GZIPInputStream(raw).use { source ->
                     DigestOutputStream(temporary.outputStream(), digest).use { target -> source.copyTo(target) }
                 } }
                 check(digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) } == manifest.getString("sha256"))
