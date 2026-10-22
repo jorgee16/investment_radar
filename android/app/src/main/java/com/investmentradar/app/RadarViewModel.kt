@@ -154,9 +154,9 @@ internal class RadarViewModel(application: Application, private val saved: Saved
         if (changed || state.value.snapshot == null) loadAsset()
         return true
     }
-    fun setTab(tab: Int) { saved["tab"] = tab; mutable.update { it.copy(tab = tab) }; if (tab >= 3) loadAuxiliary() }
+    fun setTab(tab: Int) { saved["tab"] = tab; mutable.update { it.copy(tab = tab) }; if (tab in 3..4) loadAuxiliary() }
     fun dismissMessage() { mutable.update { it.copy(error = null, notice = null) } }
-    fun refresh(forceQuotes: Boolean = false) { loadAsset(); loadQuotes(forceQuotes); if (state.value.page == Page.Calendar || state.value.tab >= 3) loadAuxiliary() }
+    fun refresh(forceQuotes: Boolean = false) { loadAsset(); loadQuotes(forceQuotes); if (state.value.page == Page.Calendar || state.value.tab in 3..4) loadAuxiliary() }
     fun setForeground(active: Boolean) {
         foreground = active
         if (!active) { pollingJob?.cancel(); pollingJob = null; quotesJob?.cancel(); quotesPending=false; forcePending=false }
@@ -197,7 +197,7 @@ internal class RadarViewModel(application: Application, private val saved: Saved
                     if (state.value.days == requestedDays) acceptHistory(selected, requestedDays,
                         result.optJSONArray("history")?.objects().orEmpty(),
                         result.optJSONObject("availability")?.optJSONObject("history")?.optJSONArray("issues"))
-                    if (state.value.tab >= 3) loadAuxiliary()
+                    if (state.value.tab in 3..4) loadAuxiliary()
                 }
             } catch (e: CancellationException) { throw e } catch (_: Exception) {
                 if (generation == epoch && state.value.symbol == selected) mutable.update { it.copy(loading = false, error = "Não foi possível carregar $selected. Tenta atualizar os dados.") }

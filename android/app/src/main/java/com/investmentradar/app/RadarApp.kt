@@ -86,7 +86,7 @@ import org.json.JSONObject
                 }
                 if (state.page == Page.Markets) {
                     ScrollableTabRow(state.tab, edgePadding = 16.dp, containerColor = MaterialTheme.colorScheme.surface, divider = { HorizontalDivider() }) {
-                        listOf("Resumo", "Análises", "Dados financeiros", "Resultados", "Notícias").forEachIndexed { index, title ->
+                        listOf("Resumo", "Análises", "Dados financeiros", "Resultados", "Notícias", "Sobre").forEachIndexed { index, title ->
                             Tab(state.tab == index, { focus.clearFocus(); model.setTab(index) }, Modifier.testTag("asset-tab-$index"), selectedContentColor = MaterialTheme.colorScheme.primary, unselectedContentColor = MaterialTheme.colorScheme.onSurface, text = { Text(title, fontWeight = FontWeight.SemiBold) })
                         }
                     }
@@ -141,7 +141,7 @@ import org.json.JSONObject
     }
     if (search) DiscoveryOverlay(state, model, "search", "Pesquisar investimento", "Abrir análise", { search = false }) { raw -> if (model.selectAsset(raw)) null else "Ticker inválido." }
     if (addWatch) DiscoveryOverlay(state, model, "watch", "Descobrir investimentos", "Adicionar aos favoritos", { addWatch = false }, model::addWatch)
-    if (addPosition) PositionDialog(state.symbol, { addPosition = false }) { ticker, qty, avg, currency -> model.addPosition(ticker, qty, avg, currency).also { if (it == null) addPosition = false } }
+    if (addPosition) PositionDialog(state.symbol, { addPosition = false }, model::rememberAsset) { ticker, qty, avg, currency -> model.addPosition(ticker, qty, avg, currency).also { if (it == null) addPosition = false } }
     }
 }
 
@@ -178,11 +178,14 @@ import org.json.JSONObject
         if (!state.demo && state.configured.isEmpty()) TextButton({ details = false; model.navigate(Page.Providers) }) { Text("Configurar providers") }
     })
 }
-@Composable internal fun PriceRow(ticker: String, quote: JSONObject?, onClick: () -> Unit, remove: (() -> Unit)? = null) {
+@Composable internal fun PriceRow(ticker: String, quote: JSONObject?, onClick: () -> Unit, remove: (() -> Unit)? = null, asset: DirectoryAsset? = null) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp).testTag("quote-$ticker"), verticalAlignment = Alignment.CenterVertically) {
+        val identity = asset ?: directoryAsset(ticker) ?: DirectoryAsset(ticker, quote?.text("name")?.takeIf(String::isNotBlank) ?: ticker, "", quote?.text("currency").orEmpty(), type = "Desconhecido")
+        AssetIdentityIcon(identity)
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f).padding(end = 8.dp)) {
-            Text(ticker, fontWeight = FontWeight.Bold)
-            Text(quote?.text("name")?.ifBlank { "Dados indisponíveis" } ?: "A carregar…", maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(assetDisplayName(ticker, quote?.text("name").orEmpty(), identity), fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(ticker, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (quote?.number("cacheFetchedAt") != null && quote.text("mode") != "demo") Text(quoteCacheLabel(quote), maxLines = 2, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(horizontalAlignment = Alignment.End) {
@@ -205,7 +208,7 @@ import org.json.JSONObject
     }
 }
 
-@Composable internal fun PositionDialog(initial: String, dismiss: () -> Unit, submit: (String, String, String, String) -> String?) {
+@Composable internal fun PositionDialog(initial: String, dismiss: () -> Unit, rememberAsset: (DirectoryAsset) -> Unit = {}, submit: (String, String, String, String) -> String?) {
     var ticker by rememberSaveable { mutableStateOf(initial) }; var qty by rememberSaveable { mutableStateOf("") }; var avg by rememberSaveable { mutableStateOf("") }; var currency by rememberSaveable { mutableStateOf("EUR") }; var error by rememberSaveable { mutableStateOf<String?>(null) }
     var choosing by rememberSaveable { mutableStateOf(false) }
     val focus = LocalFocusManager.current
@@ -214,7 +217,7 @@ import org.json.JSONObject
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(ticker, { ticker = it.take(80); choosing = true; error = null }, label = { Text("Nome ou ticker") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("position-symbol"))
             TextButton({ choosing = !choosing; if (choosing) ticker = "" }, Modifier.testTag("position-browse")) { Text(if (choosing) "Fechar catálogo" else "Procurar por nome ou setor") }
-            if (choosing) AssetSuggestions(ticker, "position") { asset -> ticker = asset.symbol; currency = asset.currency; choosing = false; focus.clearFocus(); error = null }
+            if (choosing) AssetSuggestions(ticker, "position") { asset -> rememberAsset(asset); ticker = asset.symbol; currency = asset.currency; choosing = false; focus.clearFocus(); error = null }
             directoryAsset(ticker)?.let { Text(it.name, style = MaterialTheme.typography.bodySmall) }
             OutlinedTextField(qty, { qty = it }, label = { Text("Quantidade") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().testTag("position-qty"))
             OutlinedTextField(avg, { avg = it }, label = { Text("Preço médio por unidade") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().testTag("position-avg"))

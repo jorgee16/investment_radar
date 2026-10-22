@@ -166,7 +166,7 @@ class AndroidFlowTest {
         LocalPortfolio(context).write(listOf("VUAA.DE"), emptyList(), true)
         val quote = """{"close":132.8,"currency":"EUR","name":"VUAA.DE"}"""
         val denied = """{"status":"error","code":403}"""
-        val profile = """{"General":{"Type":"ETF","Name":"Vanguard S&P 500 UCITS ETF","ISIN":"IE00BFMXXD54"},"ETF_Data":{"Company_Name":"Vanguard","Domicile":"Ireland","Index_Name":"S&P 500"}}"""
+        val profile = """{"General":{"Type":"ETF","Name":"Vanguard S&P 500 UCITS ETF","ISIN":"IE00BFMXXD54"},"ETF_Data":{"Company_Name":"Vanguard","Domicile":"Ireland","Index_Name":"S&P 500","Top_10_Holdings":{"AAPL.US":{"Name":"Apple","Assets_%":7.5},"MSFT.US":{"Name":"Microsoft","Assets_%":6.25}},"Sector_Weights":{"Technology":{"Equity_%":30.5},"Financials":{"Equity_%":15}}}}"""
         val cache = ApiCache(context)
         val root = "https://eodhd.com/api/"
         cache.put(root + "real-time/VUAA.XETRA?api_token=$key&fmt=json", quote)
@@ -471,7 +471,7 @@ class AndroidFlowTest {
         val url = "https://eodhd.com/api/search/Novo%20Nordisk?api_token=fixture-permission-denied&fmt=json&limit=25"
         ApiCache(context).use { it.put(url, """[{"Code":"NOVO-B","Exchange":"CO","Name":"Novo Nordisk A/S","Currency":"DKK","Country":"Denmark","Type":"Common Stock","ISIN":"DK0062498333"}]""") }
         page(Page.Watchlist); click("add-watch"); fill("watch-input", "Novo Nordisk")
-        ui.onNodeWithTag("watch-input").performImeAction()
+        click("watch-provider-search")
         ui.waitUntil(90000) { ui.onAllNodesWithTag("watch-suggestion-NOVO-B.CO").fetchSemanticsNodes().isNotEmpty() }
         capture("collections-provider-discovery")
         click("watch-suggestion-NOVO-B.CO"); click("watch-submit")
@@ -483,6 +483,56 @@ class AndroidFlowTest {
         ui.onNodeWithTag("quote-NOVO-B.CO").performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("Cotação indisponível").assertExists()
         capture("collections-provider-result-persisted")
+    }
+    @Test fun globalCatalogueFindsInternationalCompaniesSmallCapsAndFundsOffline() {
+        val metadata = GlobalCatalogue.manifest(context)
+        assertEquals(125440, metadata.getInt("total"))
+        val small = GlobalCatalogue.search(context, "altri", country = "Portugal", cap = "Small Cap")
+        assertTrue(small.items.any { it.symbol == "ALTR.LS" })
+        assertTrue(small.items.all { it.country == "Portugal" && it.marketCap == "Small Cap" })
+        assertTrue(GlobalCatalogue.lookup(context, "ALTR.LS")!!.summary.contains("pulp"))
+        assertTrue(GlobalCatalogue.lookup(context, "7203.T")!!.summary.contains("Toyota"))
+        assertTrue(GlobalCatalogue.search(context, "Novo Nordisk").items.any { it.symbol == "NOVO-B.CO" })
+        val funds = GlobalCatalogue.search(context, "Vanguard FTSE All-World", type = "ETF")
+        assertTrue(funds.matches > 0)
+        assertTrue(funds.items.all { it.type == "ETF" })
+        assertTrue(GlobalCatalogue.search(context, "IE00BK5BQT80").items.any { it.symbol == "VWCE.DE" })
+        assertEquals("Mundial", GlobalCatalogue.lookup(context, "VWCE.DE")!!.region)
+        assertEquals(true, GlobalCatalogue.lookup(context, "VUAA.DE")!!.accumulating)
+        assertEquals(0, GlobalCatalogue.search(context, "unfindableassetnameqzxx").matches)
+        GlobalCatalogue.search(context, "\" OR * --") // Punctuation never becomes SQL or an FTS operator.
+        assertNull(GlobalCatalogue.lookup(context, "UNKNOWN.CATALOGUE"))
+    }
+    @Test fun anyCatalogueCompanyHasAProfileWithoutApiKeysAndKeepsItsIdentity() {
+        page(Page.Providers); click("mode-live")
+        await("profile live without keys") { !state().demo && !state().saving && !state().loading }
+        click("open-search"); fill("search-input", "Altri")
+        await("global Altri result") { ui.onAllNodesWithTag("search-suggestion-ALTR.LS").fetchSemanticsNodes().isNotEmpty() }
+        click("search-suggestion-ALTR.LS"); capture("global-catalogue-name-search"); click("search-submit")
+        await("global company selected") { state().symbol == "ALTR.LS" && !state().loading }
+        click("asset-tab-5")
+        await("company description loaded offline") { ui.onAllNodesWithTag("asset-profile-description").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("asset-profile-name").assertTextEquals("Altri, SGPS, S.A.")
+        ui.onNodeWithTag("asset-profile-description").assertTextContains("pulp", substring = true)
+        capture("global-company-profile")
+        click("asset-profile-expand"); assertTrue(state().configured.isEmpty())
+        restart(); page(Page.Markets); click("asset-tab-5")
+        await("offline profile survives restart") { ui.onAllNodesWithTag("asset-profile-description").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("Altri, SGPS, S.A.", state().discovered.single { it.symbol == "ALTR.LS" }.name)
+        page(Page.Settings); click("dark-theme"); page(Page.Markets)
+        capture("global-company-profile-dark")
+        orient(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE); capture("global-company-profile-landscape", true)
+    }
+    @Test fun etfCompositionPresentsProviderWeightsAndNeverInventsAnObservationDate() {
+        liveFixture(true); click("asset-tab-5")
+        await("fund description loaded") { ui.onAllNodesWithTag("asset-profile-description").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("asset-profile-name").assertTextEquals("Vanguard S&P 500 UCITS ETF · Acumulação")
+        ui.onNodeWithText("Composição do fundo").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("7,50%").assertExists()
+        ui.onNodeWithText("86,25%").assertExists()
+        ui.onNodeWithText("EODHD · Data da composição não fornecida").assertExists()
+        capture("global-etf-composition")
+        assertEquals(86.25, state().snapshot!!.getJSONObject("fund").getDouble("otherWeight"), .001)
     }
     @Test fun calendarSelectsDatesFiltersUniverseAndOpensTheRightAsset() {
         page(Page.Calendar)

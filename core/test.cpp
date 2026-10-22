@@ -727,6 +727,57 @@ int main() {
         CHECK(j["priceStatistics"]["high"] == 132.8);
         CHECK(std::abs(j["priceStatistics"]["changePct"].get<double>() - 32.8) < .001);
     });
+    test("ETF composition retains real percentage units and residual without inventing dates", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.eodhd_key = "fixture";
+        ir::ResearchService service(c, [](const std::string &url) -> std::string {
+            if (url.find("fundamentals") != url.npos)
+                return R"({"General":{"Type":"ETF","Description":"A physical equity index fund","WebURL":"https://example.com","UpdatedAt":"2026-10-21"},"ETF_Data":{"Top_10_Holdings":{"MSFT.US":{"Name":"Microsoft","Assets_%":"6.25"},"AAPL.US":{"Name":"Apple","Assets_%":7.5}},"Sector_Weights":{"Technology":{"Equity_%":30.5},"Utilities":{"Equity_%":0}}}})";
+            return "{}";
+        });
+        auto j = service.snapshot("TEST.DE");
+        CHECK(j["profile"]["description"] == "A physical equity index fund");
+        CHECK(j["profile"]["source"] == "EODHD");
+        CHECK(j["fund"]["holdings"].size() == 2);
+        CHECK(j["fund"]["holdings"][0]["name"] == "Apple");
+        CHECK(j["fund"]["holdings"][0]["weight"] == 7.5);
+        CHECK(j["fund"]["otherWeight"] == 86.25);
+        CHECK(j["fund"]["compositionDate"] == "");
+        CHECK(j["fund"]["compositionSource"] == "EODHD");
+        CHECK(j["fund"]["sectors"].size() == 1);
+        CHECK(j["fund"]["sectors"][0]["weight"] == 30.5);
+        CHECK(j["pe"].is_null());
+    });
+    test("ETF composition rejects inconsistent weights instead of normalizing them", [] {
+        for (auto rows : {R"({"A":{"Name":"A","Assets_%":80},"B":{"Name":"B","Assets_%":30}})",
+                          R"({"A":{"Name":"A","Assets_%":-1}})",
+                          R"({"A":{"Name":"A","Assets_%":"unknown"}})"}) {
+            auto payload = json{{"General", {{"Type", "ETF"}}},
+                                {"ETF_Data", {{"Top_10_Holdings", json::parse(rows)}}}}
+                               .dump();
+            ir::EodhdProvider p("fixture", [&](const std::string &) { return payload; });
+            auto f = p.fundamentals("TEST.DE");
+            CHECK(f);
+            CHECK(f->fund.holdings.empty());
+            CHECK(!f->fund.other_weight);
+        }
+    });
+    test("OVERVIEW business profile is preserved with financial metric provenance", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.alpha_key = "fixture";
+        ir::ResearchService service(c, [](const std::string &url) -> std::string {
+            if (url.find("function=OVERVIEW") != url.npos)
+                return R"({"Name":"A business outside the offline directory","Description":"Makes industrial products","OfficialSite":"https://example.com","Country":"PORTUGAL","Industry":"PAPER","PERatio":"14"})";
+            return "{}";
+        });
+        auto j = service.snapshot("EXAMPLE");
+        CHECK(j["profile"]["description"] == "Makes industrial products");
+        CHECK(j["profile"]["country"] == "PORTUGAL");
+        CHECK(j["profile"]["source"] == "Alpha Vantage");
+        CHECK(j["pe"] == 14);
+    });
     test("ETF classification works without any profile fields or company ratios", [] {
         ir::EodhdProvider p("fixture", [](auto &) { return R"({"General":{"Type":"ETF"}})"; });
         auto f = p.fundamentals("TEST.DE");

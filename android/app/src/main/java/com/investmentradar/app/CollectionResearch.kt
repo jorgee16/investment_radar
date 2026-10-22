@@ -93,7 +93,8 @@ import org.json.JSONObject
     visible.forEach { ticker ->
         val asset = directory.getValue(ticker); val quote = state.quotes[ticker]
         FinanceCard {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                AssetIdentityIcon(asset)
                 Column(Modifier.weight(1f).testTag("quote-$ticker").clickable { model.selectAsset(ticker) }, verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(asset.name, style = MaterialTheme.typography.titleMedium)
                     Text(listOf(ticker, asset.exchange, asset.currency).filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

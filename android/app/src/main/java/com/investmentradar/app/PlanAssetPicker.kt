@@ -39,7 +39,8 @@ import org.json.JSONObject
     var loading by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val candidates = knownAssets(state).filter {
+    val catalogue = rememberCataloguePage(query, type, sector)
+    val candidates = (knownAssets(state) + catalogue.page.items).distinctBy { it.symbol }.filter {
         it.matches(query, sector) && (type == "Todos" || it.type == type) && (region == "Todos" || it.region == region) && (!accumulating || it.type != "ETF" || it.accumulating == true)
     }
     AlertDialog(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.surface, title = { Text("Escolher instrumento", style = MaterialTheme.typography.titleLarge) }, text = {
@@ -61,7 +62,7 @@ import org.json.JSONObject
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { PlanPill(asset.type); PlanPill(asset.region) }
                 if (asset.isin.isNotBlank()) Text(asset.isin, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton({ choose(asset) }, enabled = asset.currency.length == 3, modifier = Modifier.testTag("plan-pick-${asset.symbol}")) { Text("Adicionar") }
+                    FilledTonalButton({ model.rememberAsset(asset); choose(asset) }, enabled = asset.currency.length == 3, modifier = Modifier.testTag("plan-pick-${asset.symbol}")) { Text("Adicionar") }
                     TextButton({
                         selectedMetric = asset.symbol; metric = null; problem = null; loading = true
                         scope.launch { try { metric = model.planInstrumentMetrics(asset.symbol) } catch (e: CancellationException) { throw e } catch (_: Exception) { problem = "Não foi possível carregar os dados." } finally { loading = false } }
@@ -98,7 +99,7 @@ import org.json.JSONObject
             HorizontalDivider()
             PlanInput("Moeda para ticker manual", currency, "plan-manual-currency", numeric = false) { currency = it.uppercase().take(3) }
             OutlinedButton({ choose(DirectoryAsset(symbol(query), symbol(query), "Sem setor", currency, type = "Desconhecido", region = "Desconhecida", source = "Introdução manual")) }, enabled = validSymbol(symbol(query)) && currency.matches(Regex("[A-Z]{3}")), modifier = Modifier.testTag("plan-manual-add")) { Text("Usar ticker manual") }
-            Text("Catálogo inicial, não pesquisa de toda a bolsa. Confirma o ISIN, bolsa e disponibilidade na XTB. A classificação por setor não representa a composição interna de ETF diversificados.", style = MaterialTheme.typography.bodySmall)
+            Text("Catálogo global de referência; não confirma cobertura do provider. Confirma o ISIN, bolsa e disponibilidade na XTB. A classificação por setor não representa a composição interna de ETF diversificados.", style = MaterialTheme.typography.bodySmall)
         }
     }, confirmButton = {}, dismissButton = { TextButton(dismiss) { Text("Fechar") } })
 }

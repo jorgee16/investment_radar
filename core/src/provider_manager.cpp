@@ -252,6 +252,18 @@ std::optional<Fundamentals> ProviderManager::fundamentals(const std::string &s) 
                 m.metrics[key] = {v.source, "", "fund profile"};
             }
         };
+        copy_text(m.description, v.description, "description");
+        copy_text(m.website, v.website, "website");
+        copy_text(m.country, v.country, "country");
+        copy_text(m.industry, v.industry, "industry");
+        if (m.fund.composition_source.empty() && !v.fund.composition_source.empty()) {
+            m.fund.holdings = v.fund.holdings;
+            m.fund.sectors = v.fund.sectors;
+            m.fund.other_weight = v.fund.other_weight;
+            m.fund.composition_source = v.fund.composition_source;
+            m.fund.composition_date = v.fund.composition_date;
+            contributed = true;
+        }
         copy_text(m.fund.isin, v.fund.isin, "isin");
         copy_text(m.fund.issuer, v.fund.issuer, "issuer");
         copy_text(m.fund.domicile, v.fund.domicile, "domicile");

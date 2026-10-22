@@ -22,6 +22,13 @@ class AssetDirectoryTest {
         assertTrue(fund.matches("IE00BK5BQT80"))
         assertTrue(fund.copy(country = "Germany", region = "Mundial").matches("IE00BK5BQT80"))
     }
+    @Test fun humanIdentitySurvivesProviderTickerOnlyResponses() {
+        assertEquals("Airbus SE", assetDisplayName("AIR.PA", "AIR.PA", directoryAsset("AIR.PA")))
+        assertEquals("A new company", assetDisplayName("NEW", "A new company", null))
+        assertEquals("NEW", assetDisplayName("NEW", "", null))
+        assertTrue(directoryAsset("VUAA.DE")!!.matches("vanguard sp500"))
+        assertEquals("LU1681038243", directoryAsset("6AQQ.DE")!!.isin)
+    }
     @Test fun catalogueHasUniqueIdentifiersAndEtfsAreNotCorporateSectors() {
         assertEquals(assetDirectory.size, assetDirectory.map { it.symbol }.distinct().size)
         assertEquals("ETF diversificados", directoryAsset("VWCE.DE")!!.sector)

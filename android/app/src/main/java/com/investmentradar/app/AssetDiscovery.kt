@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
@@ -38,17 +39,18 @@ internal class AssetMetadataStore(context: Context) {
         val rows = assets.takeLast(500).map { a -> JSONObject().put("symbol", a.symbol).put("name", a.name).put("currency", a.currency)
             .put("isin", a.isin).put("exchange", a.exchange).put("country", a.country).put("region", a.region).put("sector", a.sector)
             .put("accumulating", a.accumulating ?: JSONObject.NULL).put("aliases", a.aliases)
-            .put("instrumentType", if (a.type == "ETF") "etf" else if (a.type == "Ação") "stock" else "unknown").put("source", a.source) }
+            .put("industry", a.industry).put("website", a.website).put("marketCap", a.marketCap).put("issuer", a.issuer)
+            .put("instrumentType", if (a.type == "ETF") "etf" else if (a.type == "Ação") "stock" else if (a.type == "ETC/ETN") "note" else "unknown").put("source", a.source) }
         check(prefs.edit().putString("assets", JSONArray(rows).toString()).commit())
     }
 }
 internal fun directoryHit(row: JSONObject): DirectoryAsset {
     val known = directoryAsset(row.text("symbol"))?.takeIf { row.text("isin").isBlank() || it.isin.isBlank() || row.text("isin") == it.isin }
-    val type = when (row.text("instrumentType")) { "etf" -> "ETF"; "stock", "equity" -> "Ação"; else -> known?.type ?: "Desconhecido" }
+    val type = when (row.text("instrumentType")) { "etf" -> "ETF"; "stock", "equity" -> "Ação"; "note" -> "ETC/ETN"; else -> known?.type ?: "Desconhecido" }
     return DirectoryAsset(row.text("symbol"), row.text("name"), row.text("sector").ifBlank { known?.sector ?: "Sem setor" }, row.text("currency"), row.text("isin"),
         type, row.text("region").ifBlank { known?.region ?: "Desconhecida" },
         accumulating = if (row.isNull("accumulating")) known?.accumulating else row.optBoolean("accumulating"),
-        source = row.text("source"), exchange = row.text("exchange"), aliases = row.text("aliases"), country = row.text("country"))
+        source = row.text("source"), exchange = row.text("exchange"), aliases = row.text("aliases"), country = row.text("country"), industry = row.text("industry"), website = row.text("website"), marketCap = row.text("marketCap"), issuer = row.text("issuer"))
 }
 internal fun knownAssets(state: RadarState): List<DirectoryAsset> {
     val values = (assetDirectory + state.discovered).associateBy { it.symbol }.toMutableMap()
@@ -69,6 +71,8 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
     var sector by rememberSaveable { mutableStateOf("Todos") }
     var type by rememberSaveable { mutableStateOf("Todos") }
     var exchange by rememberSaveable { mutableStateOf("Todas") }
+    var country by rememberSaveable { mutableStateOf("Todos") }
+    var cap by rememberSaveable { mutableStateOf("Todas") }
     var filters by rememberSaveable { mutableStateOf(false) }
     var selected by remember { mutableStateOf<DirectoryAsset?>(null) }
     var remote by remember { mutableStateOf(emptyList<DirectoryAsset>()) }
@@ -79,10 +83,13 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
     val focus = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val local = knownAssets(state)
-    val candidates = ((if (remoteQuery == query) remote else emptyList()) + local).distinctBy { it.symbol }.filter {
+    val catalogue = rememberCataloguePage(query, type, sector, country, cap, exchange)
+    val context = LocalContext.current
+    val countries by produceState(emptyList<String>()) { value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { GlobalCatalogue.manifest(context).getJSONArray("countries").strings() }.getOrDefault(emptyList()) } }
+    val candidates = ((if (remoteQuery == query) remote else emptyList()) + (if (query.isBlank()) local else emptyList()) + catalogue.page.items + local).distinctBy { it.symbol }.filter {
         // Providers may match names/aliases absent from the normalized result, so their returned hits are retained.
-        (remoteQuery == query && remote.any { r -> r.symbol == it.symbol } || it.matches(query)) &&
-            (sector == "Todos" || it.sector == sector) && (type == "Todos" || it.type == type) && (exchange == "Todas" || it.exchange == exchange)
+        (remoteQuery == query && remote.any { r -> r.symbol == it.symbol } || catalogue.page.items.any { r -> r.symbol == it.symbol } || it.matches(query)) &&
+            (sector == "Todos" || it.sector == sector) && (type == "Todos" || it.type == type) && (exchange == "Todas" || it.exchange == exchange) && (country == "Todos" || it.country == country) && (cap == "Todas" || it.marketCap == cap)
     }
     fun searchProviders() {
         if (loading || query.trim().length !in 2..120) return
@@ -101,7 +108,7 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
     }
     fun save() {
         val match = selected?.takeIf { it.symbol == symbol(query) } ?: candidates.singleOrNull()
-            ?: local.firstOrNull { it.symbol == symbol(query) }
+            ?: local.firstOrNull { it.symbol == symbol(query) || searchKey(it.name) == searchKey(query) }
         val ticker = match?.symbol ?: symbol(query).takeIf { validSymbol(it) && query.trim() == it && !it.matches(Regex("[A-Z]{2}[A-Z0-9]{9}[0-9]")) }
         if (ticker == null) { error = "Seleciona um resultado para confirmar o instrumento e a bolsa."; return }
         error = submit(ticker)
@@ -123,39 +130,45 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
             OutlinedTextField(query, { query = it.take(120); selected = null; error = null; searchMessage = null }, label = { Text("Nome completo, ticker ou ISIN") },
                 singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = {
                     if (selected != null || candidates.size == 1 || local.any { it.symbol == symbol(query) }) save()
-                    else if (!state.demo && state.configured.any { it in setOf("eodhd", "alpha", "finnhub") }) searchProviders()
                     else focus.clearFocus()
                 }), modifier = Modifier.fillMaxWidth().testTag("$tag-input"))
             if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("form-error"))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("Todos", "Ação", "ETF").forEach { value -> FilterChip(type == value, { type = value }, { Text(if (value == "Ação") "Ações" else value) }, Modifier.testTag("$tag-type-$value")) }
+                listOf("Todos", "Ação", "ETF", "ETC/ETN").forEach { value -> FilterChip(type == value, { type = value }, { Text(if (value == "Ação") "Ações" else value) }, Modifier.testTag("$tag-type-$value")) }
             }
-            TextButton({ filters = !filters }, Modifier.testTag("$tag-filters")) { Text(if (filters) "Ocultar filtros" else "Filtrar por setor e bolsa") }
+            TextButton({ filters = !filters }, Modifier.testTag("$tag-filters")) { Text(if (filters) "Ocultar filtros" else "Filtrar por país, setor e dimensão") }
             if (filters) {
-                SectorMenu(local.map { it.sector }, sector, "$tag-sector") { sector = it }
-                PlanChoice("Bolsa", listOf("Todas") + (local + remote).map { it.exchange }.filter(String::isNotBlank).distinct().sorted(), exchange, "$tag-exchange") { exchange = it }
+                SectorMenu(investmentSectors + local.map { it.sector }, sector, "$tag-sector") { sector = it }
+                PlanChoice("País da empresa", listOf("Todos") + countries, country, "$tag-country") { country = it }
+                PlanChoice("Dimensão", listOf("Todas", "Mega Cap", "Large Cap", "Mid Cap", "Small Cap", "Micro Cap", "Nano Cap"), cap, "$tag-cap") { cap = it }
+                PlanChoice("Bolsa", listOf("Todas") + (local + catalogue.page.items + remote).map { it.exchange }.filter(String::isNotBlank).distinct().sorted(), exchange, "$tag-exchange") { exchange = it }
             }
             if (!state.demo) {
                 OutlinedButton({ searchProviders() }, enabled = !loading && query.trim().length in 2..120 && state.configured.any { it in setOf("eodhd", "alpha", "finnhub") }, modifier = Modifier.testTag("$tag-provider-search")) { Text(if (loading) "A pesquisar…" else "Pesquisar nos providers") }
             }
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (loading || catalogue.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             searchMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             selected?.let { Text("Selecionado: ${it.name}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
-            Text("${candidates.size} resultados · ${if (remoteQuery == query && remote.isNotEmpty()) "provider + guardados" else "catálogo e teus ativos"}", style = MaterialTheme.typography.labelMedium)
+            Text("${catalogue.page.matches} correspondências no catálogo global · ${candidates.size} disponíveis nesta lista", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("$tag-catalogue-count"))
+            Text("125 440 listagens · ações e fundos internacionais · pesquisa offline", style = MaterialTheme.typography.labelSmall)
+            catalogue.error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             candidates.take(30).forEach { asset ->
                 Surface(Modifier.fillMaxWidth().testTag("$tag-suggestion-${asset.symbol}").clickable { selected = asset; query = asset.symbol; error = null; focus.clearFocus() },
                     shape = RoundedCornerShape(14.dp), color = if (selected?.symbol == asset.symbol) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .4f)) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    AssetIdentityIcon(asset)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(asset.name, style = MaterialTheme.typography.titleSmall)
                         Text(listOf(asset.symbol, asset.exchange, asset.currency, asset.type).filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                         if (asset.isin.isNotBlank()) Text(asset.isin, style = MaterialTheme.typography.labelSmall)
                         if (asset.symbol in state.watch) Text("Nos favoritos", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     }
+                    }
                 }
             }
             if (candidates.size > 30) Text("Mostrados 30 de ${candidates.size} resultados. Refina a pesquisa.", style = MaterialTheme.typography.labelSmall)
             if (candidates.isEmpty()) Text("Não encontraste? Altera o nome ou os filtros${if (!state.demo) ", ou pesquisa nos providers" else ""}.", style = MaterialTheme.typography.bodySmall)
-            Text("Confirma a bolsa e a moeda. A pesquisa não confirma disponibilidade na XTB.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("O catálogo é uma referência, não dados em tempo real. Confirma a bolsa e a moeda. A pesquisa não confirma disponibilidade na XTB.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
                     Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.End) {
                         TextButton(dismiss) { Text("Cancelar") }

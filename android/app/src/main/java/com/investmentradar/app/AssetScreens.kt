@@ -19,8 +19,10 @@ import org.json.JSONObject
 
 @Composable internal fun AssetScreen(state: RadarState, model: RadarViewModel, addPosition: () -> Unit) {
     val snapshot = state.snapshot
+    val profile = rememberAssetProfile(state)
     ModeBanner(state, model)
     if (state.loading) { LinearProgressIndicator(Modifier.fillMaxWidth().testTag("asset-loading")); Text("A carregar ${state.symbol}…") }
+    if (state.tab == 5) { AssetKnowledgeScreen(profile, snapshot); return }
     val cached = state.quotes[state.symbol]?.takeIf { it.number("cacheFetchedAt") != null && it.number("price") != null }
     if (snapshot == null) {
         if (cached != null) FinanceCard(title = state.symbol) {
@@ -29,10 +31,11 @@ import org.json.JSONObject
             Text("A análise completa é carregada separadamente.", style = MaterialTheme.typography.bodySmall)
         }
         if (!state.loading) EmptyState("Análise indisponível", "Atualiza os dados ou verifica a configuração dos providers.")
+        AssetKnowledgeScreen(profile, null)
         return
     }
     when (state.tab) {
-        0 -> OverviewScreen(state, model, cached?.let { mergeQuote(snapshot, it) } ?: snapshot, addPosition)
+        0 -> OverviewScreen(state, model, cached?.let { mergeQuote(snapshot, it) } ?: snapshot, profile, addPosition)
         1 -> AnalysisScreen(snapshot)
         2 -> FinancialsScreen(snapshot)
         3 -> EventsList(state.events, state.auxiliaryLoading) { model.selectAsset(it) }
@@ -51,12 +54,12 @@ import org.json.JSONObject
     if (state.tab in 0..2) DataAvailability(snapshot) { model.navigate(Page.Providers) }
 }
 
-@Composable private fun OverviewScreen(state: RadarState, model: RadarViewModel, snapshot: JSONObject, addPosition: () -> Unit) {
+@Composable private fun OverviewScreen(state: RadarState, model: RadarViewModel, snapshot: JSONObject, profile: DirectoryAsset, addPosition: () -> Unit) {
     var candle by rememberSaveable { mutableStateOf(false) }; var expanded by rememberSaveable { mutableStateOf(false) }
     val hasOHLC = state.history.isNotEmpty() && state.history.all { p -> listOf("open", "high", "low", "close").all { p.number(it) != null } }
     val currency = snapshot.text("currency")
     FinanceCard {
-        AssetQuoteHeader(state.symbol, snapshot)
+        AssetQuoteHeader(state.symbol, snapshot, profile)
         val source = snapshot.optJSONObject("sources")?.text("quote").orEmpty()
         val timestamp = snapshot.number("timestamp")?.takeIf { it > 0 }?.let { java.time.Instant.ofEpochSecond(it.toLong()).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm z")) }
         Text("${state.symbol} · ${currency.ifBlank { "moeda desconhecida" }} · ${if (source == "none") "Sem cotação" else source}${timestamp?.let { "\n$it" }.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -68,6 +71,7 @@ import org.json.JSONObject
         ChartControls(state, model, candle && hasOHLC, { candle = it }, { expanded = true })
         Text(if (state.demo) "Histórico sintético de demonstração; os períodos não representam negociação real." else "Histórico diário. A disponibilidade de velas e datas depende do provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    AssetKnowledgeTeaser(profile) { model.setTab(5) }
     snapshot.optJSONObject("priceStatistics")?.let { stats ->
         val low = stats.number("low"); val high = stats.number("high")
         if (low != null && high != null) FinanceCard(title = "Intervalo do histórico") {

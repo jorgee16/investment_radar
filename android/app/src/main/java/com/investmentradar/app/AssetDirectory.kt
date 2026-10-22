@@ -3,11 +3,12 @@ package com.investmentradar.app
 import java.text.Normalizer
 
 /** Offline discovery metadata only: never prices, recommendations or broker availability. */
-internal data class DirectoryAsset(val symbol: String, val name: String, val sector: String, val currency: String, val isin: String = "", val type: String = "Ação", val region: String = "EUA", val accumulating: Boolean? = null, val source: String = "Catálogo local", val exchange: String = "", val aliases: String = "", val country: String = "")
+internal data class DirectoryAsset(val symbol: String, val name: String, val sector: String, val currency: String, val isin: String = "", val type: String = "Ação", val region: String = "EUA", val accumulating: Boolean? = null, val source: String = "Catálogo local", val exchange: String = "", val aliases: String = "", val country: String = "", val industry: String = "", val summary: String = "", val website: String = "", val marketCap: String = "", val issuer: String = "")
 internal val assetDirectory = listOf(
-    DirectoryAsset("VWCE.DE", "Vanguard FTSE All-World UCITS ETF · Acumulação", "ETF diversificados", "EUR", "IE00BK5BQT80", "ETF", "Mundial", true, "Vanguard · FTSE All-World"),
-    DirectoryAsset("VUAA.DE", "Vanguard S&P 500 UCITS ETF · Acumulação", "ETF diversificados", "EUR", "IE00BFMXXD54", "ETF", "EUA", true, "Vanguard · S&P 500"),
-    DirectoryAsset("EUNK.DE", "iShares Core MSCI Europe UCITS ETF · Acumulação", "ETF diversificados", "EUR", "IE00B4K48X80", "ETF", "Europa", true, "iShares · MSCI Europe"),
+    DirectoryAsset("VWCE.DE", "Vanguard FTSE All-World UCITS ETF · Acumulação", "ETF diversificados", "EUR", "IE00BK5BQT80", "ETF", "Mundial", true, "Vanguard · FTSE All-World", aliases = "mundial global all world acumulativo acc"),
+    DirectoryAsset("VUAA.DE", "Vanguard S&P 500 UCITS ETF · Acumulação", "ETF diversificados", "EUR", "IE00BFMXXD54", "ETF", "EUA", true, "Vanguard · S&P 500", aliases = "sp500 sp 500 snp500 estados unidos acumulativo acc"),
+    DirectoryAsset("EUNK.DE", "iShares Core MSCI Europe UCITS ETF · Acumulação", "ETF diversificados", "EUR", "IE00B4K48X80", "ETF", "Europa", true, "iShares · MSCI Europe", aliases = "blackrock europa europe acumulativo acc"),
+    DirectoryAsset("6AQQ.DE", "Amundi Nasdaq-100 UCITS ETF", "ETF diversificados", "EUR", "LU1681038243", "ETF", "EUA", source = "FinanceDatabase · 20/10/2026", aliases = "nasdaq 100 amundi index solutions"),
     DirectoryAsset("AIR.PA", "Airbus SE", "Indústria", "EUR", region = "Europa"),
     DirectoryAsset("SIE.DE", "Siemens AG", "Indústria", "EUR", region = "Europa"),
     DirectoryAsset("ASML.AS", "ASML", "Tecnologia", "EUR", region = "Europa"),
@@ -30,5 +31,5 @@ internal fun searchKey(value: String): String = Normalizer.normalize(value, Norm
     .replace(Regex("\\p{M}+"), "").lowercase(java.util.Locale.ROOT).trim()
 internal fun DirectoryAsset.matches(query: String, selectedSector: String = "Todos"): Boolean =
     (selectedSector == "Todos" || sector == selectedSector) &&
-        searchKey(query).split(Regex("\\s+")).all { word -> searchKey("$symbol $name $sector $isin $aliases $exchange").contains(word) }
+        searchKey(query).split(Regex("\\s+")).all { word -> searchKey("$symbol $name $sector $isin $aliases $exchange $country $industry $issuer").contains(word) }
 internal fun directoryAsset(symbol: String) = assetDirectory.firstOrNull { it.symbol == symbol }

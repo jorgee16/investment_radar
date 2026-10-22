@@ -501,10 +501,23 @@ json ResearchService::snapshot(const std::string &s, int history_days) {
                                         {"source", p.source},
                                         {"actual", nullable(p.actual)},
                                         {"estimated", nullable(p.estimated)}});
+    auto weights = [](const std::vector<PortfolioWeight> &rows) {
+        json values = json::array();
+        for (const auto &row : rows)
+            values.push_back({{"name", row.name}, {"symbol", row.symbol}, {"weight", row.weight}});
+        return values;
+    };
     return {{"symbol", s},
             {"name", f && !f->name.empty() && f->name != s ? f->name
                      : q                                   ? q->name
                                                            : s},
+            {"profile",
+             {{"description", f ? f->description : ""},
+              {"website", f ? f->website : ""},
+              {"country", f ? f->country : ""},
+              {"industry", f ? f->industry : ""},
+              {"source",
+               f && f->metrics.count("description") ? f->metrics.at("description").source : ""}}},
             {"instrumentType", type},
             {"analysisApplicable", !fund},
             {"availability", availability},
@@ -517,7 +530,12 @@ json ResearchService::snapshot(const std::string &s, int history_days) {
               {"issuer", f ? f->fund.issuer : ""},
               {"domicile", f ? f->fund.domicile : ""},
               {"index", f ? f->fund.index : ""},
-              {"inceptionDate", f ? f->fund.inception_date : ""}}},
+              {"inceptionDate", f ? f->fund.inception_date : ""},
+              {"holdings", f ? weights(f->fund.holdings) : json::array()},
+              {"sectors", f ? weights(f->fund.sectors) : json::array()},
+              {"otherWeight", f ? nullable(f->fund.other_weight) : json(nullptr)},
+              {"compositionSource", f ? f->fund.composition_source : ""},
+              {"compositionDate", f ? f->fund.composition_date : ""}}},
             {"sector", f ? f->sector : ""},
             {"currency", q ? q->currency : ""},
             {"reportingCurrency", f ? f->currency : ""},

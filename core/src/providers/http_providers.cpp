@@ -82,6 +82,68 @@ std::optional<double> num(const json &j, const char *k) {
         return {};
     }
 }
+// Preserve the provider's percentage unit and source. Never turn invalid weights
+// into a normalized portfolio, nor use an update timestamp as a holdings date.
+void fund_composition(FundProfile &fund, const json &data, const std::string &source) {
+    auto parse = [&](const json &rows, const char *weight_key, bool holdings) {
+        std::vector<PortfolioWeight> out;
+        std::map<std::string, bool> seen;
+        bool invalid = false;
+        if (!rows.is_object() && !rows.is_array())
+            return out;
+        for (auto it = rows.begin(); it != rows.end(); ++it) {
+            const auto &row = it.value();
+            const auto weight = num(row, weight_key);
+            if (!weight || *weight < 0 || *weight > 100) {
+                invalid = true;
+                continue;
+            }
+            if (*weight == 0)
+                continue;
+            const auto name = row.is_object() && row.contains("Name") && row["Name"].is_string()
+                                  ? row["Name"].get<std::string>()
+                                  : std::string{};
+            const auto symbol = rows.is_object() ? it.key()
+                                                 : (row.is_object() && row.contains("Code") &&
+                                                            row["Code"].is_string()
+                                                        ? row["Code"].get<std::string>()
+                                                        : std::string{});
+            const auto label = holdings ? name : symbol;
+            const auto identity = symbol.empty() ? label : symbol;
+            if (identity.empty() || seen[identity]) {
+                invalid = true;
+                continue;
+            }
+            seen[identity] = true;
+            out.push_back({label.empty() ? symbol : label, holdings ? symbol : "", *weight});
+        }
+        double sum = 0;
+        for (const auto &row : out)
+            sum += row.weight;
+        if (invalid || sum > 100.001)
+            return std::vector<PortfolioWeight>{};
+        std::sort(out.begin(), out.end(),
+                  [](const auto &a, const auto &b) { return a.weight > b.weight; });
+        return out;
+    };
+    if (data.contains("Top_10_Holdings"))
+        fund.holdings = parse(data["Top_10_Holdings"], "Assets_%", true);
+    if (fund.holdings.empty() && data.contains("Holdings"))
+        fund.holdings = parse(data["Holdings"], "Assets_%", true);
+    if (fund.holdings.size() > 10)
+        fund.holdings.resize(10);
+    if (!fund.holdings.empty()) {
+        double sum = 0;
+        for (const auto &row : fund.holdings)
+            sum += row.weight;
+        if (sum <= 100)
+            fund.other_weight = 100 - sum;
+    }
+    if (data.contains("Sector_Weights"))
+        fund.sectors = parse(data["Sector_Weights"], "Equity_%", false);
+    if (!fund.holdings.empty() || !fund.sectors.empty())
+        fund.composition_source = source;
+}
 std::optional<double> first(const json &j, const char *a, const char *b) {
     auto v = num(j, a);
     return v ? v : num(j, b);
@@ -386,6 +448,10 @@ std::optional<Fundamentals> EodhdProvider::fundamentals(const std::string &s) {
     auto g = object(j, "General"), h = object(j, "Highlights"), v = object(j, "Valuation");
     f.name = str(g, "Name", s);
     f.sector = str(g, "Sector");
+    f.description = str(g, "Description");
+    f.website = str(g, "WebURL");
+    f.country = str(g, "CountryName");
+    f.industry = str(g, "Industry");
     f.instrument_type = instrument_type(str(g, "Type"));
     if (j.contains("ETF_Data") && j["ETF_Data"].is_object() && !j["ETF_Data"].empty())
         f.instrument_type = "etf";
@@ -393,6 +459,7 @@ std::optional<Fundamentals> EodhdProvider::fundamentals(const std::string &s) {
         auto data = object(j, "ETF_Data");
         f.fund = {str(g, "ISIN"), str(data, "Company_Name"), str(data, "Domicile"),
                   str(data, "Index_Name"), str(data, "Inception_Date")};
+        fund_composition(f.fund, data, f.source);
         f.metrics["instrumentType"] = {f.source, "", "General.Type / ETF_Data"};
         return f; // Company earnings ratios are not an ETF valuation model.
     }
@@ -798,6 +865,10 @@ std::optional<Fundamentals> AlphaVantageProvider::fundamentals(const std::string
     f.symbol = s;
     f.name = str(overview, "Name", s);
     f.sector = str(overview, "Sector");
+    f.description = str(overview, "Description");
+    f.website = str(overview, "OfficialSite");
+    f.country = str(overview, "Country");
+    f.industry = str(overview, "Industry");
     f.source = "Alpha Vantage";
     auto latest_quarter = str(overview, "LatestQuarter");
     f.pe = num(overview, "PERatio");
@@ -1013,6 +1084,9 @@ std::optional<Fundamentals> FinnhubProvider::fundamentals(const std::string &s) 
     f.source = "Finnhub";
     f.name = str(profile, "name", s);
     f.sector = str(profile, "finnhubIndustry");
+    f.website = str(profile, "weburl");
+    f.country = str(profile, "country");
+    f.industry = str(profile, "finnhubIndustry");
     f.currency = str(profile, "currency", listing_currency_hint(s));
     f.pe = metric_num(m, {"peBasicExclExtraTTM", "peExclExtraTTM", "peTTM", "peAnnual"});
     f.forward_pe = metric_num(m, {"forwardPE", "forwardPe"});

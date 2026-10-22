@@ -98,19 +98,17 @@ import org.json.JSONObject
         }
         if (ordered.isEmpty()) EmptyState("Ainda sem ativos", "Adiciona um ticker para acompanhares o mercado.")
         ordered.forEachIndexed { index, ticker ->
-            PriceRow(ticker, state.quotes[ticker], { model.selectAsset(ticker) })
+            PriceRow(ticker, state.quotes[ticker], { model.selectAsset(ticker) }, asset = assetMetadata(state, ticker))
             if (index < ordered.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
         }
         TextButton({ model.navigate(Page.Watchlist) }) { Text("Gerir watchlist →") }
     }
 }
 
-@Composable internal fun AssetQuoteHeader(symbol: String, snapshot: JSONObject) {
-    val name = snapshot.text("name").ifBlank { symbol }
+@Composable internal fun AssetQuoteHeader(symbol: String, snapshot: JSONObject, asset: DirectoryAsset? = null) {
+    val name = assetDisplayName(symbol, snapshot.text("name"), asset)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-            Text(name.take(1).uppercase(), Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-        }
+        AssetIdentityIcon(asset ?: DirectoryAsset(symbol, name, "", snapshot.text("currency")))
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.titleLarge)
             Text(listOf(symbol, snapshot.text("sector")).filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

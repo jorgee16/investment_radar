@@ -24,9 +24,10 @@ import androidx.compose.ui.unit.dp
 
 @Composable internal fun AssetSuggestions(query: String, tag: String, onSelect: (DirectoryAsset) -> Unit) {
     var sector by rememberSaveable { mutableStateOf("Todos") }
-    SectorMenu(assetDirectory.map { it.sector }, sector, "$tag-sector") { sector = it }
-    val matches = assetDirectory.filter { it.matches(query, sector) }
-    Text("Catálogo inicial · ${matches.size} resultados", style = MaterialTheme.typography.labelMedium)
+    SectorMenu(investmentSectors + assetDirectory.map { it.sector }, sector, "$tag-sector") { sector = it }
+    val catalogue = rememberCataloguePage(query, sector = sector)
+    val matches = (assetDirectory.filter { it.matches(query, sector) } + catalogue.page.items).distinctBy { it.symbol }
+    Text("Catálogo global · ${catalogue.page.matches} correspondências", style = MaterialTheme.typography.labelMedium)
     matches.take(5).forEach { asset ->
         Column(Modifier.fillMaxWidth().clickable { onSelect(asset) }.testTag("$tag-suggestion-${asset.symbol}").padding(vertical = 10.dp)) {
             Text(asset.name, fontWeight = FontWeight.SemiBold)
@@ -34,5 +35,5 @@ import androidx.compose.ui.unit.dp
         }
     }
     if (matches.size > 5) Text("Escreve um nome para refinar os resultados.", style = MaterialTheme.typography.bodySmall)
-    Text("Não encontras o ativo? Introduz o ticker do provider. Confirma a bolsa e a moeda; este catálogo não confirma disponibilidade na XTB.", style = MaterialTheme.typography.bodySmall)
+    Text("Não encontras o ativo? Podes pesquisar nos providers ou introduzir o ticker. Confirma a bolsa e a moeda; este catálogo não confirma disponibilidade na XTB.", style = MaterialTheme.typography.bodySmall)
 }

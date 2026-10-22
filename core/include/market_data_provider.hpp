@@ -22,8 +22,15 @@ struct MetricOrigin {
 };
 using Provenance = std::map<std::string, MetricOrigin>;
 
+struct PortfolioWeight {
+    std::string name, symbol;
+    double weight = 0; // Percentage points, not a fraction.
+};
 struct FundProfile {
     std::string isin, issuer, domicile, index, inception_date;
+    std::vector<PortfolioWeight> holdings, sectors;
+    std::optional<double> other_weight;
+    std::string composition_source, composition_date;
 };
 
 // Keep complete statement rows together: periods, reporting units and providers
@@ -85,6 +92,7 @@ struct Fundamentals {
     FundProfile fund;
     std::vector<FinancialPeriod> financials;
     std::optional<AnalystConsensus> analysts;
+    std::string description, website, country, industry;
 };
 
 struct EstimateSnapshot {
