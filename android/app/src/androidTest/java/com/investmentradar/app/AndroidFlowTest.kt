@@ -116,7 +116,13 @@ class AndroidFlowTest {
     }
     private fun back() { ui.waitForIdle(); instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK); instrumentation.waitForIdleSync(); ui.waitForIdle() }
     private fun restart() { scenario.close(); start() }
-    private fun search(value: String) { click("open-search"); fill("search-input", value); click("search-submit") }
+    private fun search(value: String) {
+        click("open-search"); fill("search-input", value); click("search-submit")
+        val input = ui.onAllNodesWithTag("search-input").fetchSemanticsNodes().mapNotNull { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.EditableText)?.text }
+        val errors = ui.onAllNodesWithTag("form-error").fetchSemanticsNodes().map { it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text) }
+        assertEquals("Search confirmation must select immediately; input=$input; errors=$errors", symbol(value), state().symbol)
+        assertEquals(Page.Markets, state().page)
+    }
     private fun capture(name: String, expectLandscape: Boolean? = null) {
         ui.waitForIdle()
         if (expectLandscape != null) {
@@ -518,12 +524,15 @@ class AndroidFlowTest {
         ui.onNodeWithTag("asset-profile-description").assertTextContains("pulp", substring = true)
         capture("global-company-profile")
         click("asset-profile-expand"); assertTrue(state().configured.isEmpty())
-        restart(); page(Page.Markets); click("asset-tab-5")
+        restart(); search("ALTR.LS"); click("asset-tab-5")
         await("offline profile survives restart") { ui.onAllNodesWithTag("asset-profile-description").fetchSemanticsNodes().isNotEmpty() }
         assertEquals("Altri, SGPS, S.A.", state().discovered.single { it.symbol == "ALTR.LS" }.name)
         page(Page.Settings); click("dark-theme"); page(Page.Markets)
         capture("global-company-profile-dark")
-        orient(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE); capture("global-company-profile-landscape", true)
+        orient(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
+        assertEquals("About tab must survive rotation", 5, state().tab)
+        ui.onNodeWithTag("asset-profile-description").assertExists()
+        capture("global-company-profile-landscape", true)
     }
     @Test fun etfCompositionPresentsProviderWeightsAndNeverInventsAnObservationDate() {
         liveFixture(true); click("asset-tab-5")

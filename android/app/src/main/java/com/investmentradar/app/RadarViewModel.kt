@@ -46,7 +46,7 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     private val mutable = MutableStateFlow(RadarState(discovered = assetMetadata.load(),
         page = runCatching { Page.valueOf(saved.get<String>("page") ?: "Home") }.getOrDefault(Page.Home),
         symbol = saved.get<String>("symbol")?.takeIf(::validSymbol) ?: "AIR.PA",
-        tab = (saved.get<Int>("tab") ?: 0).coerceIn(0,4), dark = prefs.getBoolean("dark", false),
+        tab = (saved.get<Int>("tab") ?: 0).coerceIn(0,5), dark = prefs.getBoolean("dark", false),
         watch = local.watch(), positions = local.positions(), pollingEnabled = polling.enabled,
         pollingMinutes = polling.intervalMinutes, pollingBackground = polling.background, pollingDailyLimit = polling.dailyLimit
     ))

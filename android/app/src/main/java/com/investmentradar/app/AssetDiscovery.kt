@@ -122,11 +122,11 @@ internal fun assetMetadata(state: RadarState, symbol: String): DirectoryAsset = 
         .pointerInput(Unit) { detectTapGestures { focus.clearFocus() } }
         .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)).padding(16.dp)
         .semantics { paneTitle = title }, contentAlignment = Alignment.Center) {
-            Surface(Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(max = maxHeight), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
+            Surface(Modifier.widthIn(max = 560.dp).fillMaxWidth().height(maxHeight.coerceAtMost(720.dp)), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxWidth()) {
                     Text(title, Modifier.padding(20.dp), style = MaterialTheme.typography.titleLarge)
                     // Only results scroll; confirmation stays inside the visible IME-safe viewport.
-                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(query, { query = it.take(120); selected = null; error = null; searchMessage = null }, label = { Text("Nome completo, ticker ou ISIN") },
                 singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = {
                     if (selected != null || candidates.size == 1 || local.any { it.symbol == symbol(query) }) save()
