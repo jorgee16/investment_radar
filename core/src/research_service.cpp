@@ -350,7 +350,8 @@ json ResearchService::history_details(const std::string &s, int days) {
     return {{"history", bars}, {"issues", issues}, {"days", std::clamp(days, 1, 5000)}};
 }
 
-json ResearchService::snapshot(const std::string &s, int history_days) {
+json ResearchService::snapshot(const std::string &s, int history_days,
+                               const std::string &reference_type) {
     if (!valid_symbol(s))
         throw std::invalid_argument("Invalid symbol");
     active().clear_diagnostics();
@@ -359,9 +360,15 @@ json ResearchService::snapshot(const std::string &s, int history_days) {
     // provider quota. Android must not fetch a throwaway 120-day chart first.
     auto h = active().history(s, std::clamp(history_days, 1, 5000));
     auto f = active().fundamentals(s);
-    const auto type = f && f->instrument_type != "unknown" ? f->instrument_type
-                      : q                                  ? q->instrument_type
-                                                           : "unknown";
+    auto type = f && f->instrument_type != "unknown" ? f->instrument_type
+                : q                                  ? q->instrument_type
+                                                     : "unknown";
+    // A reference catalogue may identify a fund when the provider exposes only
+    // ratios. It cannot override an explicit provider classification.
+    const bool reference_classified =
+        type == "unknown" && (reference_type == "etf" || reference_type == "fund");
+    if (reference_classified)
+        type = reference_type;
     const bool fund = type == "etf" || type == "fund";
     auto e = fund ? std::optional<EstimateSnapshot>{} : active().estimates(s);
     Metrics m;
@@ -519,6 +526,9 @@ json ResearchService::snapshot(const std::string &s, int history_days) {
               {"source",
                f && f->metrics.count("description") ? f->metrics.at("description").source : ""}}},
             {"instrumentType", type},
+            {"instrumentClassificationSource", reference_classified ? "catalogue"
+                                               : type == "unknown"  ? "unknown"
+                                                                    : "provider"},
             {"analysisApplicable", !fund},
             {"availability", availability},
             {"priceStatistics", price_stats},

@@ -40,6 +40,7 @@ class NativeCore(context: Context) {
 }
 
 internal class ResearchRepository(context: Context) {
+    private val applicationContext = context.applicationContext
     private val core = NativeCore(context)
     private val secure = SecureSettings(context)
     private val configLock = Any()
@@ -57,7 +58,13 @@ internal class ResearchRepository(context: Context) {
     }
     suspend fun request(path: String, argument: String = ""): Any = withContext(dispatcher) {
         val config = synchronized(configLock) { secure.load().toString() }
-        decode(core.nativeRequest(path, argument, config))
+        decode(core.nativeRequest(path, if (path == "/api/snapshot") {
+            val payload = if (argument.trimStart().startsWith("{")) JSONObject(argument) else JSONObject().put("symbol", argument.ifBlank { "AIR.PA" })
+            val selected = payload.text("symbol")
+            val type = directoryAsset(selected)?.type ?: runCatching { GlobalCatalogue.instrumentType(applicationContext, selected) }.getOrNull()
+            // Transport reference metadata only; classification and scoring remain in C++.
+            payload.put("referenceType", if (type == "ETF") "etf" else if (type == "Fundo") "fund" else "unknown").toString()
+        } else argument, config))
     }
     suspend fun save(update: JSONObject): JSONObject = withContext(dispatcher) {
         synchronized(configLock) {

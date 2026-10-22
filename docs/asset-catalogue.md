@@ -41,3 +41,9 @@ Sector context is educational and is explicitly separate from company guidance.
 Current annual plans and guidance need a verified dated issuer report. They are not
 generated from the catalogue description. Official issuer sites were blocked by the
 cloud network allowlist during this work, so no 2026 guidance was invented.
+
+For financial snapshots, Android passes the reference instrument category to C++.
+If a provider has not classified an instrument, a catalogue ETF/fund category blocks
+corporate scoring and unnecessary company estimate requests. An explicit provider
+classification takes precedence. The snapshot exposes the classification source;
+reference metadata never creates a financial value or a recommendation.

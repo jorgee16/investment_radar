@@ -101,7 +101,8 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_investmentradar_app_NativeCore_nat
             if (!sym.empty() && sym.front() == '{') {
                 auto request = json::parse(sym);
                 data =
-                    service.snapshot(request.value("symbol", "AIR.PA"), request.value("days", 120));
+                    service.snapshot(request.value("symbol", "AIR.PA"), request.value("days", 120),
+                                     request.value("referenceType", "unknown"));
             } else
                 data = service.snapshot(sym.empty() ? "AIR.PA" : sym);
         } else if (op == "/api/history" || op == "/api/history-details") {

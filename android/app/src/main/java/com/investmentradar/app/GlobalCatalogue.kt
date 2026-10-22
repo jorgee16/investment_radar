@@ -53,6 +53,7 @@ internal object GlobalCatalogue {
         }
         return CataloguePage(rows, total)
     }
+    fun instrumentType(context: Context, symbol: String): String? = open(context).rawQuery("SELECT type FROM assets WHERE symbol=?", arrayOf(symbol)).use { if (it.moveToFirst()) it.getString(0) else null }
     fun lookup(context: Context, symbol: String): DirectoryAsset? = open(context).rawQuery(
         "SELECT a.*,d.text AS description FROM assets a LEFT JOIN descriptions d ON d.id=a.description_id WHERE a.symbol=?", arrayOf(symbol)
     ).use { c -> if (c.moveToFirst()) read(c, true) else null }

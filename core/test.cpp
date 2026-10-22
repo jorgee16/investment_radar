@@ -778,6 +778,33 @@ int main() {
         CHECK(j["profile"]["source"] == "Alpha Vantage");
         CHECK(j["pe"] == 14);
     });
+    test("catalogue fund classification blocks corporate scores when provider type is absent", [] {
+        ir::ResearchConfig c;
+        c.demo = false;
+        c.finnhub_key = "fixture";
+        ir::ResearchService service(c, [](const std::string &url) -> std::string {
+            if (url.find("/quote?") != url.npos)
+                return R"({"c":100,"dp":1})";
+            if (url.find("stock/metric") != url.npos)
+                return R"({"metric":{"peTTM":20,"roeTTM":15}})";
+            return "{}";
+        });
+        auto j = service.snapshot("NEWFUND.DE", 30, "etf");
+        CHECK(j["instrumentType"] == "etf");
+        CHECK(j["instrumentClassificationSource"] == "catalogue");
+        CHECK(j["analysisApplicable"] == false);
+        CHECK(j["score"].is_null());
+        CHECK(j["pe"].is_null());
+        CHECK(j["availability"]["estimates"]["status"] == "not_applicable");
+    });
+    test("reference fund hints cannot replace a known provider classification", [] {
+        ir::ResearchService service({}, [](const std::string &) { return "{}"; });
+        auto j = service.snapshot("AIR.PA", 30, "etf");
+        CHECK(j["instrumentType"] == "equity");
+        CHECK(j["instrumentClassificationSource"] == "provider");
+        CHECK(j["analysisApplicable"] == true);
+        CHECK(j["score"].is_number());
+    });
     test("ETF classification works without any profile fields or company ratios", [] {
         ir::EodhdProvider p("fixture", [](auto &) { return R"({"General":{"Type":"ETF"}})"; });
         auto f = p.fundamentals("TEST.DE");
