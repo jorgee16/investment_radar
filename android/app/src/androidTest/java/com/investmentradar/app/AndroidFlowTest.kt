@@ -1089,6 +1089,10 @@ class AndroidFlowTest {
         click("research-load-metrics")
         await("research metrics received") { !state().researchBusy && state().researchSnapshots.containsKey("AIR.PA") }
         assertNotNull(state().researchSnapshots["AIR.PA"]!!.number("pe"))
+        val previousComparison = state().researchSnapshots["AIR.PA"]
+        click("refresh")
+        await("toolbar refresh updates the comparison") { !state().researchBusy && state().researchSnapshots["AIR.PA"] !== previousComparison }
+
         capture("research-comparison")
         click("research-detail-AIR.PA")
         assertSame(state().researchSnapshots["AIR.PA"], state().snapshot)

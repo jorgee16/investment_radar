@@ -82,7 +82,10 @@ import org.json.JSONObject
                         }
                         IconButton({ search = true }, Modifier.testTag("open-search")) { Icon(Icons.Default.Search, "Pesquisar ativo") }
                     }
-                    IconButton({ model.refresh(forceQuotes = true) }, Modifier.testTag("refresh"), enabled = state.ready) { Icon(Icons.Default.Refresh, "Atualizar dados") }
+                    IconButton({ if (state.page == Page.Research) model.loadResearchMetrics() else model.refresh(forceQuotes = true) },
+                        Modifier.testTag("refresh"), enabled = state.ready && (state.page != Page.Research || state.researchSelection.isNotEmpty() && !state.researchBusy)) {
+                        Icon(Icons.Default.Refresh, if (state.page == Page.Research) "Atualizar comparação" else "Atualizar dados")
+                    }
                 }
                 if (state.page == Page.Markets) {
                     ScrollableTabRow(state.tab, edgePadding = 16.dp, containerColor = MaterialTheme.colorScheme.surface, divider = { HorizontalDivider() }) {
