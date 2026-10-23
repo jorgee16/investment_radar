@@ -32,7 +32,9 @@ internal data class HoldingGroup(val symbol: String, val currency: String, val l
 private data class HoldingSlice(val label: String, val amount: Double)
 
 @Composable internal fun PortfolioScreen(state: RadarState, model: RadarViewModel, add: () -> Unit) {
+    TextButton({ model.openResearch() }, Modifier.testTag("portfolio-research")) { Text("Investigar ativos e simular uma adição →") }
     var planTab by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.researchPlanRequested) { if (state.researchPlanRequested) { planTab = true; model.consumeResearchPlanRequest() } }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(!planTab, { planTab = false }, label = { Text("Investimentos") }, modifier = Modifier.testTag("portfolio-holdings-tab"))
         FilterChip(planTab, { planTab = true }, label = { Text("Plano mensal") }, modifier = Modifier.testTag("portfolio-plan-tab"))

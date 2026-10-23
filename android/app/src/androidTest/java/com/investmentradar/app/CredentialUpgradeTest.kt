@@ -22,6 +22,7 @@ class CredentialUpgradeTest {
     private val fields = listOf("eodhdKey", "fmpKey", "twelveKey", "alphaKey", "finnhubKey")
     private val position = Position("upgrade-fixture-position", "AIR.PA", 2.5, 188.0, "EUR")
     private val planFixture = """{"version":1,"activeId":"upgrade-plan","plans":[{"id":"upgrade-plan","name":"Plano preservado","monthly":"350","years":"10","mode":"fixed","preferAccumulating":true,"linkedPositionIds":["upgrade-fixture-position"],"groups":[{"id":"industrial","name":"Indústria","kind":"sector","weight":"100","balance":"0","items":[{"id":"airbus","symbol":"AIR.PA","name":"Airbus","currency":"EUR","isin":"","weight":"100"}]}]}]}"""
+    private val researchFixture = """[{"symbol":"AIR.PA","rationale":"Entregas e margens","risks":"Cadeia de abastecimento","horizon":"25 anos","review":"2027-03-01"}]"""
     private val directoryFixture = """[{"symbol":"NOVO-B.CO","name":"Novo Nordisk A/S","currency":"DKK","isin":"DK0062498333","exchange":"CO","country":"Denmark","sector":"Sem setor","instrumentType":"equity","source":"EODHD"}]"""
     private fun fixture(field: String) = "upgrade-fixture-only-$field"
     private fun cipherHash(): String {
@@ -48,6 +49,7 @@ class CredentialUpgradeTest {
                 assertCredentials(store.load())
                 assertTrue(evidence.edit().putString("cipherHash", cipherHash()).putInt("uid", context.applicationInfo.uid).commit())
                 assertTrue(context.getSharedPreferences("asset_directory_v1", 0).edit().putString("assets", directoryFixture).commit())
+                assertTrue(context.getSharedPreferences("research_workspace_v1", 0).edit().putString("theses", researchFixture).putString("selection", "[\"AIR.PA\"]").commit())
                 LocalPortfolio(context).write(listOf("AAPL", "AIR.PA"), listOf(position), true)
                 assertTrue(context.getSharedPreferences("investment_plans_v1", 0).edit().putString("library", planFixture).commit())
             }
@@ -62,6 +64,8 @@ class CredentialUpgradeTest {
                 assertEquals(listOf(position), LocalPortfolio(context).positions())
                 assertEquals("Investment plans must survive package replacement", planFixture, context.getSharedPreferences("investment_plans_v1", 0).getString("library", null))
                 assertEquals("Discovered instrument metadata must survive updates", directoryFixture, context.getSharedPreferences("asset_directory_v1", 0).getString("assets", null))
+                assertEquals("Research notes must survive updates", researchFixture, context.getSharedPreferences("research_workspace_v1", 0).getString("theses", null))
+                assertEquals("[\"AIR.PA\"]", context.getSharedPreferences("research_workspace_v1", 0).getString("selection", null))
                 val repository = ResearchRepository(context)
                 try {
                     runBlocking {

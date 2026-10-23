@@ -48,7 +48,7 @@ class AndroidFlowTest {
         instrumentation.uiAutomation.executeShellCommand("settings put secure show_ime_with_hard_keyboard 1").use { fd ->
             android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
         }
-        listOf("secure_providers", "providers", "radar_native", "radar_appearance", "quote_polling", "investment_plan", "investment_plans_v1", "asset_directory_v1").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
+        listOf("secure_providers", "providers", "radar_native", "radar_appearance", "quote_polling", "investment_plan", "investment_plans_v1", "asset_directory_v1", "research_workspace_v1").forEach { context.getSharedPreferences(it, 0).edit().clear().commit() }
         ApiCache(context).use { cache -> listOf("quote_values", "quote_budget", "quote_backoff").forEach { cache.writableDatabase.delete(it, null, null) } }
         LocalPortfolio(context).write(defaultWatch, emptyList(), true)
         start()
@@ -1076,6 +1076,76 @@ class AndroidFlowTest {
         restart()
         assertFalse(state().pollingEnabled); assertTrue(state().pollingBackground); assertEquals(5,state().pollingMinutes); assertEquals(50,state().pollingDailyLimit)
         page(Page.Settings); capture("polling-paused-settings")
+    }
+
+    @Test fun researchDiscoveryComparisonAndThesisPersistAcrossRestart() {
+        page(Page.Research)
+        fill("research-search", "Airbus")
+        finishInput("research-search")
+        click("research-select-AIR.PA")
+        assertEquals(listOf("AIR.PA"), state().researchSelection)
+        capture("research-discovery")
+        click("research-tab-Comparar")
+        click("research-load-metrics")
+        await("research metrics received") { !state().researchBusy && state().researchSnapshots.containsKey("AIR.PA") }
+        assertNotNull(state().researchSnapshots["AIR.PA"]!!.number("pe"))
+        capture("research-comparison")
+        click("research-tab-Tese")
+        fill("research-thesis-rationale", "Acompanhar entregas e margem operacional")
+        fill("research-thesis-horizon", "25 anos")
+        fill("research-thesis-review", "2027-02-30")
+        click("research-thesis-save")
+        ui.onNodeWithTag("research-thesis-feedback").assertTextContains("data válida", substring = true)
+        assertFalse(state().researchTheses.containsKey("AIR.PA"))
+        fill("research-thesis-review", "2027-03-01")
+        click("research-thesis-save")
+        assertEquals("25 anos", state().researchTheses["AIR.PA"]!!.horizon)
+        capture("research-thesis")
+        restart()
+        assertEquals(listOf("AIR.PA"), state().researchSelection)
+        assertEquals("Acompanhar entregas e margem operacional", state().researchTheses["AIR.PA"]!!.rationale)
+        click("research-tab-Tese")
+        ui.onNodeWithTag("research-thesis-horizon").assertTextContains("25 anos")
+    }
+    @Test fun researchImpactIsReactiveAndDoesNotCreateTransactions() {
+        page(Page.Research)
+        fill("research-search", "VWCE.DE")
+        finishInput("research-search")
+        click("research-select-VWCE.DE")
+        click("research-tab-Impacto")
+        click("research-impact-amount")
+        fill("research-impact-amount", "400")
+        finishInput("research-impact-amount")
+        await("research impact ready") { ui.onAllNodesWithTag("research-impact-result").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("research-impact-result").performScrollTo().assertIsDisplayed()
+        assertTrue(state().positions.isEmpty())
+        capture("research-impact")
+        page(Page.Settings); click("dark-theme"); page(Page.Research)
+        capture("research-dark")
+        scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        capture("research-landscape", true)
+        click("research-tab-Impacto")
+        click("research-create-plan")
+        await("research plan draft created") { state().page == Page.Portfolio && activity.model.investmentPlanLibrary().plans.isNotEmpty() }
+        val library = activity.model.investmentPlanLibrary()
+        assertNull(library.activeId)
+        assertEquals("", library.plans.last().years)
+        assertEquals("VWCE.DE", library.plans.last().groups.first().items.first().symbol)
+        ui.onNodeWithTag("portfolio-plan-tab").assertIsSelected()
+
+    }
+    @Test fun researchSelectionLimitAndNotesValidation() {
+        page(Page.Research)
+        instrumentation.runOnMainSync {
+            listOf("AIR.PA", "VWCE.DE", "AAPL", "MSFT").forEach { activity.model.toggleResearch(directoryAsset(it)!!) }
+        }
+        assertEquals(3, state().researchSelection.size)
+        assertFalse("MSFT" in state().researchSelection)
+        assertTrue(state().researchMessage!!.contains("3 ativos"))
+        assertNotNull(ResearchWorkspaceStore(context).save(InvestmentThesis("BAD SYMBOL")))
+        assertNotNull(ResearchWorkspaceStore(context).save(InvestmentThesis("AIR.PA", horizon = "x".repeat(121))))
+        click("research-remove-AAPL")
+        assertEquals(listOf("AIR.PA", "VWCE.DE"), state().researchSelection)
     }
 
 }

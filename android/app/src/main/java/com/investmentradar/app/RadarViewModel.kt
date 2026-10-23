@@ -18,10 +18,13 @@ import java.util.UUID
 
 internal enum class Page(val label: String) {
     Home("Página inicial"), Markets("Mercados"), Portfolio("Carteira"), Watchlist("Watchlist"),
-    Screener("Screener"), Calendar("Calendário"), Providers("Providers"), Settings("Definições")
+    Research("Descobrir"), Screener("Screener"), Calendar("Calendário"), Providers("Providers"), Settings("Definições")
 }
 internal data class RadarState(
     val discovered: List<DirectoryAsset> = emptyList(),
+    val researchSelection: List<String> = emptyList(), val researchSnapshots: Map<String, JSONObject> = emptyMap(),
+    val researchPlanRequested: Boolean = false, val researchBusy: Boolean = false, val researchMessage: String? = null,
+    val researchTheses: Map<String, InvestmentThesis> = emptyMap(),
     val ready: Boolean = false, val page: Page = Page.Home, val symbol: String = "AIR.PA", val tab: Int = 0,
     val demo: Boolean = true, val dark: Boolean = false, val watch: List<String> = defaultWatch,
     val positions: List<Position> = emptyList(), val quotes: Map<String, JSONObject> = emptyMap(),
@@ -43,7 +46,9 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     private val prefs = application.getSharedPreferences("radar_appearance", 0)
     private val assetMetadata = AssetMetadataStore(application)
     private val polling = QuotePollingSettings(application)
+    private val workspace = ResearchWorkspaceStore(application)
     private val mutable = MutableStateFlow(RadarState(discovered = assetMetadata.load(),
+        researchSelection = workspace.selection(), researchTheses = workspace.theses(),
         page = runCatching { Page.valueOf(saved.get<String>("page") ?: "Home") }.getOrDefault(Page.Home),
         symbol = saved.get<String>("symbol")?.takeIf(::validSymbol) ?: "AIR.PA",
         tab = (saved.get<Int>("tab") ?: 0).coerceIn(0,5), dark = prefs.getBoolean("dark", false),
@@ -78,6 +83,74 @@ internal class RadarViewModel(application: Application, private val saved: Saved
     internal suspend fun planInstrumentMetrics(symbol: String): JSONObject =
         assetCache[symbol] ?: state.value.screening[symbol] ?: repository.request("/api/snapshot", symbol) as JSONObject
     internal suspend fun calculatePlan(input: JSONObject): JSONObject = repository.request("/api/plan", input.toString()) as JSONObject
+    internal fun toggleResearch(asset: DirectoryAsset) {
+        val current = state.value.researchSelection
+        if (asset.symbol !in current && current.size == 3) {
+            mutable.update { it.copy(researchMessage = "Compara até 3 ativos. Remove um antes de adicionar outro.") }; return
+        }
+        rememberAsset(asset)
+        val next = if (asset.symbol in current) current - asset.symbol else current + asset.symbol
+        workspace.saveSelection(next)
+        mutable.update { it.copy(researchSelection = next, researchMessage = null) }
+    }
+    internal fun openResearchReference(asset: DirectoryAsset) {
+        rememberAsset(asset)
+        val changed = state.value.symbol != asset.symbol
+        if (changed) { assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel() }
+        saved["symbol"] = asset.symbol; saved["tab"] = 5
+        mutable.update { it.copy(symbol = asset.symbol, tab = 5,
+            snapshot = if (changed) it.researchSnapshots[asset.symbol] else it.snapshot,
+            history = if (changed) emptyList() else it.history, loading = false, historyLoading = false,
+            historyMessage = null, auxiliaryLoading = false, news = if (changed) emptyList() else it.news,
+            error = null) }
+        navigate(Page.Markets)
+    }
+    internal fun openResearch(asset: DirectoryAsset? = null) {
+        if (asset != null && asset.symbol !in state.value.researchSelection) toggleResearch(asset)
+        navigate(Page.Research)
+    }
+    internal fun saveThesis(thesis: InvestmentThesis): String? {
+        val error = workspace.save(thesis)
+        if (error == null) mutable.update { it.copy(researchTheses = workspace.theses()) }
+        return error
+    }
+    private var researchJob: Job? = null
+    internal fun loadResearchMetrics() {
+        if (state.value.researchBusy) return
+        val selected = state.value.researchSelection.toList()
+        if (selected.isEmpty()) return
+        val epoch = generation
+        mutable.update { it.copy(researchBusy = true, researchMessage = null) }
+        researchJob = viewModelScope.launch {
+            try {
+                for (ticker in selected) {
+                    try {
+                        val snapshot = repository.request("/api/snapshot", JSONObject().put("symbol", ticker).put("days", 30).toString()) as JSONObject
+                        if (generation == epoch) mutable.update { it.copy(researchSnapshots = it.researchSnapshots + (ticker to snapshot)) }
+                    } catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { if (generation == epoch) mutable.update { it.copy(researchMessage = "Alguns dados não puderam ser atualizados. Os valores anteriores mantêm a sua data.") } }
+                }
+            } finally { if (generation == epoch) mutable.update { it.copy(researchBusy = false) } }
+        }
+    }
+    internal suspend fun createResearchPlan(amount: String) {
+        val selected = state.value.researchSelection.map { assetMetadata(state.value, it) }
+        check(selected.isNotEmpty()) { "Seleciona pelo menos um ativo." }
+        val weights = equalPlanWeights(selected.size)
+        val plan = InvestmentPlan(name = "Em estudo · ${selected.size} ativos", monthly = amount, years = "",
+            groups = selected.mapIndexed { index, asset -> PlanGroup(name = asset.name, weight = weights[index],
+                items = listOf(PlanInstrument(symbol = asset.symbol, name = asset.name, currency = asset.currency, isin = asset.isin))) })
+        saveInvestmentPlan(plan, activate = false)
+        navigate(Page.Portfolio)
+        mutable.update { it.copy(researchPlanRequested = true) }
+    }
+    internal fun consumeResearchPlanRequest() { mutable.update { it.copy(researchPlanRequested = false) } }
+    internal suspend fun researchImpact(ticker: String, amount: String): JSONObject {
+        val current = state.value
+        return repository.request("/api/research/impact", JSONObject().put("symbol", ticker).put("amount", amount)
+            .put("mode", if (current.demo) "demo" else "live")
+            .put("positions", JSONArray(current.positions.map { it.json() })).put("quotes", JSONObject(current.quotes)).toString()) as JSONObject
+    }
     private var generation = 0
     private var assetJob: Job? = null
     private var historyJob: Job? = null
@@ -154,7 +227,12 @@ internal class RadarViewModel(application: Application, private val saved: Saved
         if (changed || state.value.snapshot == null) loadAsset()
         return true
     }
-    fun setTab(tab: Int) { saved["tab"] = tab; mutable.update { it.copy(tab = tab) }; if (tab in 3..4) loadAuxiliary() }
+    fun setTab(tab: Int) {
+        val needsSnapshot = state.value.tab == 5 && tab in 0..2 && state.value.history.isEmpty()
+        saved["tab"] = tab; mutable.update { it.copy(tab = tab) }
+        if (needsSnapshot) loadAsset()
+        if (tab in 3..4) loadAuxiliary()
+    }
     fun dismissMessage() { mutable.update { it.copy(error = null, notice = null) } }
     fun refresh(forceQuotes: Boolean = false) { loadAsset(); loadQuotes(forceQuotes); if (state.value.page == Page.Calendar || state.value.tab in 3..4) loadAuxiliary() }
     fun setForeground(active: Boolean) {
@@ -294,8 +372,8 @@ internal class RadarViewModel(application: Application, private val saved: Saved
         viewModelScope.launch {
             try {
                 val config = repository.save(update)
-                generation++; quotesPending=false; forcePending=false; assetCache.clear(); historyCache.clear(); assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel(); quotesJob?.cancel(); quotesJob=null; screeningJob?.cancel()
-                mutable.update { it.copy(demo = config.optBoolean("demo", true), configured = configured(config), snapshot = null, history = emptyList(), quotes = emptyMap(), screening = emptyMap(), reports = emptyList(), events = emptyList(), news = emptyList(), screeningBusy = false, testing = false) }
+                generation++; researchJob?.cancel(); quotesPending=false; forcePending=false; assetCache.clear(); historyCache.clear(); assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel(); quotesJob?.cancel(); quotesJob=null; screeningJob?.cancel()
+                mutable.update { it.copy(demo = config.optBoolean("demo", true), configured = configured(config), snapshot = null, history = emptyList(), quotes = emptyMap(), screening = emptyMap(), researchSnapshots = emptyMap(), researchBusy = false, researchMessage = null, reports = emptyList(), events = emptyList(), news = emptyList(), screeningBusy = false, testing = false) }
                 val status = repository.request("/api/status") as JSONObject
                 mutable.update { it.copy(routing = routes(status), saving = false, notice = "Configuração guardada no dispositivo.") }
                 loadCatalog(); refresh(); updatePolling()

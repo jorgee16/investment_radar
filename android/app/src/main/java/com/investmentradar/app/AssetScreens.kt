@@ -23,6 +23,7 @@ import org.json.JSONObject
     if (state.tab == 5) {
         Text("Ficha de referência · informação do catálogo e fontes disponíveis", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("asset-profile-reference"))
         if (snapshot?.text("mode") == "demo") Text("DEMO · métricas e previsões dos painéis financeiros são sintéticas.", style = MaterialTheme.typography.labelSmall)
+        FilledTonalButton({ model.openResearch(profile) }, Modifier.testTag("asset-research")) { Text("Comparar e construir a carteira →") }
         AssetKnowledgeScreen(profile, snapshot)
         return
     }

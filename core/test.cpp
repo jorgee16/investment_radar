@@ -1,6 +1,7 @@
 #include "investment_engine.hpp"
 #include "investment_plan.hpp"
 #include "portfolio_plan.hpp"
+#include "portfolio_research.hpp"
 #include "price_analysis.hpp"
 #include "provider_error.hpp"
 #include "research_service.hpp"
@@ -1449,6 +1450,43 @@ int main() {
         rows = provider.earnings("AAPL", "2026-10-01", "2026-10-31");
         CHECK(rows.size() == 1);
         CHECK(rows[0].symbol == "AAPL");
+    });
+    test("research impact aggregates lots and preserves total weights", [] {
+        json input = {{"symbol", "NEW"}, {"amount", "300,50"}, {"mode", "live"},
+            {"positions", {{{"symbol", "AIR.PA"}, {"qty", 2}}, {{"symbol", "AIR.PA"}, {"qty", 1}}}},
+            {"quotes", {{"AIR.PA", {{"price", 100}, {"currency", "EUR"}, {"mode", "live"}, {"available", true}}}}}};
+        auto result = ir::portfolio_impact(input);
+        CHECK(result["available"] == true);
+        CHECK(result["beforeValue"] == 300);
+        CHECK(result["afterValue"] == 600.5);
+        CHECK(result["rows"].size() == 2);
+        double sum = 0;
+        for (auto row : result["rows"]) sum += row["after"].get<double>();
+        CHECK(std::abs(sum - 100) < 1e-9);
+        input["symbol"] = "AIR.PA";
+        CHECK(ir::portfolio_impact(input)["rows"].size() == 1);
+    });
+    test("research impact blocks missing FX mixed modes and incomplete positions", [] {
+        json input = {{"symbol", "NEW"}, {"amount", 350}, {"mode", "live"},
+            {"positions", {{{"symbol", "AAPL"}, {"qty", 1}}}}, {"quotes", json::object()}};
+        CHECK(ir::portfolio_impact(input)["available"] == false);
+        input["quotes"]["AAPL"] = {{"price", 100}, {"currency", "USD"}, {"mode", "live"}, {"available", true}};
+        CHECK(ir::portfolio_impact(input)["available"] == false);
+        input["quotes"]["AAPL"]["currency"] = "EUR";
+        input["quotes"]["AAPL"]["mode"] = "demo";
+        CHECK(ir::portfolio_impact(input)["available"] == false);
+        input["quotes"]["AAPL"]["mode"] = "live";
+        CHECK(ir::portfolio_impact(input)["available"] == true);
+        input["positions"][0]["qty"] = -1;
+        CHECK(ir::portfolio_impact(input)["available"] == false);
+    });
+    test("research impact rejects malformed amounts and allows a first investment", [] {
+        json input = {{"symbol", "VWCE.DE"}, {"amount", 350}};
+        CHECK(ir::portfolio_impact(input)["rows"][0]["after"] == 100);
+        for (const auto &value : json::array({"bad", "NaN", "0", "-4", "1e100", "300oops"})) {
+            input["amount"] = value;
+            CHECK(ir::portfolio_impact(input)["available"] == false);
+        }
     });
     std::cout << passed << " tests passed\n";
 }

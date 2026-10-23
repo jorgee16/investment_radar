@@ -103,7 +103,7 @@ import org.json.JSONObject
                 Box(Modifier.weight(1f)) {
                     navigationScope.NavigationBarItem(selected = state.page !in listOf(Page.Home, Page.Markets, Page.Portfolio), onClick = { focus.clearFocus(); more = true }, colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.surface, selectedIconColor = MaterialTheme.colorScheme.secondary, selectedTextColor = MaterialTheme.colorScheme.secondary), icon = { Icon(Icons.Default.MoreVert, null) }, label = { Text("Mais") }, modifier = Modifier.testTag("nav-More"))
                     DropdownMenu(more, { more = false }) {
-                        listOf(Page.Watchlist, Page.Screener, Page.Calendar, Page.Providers, Page.Settings).forEach { page ->
+                        listOf(Page.Research, Page.Watchlist, Page.Screener, Page.Calendar, Page.Providers, Page.Settings).forEach { page ->
                             DropdownMenuItem(text = { Text(page.label) }, onClick = { more = false; model.navigate(page) }, modifier = Modifier.testTag("menu-${page.name}"))
                         }
                     }
@@ -129,6 +129,7 @@ import org.json.JSONObject
                             Page.Markets -> AssetScreen(state, model, { addPosition = true })
                             Page.Portfolio -> PortfolioScreen(state, model, { addPosition = true })
                             Page.Watchlist -> WatchlistScreen(state, model, { addWatch = true }, screenScroll)
+                            Page.Research -> ResearchScreen(state, model)
                             Page.Screener -> ScreenerScreen(state, model)
                             Page.Calendar -> CalendarScreen(state, model)
                             Page.Providers -> ProvidersScreen(state, model)
@@ -198,6 +199,7 @@ import org.json.JSONObject
 }
 @Composable internal fun HomeScreen(state: RadarState, model: RadarViewModel, addWatch: () -> Unit) {
     ModeBanner(state, model)
+    ResearchEntryCard(state) { model.openResearch() }
     PortfolioHero(state) { model.navigate(Page.Portfolio) }
     WatchlistDashboard(state, model, addWatch)
     if (state.watch.isNotEmpty()) WatchMarketPulse(state)
