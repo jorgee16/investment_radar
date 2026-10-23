@@ -1,4 +1,4 @@
-# Investment research workspace — Android 0.6.12
+# Investment research workspace — Android 0.6.13
 
 Entry points: Home research card, More → Descobrir, Portfolio research action,
 and an asset's About tab. This is native Compose, with compact cards, horizontal
