@@ -133,7 +133,7 @@ jobs:
           manifest = dict(identity, sourceCommit=os.environ['GITHUB_SHA'], instrumentationTests=40, futureUpgradeVerified=True,
                           previous064UpgradeVerified=True, previous0611UpgradeVerified=True, investmentPlansPreserved=True, discoveryMetadataPreserved=True)
           (folder / 'release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-          review_names = {'visual-analyst-distribution.png', 'visual-financial-annual.png', 'visual-financial-dark.png', 'visual-metric-details.png', 'history-quota-empty.png', 'history-quota-cached.png', 'global-catalogue-name-search.png', 'global-company-profile.png', 'global-company-profile-dark.png', 'global-company-profile-landscape.png', 'global-etf-composition.png', 'research-discovery.png', 'research-comparison.png', 'research-thesis.png', 'research-impact.png', 'research-dark.png', 'research-landscape.png'}
+          review_names = {'visual-analyst-distribution.png', 'visual-financial-annual.png', 'visual-financial-dark.png', 'visual-metric-details.png', 'history-quota-empty.png', 'history-quota-cached.png', 'global-catalogue-name-search.png', 'global-company-profile.png', 'global-company-profile-dark.png', 'global-company-profile-landscape.png', 'global-etf-composition.png', 'research-discovery.png', 'research-comparison.png', 'research-thesis.png', 'research-impact.png', 'research-dark.png', 'research-landscape.png', 'research-country-picker.png'}
           review_images = [p for p in (folder / 'screenshots').rglob('*.png') if p.name in review_names]
           assert {p.name for p in review_images} == review_names
           with zipfile.ZipFile(folder / 'android-ui-review.zip', 'w', zipfile.ZIP_DEFLATED) as review:

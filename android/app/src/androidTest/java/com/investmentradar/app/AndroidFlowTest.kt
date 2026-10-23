@@ -1156,6 +1156,7 @@ class AndroidFlowTest {
         click("research-country")
         fill("research-country-filter", "Portugal")
         finishInput("research-country-filter")
+        capture("research-country-picker")
         click("research-country-Portugal")
         click("research-cap"); click("research-cap-Small Cap")
         await("research normalized country and small cap result") { ui.onAllNodesWithTag("research-select-ALTR.LS").fetchSemanticsNodes().isNotEmpty() }
