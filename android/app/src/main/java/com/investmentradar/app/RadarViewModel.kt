@@ -99,7 +99,7 @@ internal class RadarViewModel(application: Application, private val saved: Saved
         if (changed) { assetJob?.cancel(); historyJob?.cancel(); auxiliaryJob?.cancel() }
         saved["symbol"] = asset.symbol; saved["tab"] = 5
         mutable.update { it.copy(symbol = asset.symbol, tab = 5,
-            snapshot = if (changed) it.researchSnapshots[asset.symbol] else it.snapshot,
+            snapshot = it.researchSnapshots[asset.symbol] ?: if (changed) null else it.snapshot,
             history = if (changed) emptyList() else it.history, loading = false, historyLoading = false,
             historyMessage = null, auxiliaryLoading = false, news = if (changed) emptyList() else it.news,
             error = null) }

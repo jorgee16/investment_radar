@@ -1090,6 +1090,9 @@ class AndroidFlowTest {
         await("research metrics received") { !state().researchBusy && state().researchSnapshots.containsKey("AIR.PA") }
         assertNotNull(state().researchSnapshots["AIR.PA"]!!.number("pe"))
         capture("research-comparison")
+        click("research-detail-AIR.PA")
+        assertSame(state().researchSnapshots["AIR.PA"], state().snapshot)
+        page(Page.Research)
         click("research-tab-Tese")
         fill("research-thesis-rationale", "Acompanhar entregas e margem operacional")
         fill("research-thesis-horizon", "25 anos")
