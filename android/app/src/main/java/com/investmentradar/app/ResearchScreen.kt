@@ -55,21 +55,20 @@ import org.json.JSONObject
     val selected = state.researchSelection.map { assetMetadata(state, it) }
     Box(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.secondaryContainer)), RoundedCornerShape(18.dp)).padding(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("INVESTIGA ANTES DE INVESTIR", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-            Text("Da descoberta à tua carteira", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-            Text("Explora estratégias, compara evidência e testa o impacto.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text("Da descoberta à tua carteira", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text("Investiga · compara · testa o impacto", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
         }
     }
     CollectionChips(listOf("Explorar", "Comparar", "Impacto", "Tese"), listOf("Explorar", "Comparar", "Impacto", "Tese")[tab], "research-tab") {
         tab = listOf("Explorar", "Comparar", "Impacto", "Tese").indexOf(it)
     }
     if (selected.isNotEmpty()) ResearchCard {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Em estudo · ${selected.size}/3", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-            TextButton({ tab = 1 }, Modifier.testTag("research-open-comparison"), contentPadding = PaddingValues(4.dp)) { Text("Comparar →") }
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            selected.forEach { asset -> InputChip(true, { model.toggleResearch(asset) }, label = { Text("${asset.symbol} ×") }, modifier = Modifier.testTag("research-remove-${asset.symbol}")) }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("${selected.size}/3", style = MaterialTheme.typography.labelSmall)
+            Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                selected.forEach { asset -> InputChip(true, { model.toggleResearch(asset) }, label = { Text("${asset.symbol} ×", style = MaterialTheme.typography.labelSmall) }, modifier = Modifier.testTag("research-remove-${asset.symbol}")) }
+            }
+            TextButton({ tab = 1 }, Modifier.testTag("research-open-comparison"), contentPadding = PaddingValues(4.dp)) { Text("Comparar", style = MaterialTheme.typography.labelSmall) }
         }
     }
     state.researchMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("research-message")) }
@@ -88,6 +87,7 @@ import org.json.JSONObject
     var cap by rememberSaveable { mutableStateOf("Todas") }
     var sector by rememberSaveable { mutableStateOf("Todos") }
     var accumulating by rememberSaveable { mutableStateOf(false) }
+    var filters by rememberSaveable { mutableStateOf(false) }
     var growth by rememberSaveable { mutableStateOf(false) }
     var shown by rememberSaveable(route, query, country, sector, cap, accumulating, growth) { mutableIntStateOf(10) }
     val strategy = researchRoutes.first { it.title == route }
@@ -106,6 +106,10 @@ import org.json.JSONObject
     }
     CollectionChips(researchRoutes.map { it.title }, route, "research-route") { route = it; query = ""; accumulating = false; growth = false }
     CollectionSearch(query, { query = it }, "research-search")
+    TextButton({ filters = !filters }, Modifier.testTag("research-filters"), contentPadding = PaddingValues(4.dp)) {
+        Text(if (filters) "Recolher filtros −" else "Filtros · país, setor, dimensão e métricas +", style = MaterialTheme.typography.labelMedium)
+    }
+    if (filters) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         PlanChoice("País da entidade", listOf("Todos") + countries, country, "research-country") { country = it }
         PlanChoice("Setor", listOf("Todos") + investmentSectors + listOf("ETF diversificados", "Outros produtos", "Sem setor"), sector, "research-sector") { sector = it }
@@ -114,6 +118,7 @@ import org.json.JSONObject
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FilterChip(accumulating, { accumulating = !accumulating }, { Text("Acumulação confirmada") }, Modifier.testTag("research-accumulating"))
         FilterChip(growth, { growth = !growth }, { Text("Receita + EPS ↑ recebidos") }, Modifier.testTag("research-growth"))
+    }
     }
     Text(strategy.explanation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (growth && state.demo) PlanPill("DEMO · crescimento sintético")

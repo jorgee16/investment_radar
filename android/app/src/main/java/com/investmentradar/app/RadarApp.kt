@@ -123,7 +123,7 @@ import org.json.JSONObject
                 }
                 key(state.page, if (state.page == Page.Markets) "${state.symbol}-${state.tab}" else "") {
                     val screenScroll = rememberScrollState()
-                    Column(Modifier.fillMaxSize().verticalScroll(screenScroll).padding(horizontal = 16.dp, vertical = 16.dp).widthIn(max = 840.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.fillMaxSize().verticalScroll(screenScroll).padding(horizontal = 16.dp, vertical = 16.dp).widthIn(max = 840.dp), verticalArrangement = Arrangement.spacedBy(if (state.page == Page.Research) 8.dp else 16.dp)) {
                         when (state.page) {
                             Page.Home -> HomeScreen(state, model, { addWatch = true })
                             Page.Markets -> AssetScreen(state, model, { addPosition = true })

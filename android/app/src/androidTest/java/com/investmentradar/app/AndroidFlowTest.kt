@@ -1148,6 +1148,7 @@ class AndroidFlowTest {
         assertEquals(listOf("AIR.PA", "VWCE.DE"), state().researchSelection)
         fill("research-search", "Altri")
         finishInput("research-search")
+        click("research-filters")
         click("research-country"); click("research-country-Portugal")
         click("research-cap"); click("research-cap-Small Cap")
         await("research normalized country and small cap result") { ui.onAllNodesWithTag("research-select-ALTR.LS").fetchSemanticsNodes().isNotEmpty() }
