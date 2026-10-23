@@ -6,6 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -111,7 +112,7 @@ import org.json.JSONObject
     }
     if (filters) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        PlanChoice("País da entidade", listOf("Todos") + countries, country, "research-country") { country = it }
+        ResearchCountryChoice(listOf("Todos") + countries, country) { country = it }
         PlanChoice("Setor", listOf("Todos") + investmentSectors + listOf("ETF diversificados", "Outros produtos", "Sem setor"), sector, "research-sector") { sector = it }
         PlanChoice("Dimensão", listOf("Todas", "Mega Cap", "Large Cap", "Mid Cap", "Small Cap", "Micro Cap", "Nano Cap"), cap, "research-cap") { cap = it }
     }
@@ -333,4 +334,25 @@ import org.json.JSONObject
         Text("Adiciona até três ativos para comparar, testar pesos na carteira e registar a tua tese.", style = MaterialTheme.typography.bodySmall)
         FilledTonalButton(explore, Modifier.testTag("research-choose-first")) { Text("Explorar catálogo →") }
     }
+}
+
+/** A searchable country picker avoids a 110-item anchored popup on small screens. */
+@Composable private fun ResearchCountryChoice(choices: List<String>, value: String, change: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    OutlinedButton({ query = ""; expanded = true }, Modifier.testTag("research-country")) { Text("País da entidade: $value ▾") }
+    if (expanded) AlertDialog(onDismissRequest = { expanded = false }, title = { Text("País da entidade") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            CollectionSearch(query, { query = it }, "research-country-filter", "Procurar país")
+            val visible = choices.filter { searchKey(it).contains(searchKey(query)) }
+            if (visible.isEmpty()) Text("Sem países com esse nome.", style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.fillMaxWidth().heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
+                visible.forEach { country ->
+                    TextButton({ change(country); expanded = false }, Modifier.fillMaxWidth().testTag("research-country-$country"), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
+                        Text((if (country == value) "✓ " else "") + country, Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
+    }, confirmButton = { TextButton({ expanded = false }) { Text("Fechar") } })
 }

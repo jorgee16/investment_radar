@@ -1107,6 +1107,7 @@ class AndroidFlowTest {
         restart()
         assertEquals(listOf("AIR.PA"), state().researchSelection)
         assertEquals("Acompanhar entregas e margem operacional", state().researchTheses["AIR.PA"]!!.rationale)
+        page(Page.Research)
         click("research-tab-Tese")
         ui.onNodeWithTag("research-thesis-horizon").assertTextContains("25 anos")
     }
@@ -1152,7 +1153,10 @@ class AndroidFlowTest {
         fill("research-search", "Altri")
         finishInput("research-search")
         click("research-filters")
-        click("research-country"); click("research-country-Portugal")
+        click("research-country")
+        fill("research-country-filter", "Portugal")
+        finishInput("research-country-filter")
+        click("research-country-Portugal")
         click("research-cap"); click("research-cap-Small Cap")
         await("research normalized country and small cap result") { ui.onAllNodesWithTag("research-select-ALTR.LS").fetchSemanticsNodes().isNotEmpty() }
         click("research-select-ALTR.LS")
