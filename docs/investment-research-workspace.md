@@ -17,6 +17,7 @@ comparison, light/dark colors and reactive state. Existing routes remain intact.
    financial metrics. Corporate ratios are not applied to funds/notes. Sources
    and periods accompany received metrics. Missing data are not zero.
    Financial refresh is explicit and may call several endpoints per asset.
+   Comparison suppresses unused price history in the shared C++ snapshot.
 3. Enter a hypothetical EUR contribution and see before/after instrument weights.
    `portfolio_impact` in C++ owns valuation/weight calculations. It aggregates
    lots, requires a positive EUR quote in the same Demo/Live mode for every

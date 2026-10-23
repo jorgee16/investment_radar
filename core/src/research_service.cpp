@@ -351,14 +351,15 @@ json ResearchService::history_details(const std::string &s, int days) {
 }
 
 json ResearchService::snapshot(const std::string &s, int history_days,
-                               const std::string &reference_type) {
+                               const std::string &reference_type, bool include_history) {
     if (!valid_symbol(s))
         throw std::invalid_argument("Invalid symbol");
     active().clear_diagnostics();
     auto q = active().quote(s);
     // Read the requested chart before optional research calls can exhaust a
     // provider quota. Android must not fetch a throwaway 120-day chart first.
-    auto h = active().history(s, std::clamp(history_days, 1, 5000));
+    auto h = include_history ? active().history(s, std::clamp(history_days, 1, 5000))
+                             : std::vector<PriceBar>{};
     auto f = active().fundamentals(s);
     auto type = f && f->instrument_type != "unknown" ? f->instrument_type
                 : q                                  ? q->instrument_type

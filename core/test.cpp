@@ -1451,6 +1451,25 @@ int main() {
         CHECK(rows.size() == 1);
         CHECK(rows[0].symbol == "AAPL");
     });
+    test("comparison metrics do not request unused price history", [] {
+        ir::ResearchConfig config;
+        config.demo = false;
+        config.eodhd_key = "synthetic-test-key";
+        std::vector<std::string> urls;
+        ir::ResearchService service(config, [&](const std::string &url) {
+            urls.push_back(url);
+            return std::string("{}");
+        });
+        auto result = service.snapshot("AIR.PA", 30, "unknown", false);
+        CHECK(!urls.empty());
+        CHECK(result["history"].empty());
+        CHECK(std::none_of(urls.begin(), urls.end(), [](const auto &url) {
+            return url.find("/api/eod/") != std::string::npos;
+        }));
+        auto demo = ir::ResearchService({}, [](const std::string &) { return std::string("{}"); });
+        CHECK(!demo.snapshot("AIR.PA")["history"].empty());
+        CHECK(demo.snapshot("AIR.PA", 30, "unknown", false)["history"].empty());
+    });
     test("research impact aggregates lots and preserves total weights", [] {
         json input = {{"symbol", "NEW"}, {"amount", "300,50"}, {"mode", "live"},
             {"positions", {{{"symbol", "AIR.PA"}, {"qty", 2}}, {{"symbol", "AIR.PA"}, {"qty", 1}}}},

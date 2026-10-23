@@ -125,7 +125,7 @@ internal class RadarViewModel(application: Application, private val saved: Saved
             try {
                 for (ticker in selected) {
                     try {
-                        val snapshot = repository.request("/api/snapshot", JSONObject().put("symbol", ticker).put("days", 30).toString()) as JSONObject
+                        val snapshot = repository.request("/api/snapshot", JSONObject().put("symbol", ticker).put("includeHistory", false).toString()) as JSONObject
                         if (generation == epoch) mutable.update { it.copy(researchSnapshots = it.researchSnapshots + (ticker to snapshot)) }
                     } catch (e: CancellationException) { throw e }
                     catch (_: Exception) { if (generation == epoch) mutable.update { it.copy(researchMessage = "Alguns dados não puderam ser atualizados. Os valores anteriores mantêm a sua data.") } }
