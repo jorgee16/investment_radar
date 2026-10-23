@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
@@ -29,7 +30,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-@Composable private fun ResearchCard(title: String? = null, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+@Composable private fun ResearchCard(modifier: Modifier = Modifier, title: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Surface(modifier.fillMaxWidth().animateContentSize(), shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -84,22 +85,31 @@ import org.json.JSONObject
     var route by rememberSaveable { mutableStateOf("Todos") }
     var query by rememberSaveable { mutableStateOf("") }
     var country by rememberSaveable { mutableStateOf("Todos") }
+    var cap by rememberSaveable { mutableStateOf("Todas") }
     var sector by rememberSaveable { mutableStateOf("Todos") }
     var accumulating by rememberSaveable { mutableStateOf(false) }
     var growth by rememberSaveable { mutableStateOf(false) }
-    var shown by rememberSaveable(route, query, country, sector, accumulating, growth) { mutableIntStateOf(10) }
+    var shown by rememberSaveable(route, query, country, sector, cap, accumulating, growth) { mutableIntStateOf(10) }
     val strategy = researchRoutes.first { it.title == route }
-    val catalogue = rememberCataloguePage(listOf(strategy.query, query).filter(String::isNotBlank).joinToString(" "), strategy.type, sector, country)
-    val local = knownAssets(state).filter { it.matches(listOf(strategy.query, query).filter(String::isNotBlank).joinToString(" "), sector) && (strategy.type == "Todos" || it.type == strategy.type) && (country == "Todos" || it.country == country) }
-    val base = (local + catalogue.page.items).distinctBy { it.symbol }
+    val context = LocalContext.current.applicationContext
+    val countries by produceState(emptyList<String>()) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { GlobalCatalogue.manifest(context).getJSONArray("countries").strings() }.getOrDefault(emptyList())
+        }
+    }
+    val catalogue = rememberCataloguePage(listOf(strategy.query, query).filter(String::isNotBlank).joinToString(" "), strategy.type, sector, country, cap)
+    val local = knownAssets(state).filter { it.matches(listOf(strategy.query, query).filter(String::isNotBlank).joinToString(" "), sector) && (strategy.type == "Todos" || it.type == strategy.type) && (country == "Todos" || it.country == country) && (cap == "Todas" || it.marketCap == cap) }
+    val indexed = catalogue.page.items.associateBy { it.symbol }
+    val base = (local.map { indexed[it.symbol] ?: it } + catalogue.page.items).distinctBy { it.symbol }
     val results = base.filter { asset ->
         (!accumulating || asset.accumulating == true) && (!growth || state.researchSnapshots[asset.symbol]?.let { it.text("mode") == (if (state.demo) "demo" else "live") && (it.number("revenueGrowth") ?: Double.NEGATIVE_INFINITY) > 0 && (it.number("epsGrowth") ?: Double.NEGATIVE_INFINITY) > 0 } == true)
     }
     CollectionChips(researchRoutes.map { it.title }, route, "research-route") { route = it; query = ""; accumulating = false; growth = false }
     CollectionSearch(query, { query = it }, "research-search")
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        PlanChoice("País da entidade", listOf("Todos", "Portugal", "France", "Germany", "Japan", "China", "India", "United Kingdom", "United States", "Canada"), country, "research-country") { country = it }
-        PlanChoice("Setor", listOf("Todos", "Technology", "Industrials", "Healthcare", "Financial Services", "Energy", "Consumer Defensive", "Indústria", "Tecnologia", "Saúde", "Finanças"), sector, "research-sector") { sector = it }
+        PlanChoice("País da entidade", listOf("Todos") + countries, country, "research-country") { country = it }
+        PlanChoice("Setor", listOf("Todos") + investmentSectors + listOf("ETF diversificados", "Outros produtos", "Sem setor"), sector, "research-sector") { sector = it }
+        PlanChoice("Dimensão", listOf("Todas", "Mega Cap", "Large Cap", "Mid Cap", "Small Cap", "Micro Cap", "Nano Cap"), cap, "research-cap") { cap = it }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FilterChip(accumulating, { accumulating = !accumulating }, { Text("Acumulação confirmada") }, Modifier.testTag("research-accumulating"))
@@ -180,7 +190,7 @@ import org.json.JSONObject
             val facts: List<Pair<String, (DirectoryAsset) -> String>> = listOf(
                 "Tipo" to { a -> a.type }, "Setor da entidade" to { a -> a.sector },
                 "País da entidade" to { a -> a.country.ifBlank { "Por confirmar" } },
-                "Exposição conhecida" to { a -> a.region.takeIf { it !in listOf("Desconhecida", "Por confirmar") } ?: "Por confirmar" },
+                "Universo / exposição" to { a -> if (a.type == "Ação") "Receitas: por apurar" else a.region.takeIf { it !in listOf("Desconhecida", "Por confirmar") } ?: "Por confirmar" },
                 "Moeda da listagem" to { a -> a.currency },
                 "Rendimentos" to { a -> if (a.type !in listOf("ETF", "Fundo")) "Não aplicável" else when(a.accumulating) { true -> "Acumulação"; false -> "Distribuição"; null -> "Por confirmar" } },
                 "Índice" to { a -> snapshot(a)?.optJSONObject("fund")?.text("index").orEmpty() },
@@ -188,14 +198,14 @@ import org.json.JSONObject
                 "Fonte da cotação" to { a -> snapshot(a)?.optJSONObject("metricSources")?.optJSONObject("price")?.text("source").orEmpty() },
                 "Data da cotação" to { a -> snapshot(a)?.number("timestamp")?.let { java.time.Instant.ofEpochSecond(it.toLong()).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString() }.orEmpty() }
             )
-            (if (showReference) facts else facts.filter { it.first in listOf("Tipo", "Exposição conhecida", "Rendimentos", "Índice") }).forEach { (label, value) -> ResearchCompareRow(label, assets.map { value(it).ifBlank { "—" } }) }
+            (if (showReference) facts else facts.filter { it.first in listOf("Tipo", "Universo / exposição", "Rendimentos", "Índice") }).forEach { (label, value) -> ResearchCompareRow(label, assets.map { value(it).ifBlank { "—" } }) }
             listOf("P/E" to "pe", "P/E estimado" to "forwardPE", "Receita ↑ %" to "revenueGrowth", "EPS ↑ %" to "epsGrowth", "Margem FCF %" to "fcfMargin", "ROE %" to "roe", "Dívida / capital" to "debtToEquity").forEach { (label, key) ->
                 ResearchCompareRow(label, assets.map { a ->
                     val received = snapshot(a)
                     if (a.type in listOf("ETF", "Fundo", "ETC/ETN")) "Não aplicável¹"
                     else received?.number(key)?.let { number ->
                         val provenance = received.optJSONObject("metricSources")?.optJSONObject(key)
-                        val origin = listOf(provenance?.text("source").orEmpty(), provenance?.text("period").orEmpty()).filter(String::isNotBlank).joinToString(" · ")
+                        val origin = listOf(provenance?.text("source").orEmpty().ifBlank { "Fonte não indicada" }, provenance?.text("period").orEmpty().ifBlank { "Período não indicado" }).joinToString(" · ")
                         String.format(java.util.Locale("pt", "PT"), "%.2f", number) + "\n" + origin.ifBlank { "Fonte/período não indicados" }
                     } ?: "—"
                 })

@@ -1146,6 +1146,19 @@ class AndroidFlowTest {
         assertNotNull(ResearchWorkspaceStore(context).save(InvestmentThesis("AIR.PA", horizon = "x".repeat(121))))
         click("research-remove-AAPL")
         assertEquals(listOf("AIR.PA", "VWCE.DE"), state().researchSelection)
+        fill("research-search", "Altri")
+        finishInput("research-search")
+        click("research-country"); click("research-country-Portugal")
+        click("research-cap"); click("research-cap-Small Cap")
+        await("research normalized country and small cap result") { ui.onAllNodesWithTag("research-select-ALTR.LS").fetchSemanticsNodes().isNotEmpty() }
+        click("research-select-ALTR.LS")
+        assertEquals("Portugal", state().discovered.first { it.symbol == "ALTR.LS" }.country)
+        click("research-profile-ALTR.LS")
+        assertEquals(5, state().tab)
+        assertFalse(state().loading)
+        assertNull(state().snapshot)
+        capture("research-offline-reference")
+
     }
 
 }
