@@ -1102,7 +1102,7 @@ class AndroidFlowTest {
         fill("research-thesis-horizon", "25 anos")
         fill("research-thesis-review", "2027-02-30")
         click("research-thesis-save")
-        ui.onNodeWithTag("research-thesis-feedback").assertTextContains("data válida", substring = true)
+        ui.onNodeWithTag("research-thesis-feedback").performScrollTo().assertIsDisplayed().assertTextContains("data válida", substring = true)
         assertFalse(state().researchTheses.containsKey("AIR.PA"))
         fill("research-thesis-review", "2027-03-01")
         click("research-thesis-save")

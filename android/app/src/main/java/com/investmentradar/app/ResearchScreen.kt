@@ -307,6 +307,7 @@ import org.json.JSONObject
 }
 
 @Composable private fun ResearchThesisScreen(state: RadarState, model: RadarViewModel, assets: List<DirectoryAsset>, explore: () -> Unit) {
+    val focus = LocalFocusManager.current
     if (assets.isEmpty()) { ResearchChooseFirst(explore); return }
     var ticker by rememberSaveable { mutableStateOf(assets.first().symbol) }
     val selected = ticker.takeIf { t -> assets.any { it.symbol == t } } ?: assets.first().symbol
@@ -324,7 +325,7 @@ import org.json.JSONObject
             OutlinedTextField(risks, { risks = it.take(4000); feedback = null }, label = { Text("Riscos e condições para reavaliar") }, minLines = 2, maxLines = 5, modifier = Modifier.fillMaxWidth().testTag("research-thesis-risks"))
             OutlinedTextField(horizon, { horizon = it.take(120); feedback = null }, label = { Text("Horizonte · ex.: 20 anos / sem prazo") }, modifier = Modifier.fillMaxWidth().testTag("research-thesis-horizon"))
             OutlinedTextField(review, { review = it.take(10); feedback = null }, label = { Text("Rever em · AAAA-MM-DD (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("research-thesis-review"))
-            Button({ feedback = model.saveThesis(InvestmentThesis(selected, rationale, risks, horizon, review)) ?: "Tese guardada no dispositivo." }, Modifier.fillMaxWidth().testTag("research-thesis-save")) { Text("Guardar tese") }
+            Button({ focus.clearFocus(); feedback = model.saveThesis(InvestmentThesis(selected, rationale, risks, horizon, review)) ?: "Tese guardada no dispositivo." }, Modifier.fillMaxWidth().testTag("research-thesis-save")) { Text("Guardar tese") }
             feedback?.let { Text(it, Modifier.testTag("research-thesis-feedback"), style = MaterialTheme.typography.bodySmall) }
         }
     }
