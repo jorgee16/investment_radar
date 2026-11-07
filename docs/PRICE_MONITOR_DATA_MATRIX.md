@@ -30,13 +30,13 @@
 
 ## Implementation reality at checkpoint
 
-The opt-in prototype uses the official Alpaca **HTTP latest quotes endpoint** every approximately 10 seconds. It does NOT use WebSocket streaming, does NOT receive last trades, and may miss a temporary crossing between samples. Source set is three US symbols only; European subscriptions are unimplemented. Source/status/venue/age and last-vs-ask must be visible before claims of working monitoring.
+The opt-in prototype uses the official Alpaca **HTTP latest quotes endpoint** every approximately 10 seconds. It does NOT use WebSocket streaming and may miss a temporary crossing between samples. The prototype now calls the separate official IEX HTTP latest trades endpoint **only when LAST rules are armed**, preserving independent trade timestamps. LAST access is still **not authenticated/tested**. Source set is three US symbols only; European subscriptions are unimplemented. Source/status/venue/age and last-vs-ask must be visible before claims of working monitoring.
 
 ## Credential-safe manual probe when actual local authorization is available
 
 1. Leave all provider sources OFF by default; never place keys in the issue, Git, CI logs, screenshots, URLs, or source code. No paid plan or brokerage link is authorized here.
 2. During a regular US session, user may configure Alpaca paper Trading API credentials locally and call the **official** endpoint https://data.alpaca.markets/v2/stocks/quotes/latest?feed=iex&symbols=JPM,GS,TSM with authorized headers. Record for each symbol: price, q.t, ap/ax, bp/bx, feed, server response and age. A quote may be stale even if the HTTP response arrived now.
-3. To support LAST, use the separately documented Alpaca latest trades endpoint (not included in this prototype) and verify its trade timestamp and exchange code. Never silently treat bid or ask as a last trade.
+3. For LAST rules the optional implementation calls the official Alpaca latest trades endpoint at https://docs.alpaca.markets/us/reference/stocklatesttrades-1 . Confirm trade timestamp and IEX exchange code V with authenticated access; do not silently treat a bid or ask as a last trade.
 4. With explicit user approval, IBKR TWS/IB Gateway must resolve each EU contract by exact ISIN/MIC/currency, request market data, inspect marketDataType, timestamp, bid/ask/last and permissions; account eligibility and waived fees need actual confirmation.
 5. If free EU is unavailable, check EODHD paid EU stream for the three exact instruments only AFTER a separate user decision; record actual symbol/venue/time/quote messages before subscribing.
 6. Publish redacted evidence per symbol: provider, plan, exchange time, receive time, age, feed venue, listing MIC, bid/ask/last availability, error class and observed frequency; do not claim live result without performed authenticated test.
