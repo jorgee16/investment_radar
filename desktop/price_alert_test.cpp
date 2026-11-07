@@ -57,6 +57,7 @@ int main(){int count=0;auto check=[&](bool b){++count;if(!b)throw std::runtime_e
   m.complete(id,first[0]["leaseToken"],true,2122);
   bool sending=false;for(auto d:m.snapshot()["deliveries"])
       if(d["id"]==id)sending=d["status"]=="sending";
+  if(!sending)std::cerr<<"Stale-ACK state: first="<<first.dump()<<" renewed="<<renewed.dump()<<" snapshot="<<m.snapshot().dump()<<std::endl;
   check(sending);
   m.complete(id,renewed[0]["leaseToken"],true,2123);
   bool accepted=false;for(auto d:m.snapshot()["deliveries"])
