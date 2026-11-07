@@ -5,6 +5,8 @@ def run(binary):
  with tempfile.TemporaryDirectory() as home:
   env={**os.environ,"IR_CONFIG_DIR":home}
   for k in ("EODHD_API_KEY","FMP_API_KEY","TWELVE_DATA_API_KEY","ALPHA_VANTAGE_API_KEY","FINNHUB_API_KEY"):env[k]=""
+  # A CI smoke test must never use a local opt-in key or contact a live provider.
+  for k in ("IR_MONITOR_ALPACA_ENABLED","IR_MONITOR_ALPACA_KEY","IR_MONITOR_ALPACA_SECRET","IR_MONITOR_EMAIL_ENABLED"):env[k]=""
   p=None
   def start():
    nonlocal p
@@ -37,8 +39,26 @@ def run(binary):
    live=req("/api/snapshot?symbol=AIR.PA")
    assert live["price"] is None and live["history"]==[]
    assert req("/api/news?symbol=AIR.PA")==[]
+   # Price monitor smoke is offline and shares neither Demo quotes nor provider keys.
+   mon=req("/api/monitor")
+   assert mon["rules"]==[] and mon["events"]==[] and len(mon["instruments"])==6
+   assert mon["health"]["status"]=="disabled"
+   assert req("/api/monitor/claim",{"emailEnabled":False})==[]
+   req("/api/monitor/rules",{"instrument":"UNKNOWN","target":"150"},400)
+   rule=req("/api/monitor/rules",{"instrument":"JPM","target":"150","basis":"ASK","mode":"LEVEL"})
+   rule_id=rule["id"]
+   assert rule["instrument"]=="JPM" and rule["feed"]=="alpaca-iex"
+   assert len(req("/api/monitor")["rules"])==1
+   req("/api/monitor/action",{"id":rule_id,"action":"pause"})
+   assert req("/api/monitor")["rules"][0]["armed"]==False
+   req("/api/monitor/action",{"id":rule_id,"action":"rearm"})
+   assert req("/api/monitor")["rules"][0]["armed"]==True
    stop();base=start()
    assert req("/api/status")["mode"]=="live"
+   assert req("/api/monitor")["rules"][0]["id"]==rule_id
+   assert req("/api/monitor")["events"]==[]
+   req("/api/monitor/action",{"id":rule_id,"action":"delete"})
+   assert req("/api/monitor")["rules"]==[]
    req("/api/settings",{"demo":True})
    assert req("/api/snapshot?symbol=AIR.PA")["price"]==188
    print("PASS native API smoke")
