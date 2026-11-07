@@ -47,7 +47,8 @@ json quoteJson(const Quote& q,int64_t now){
         {"askUnits",q.ask?json(*q.ask):json(nullptr)},
         {"bidUnits",q.bid?json(*q.bid):json(nullptr)},
         {"lastUnits",q.last?json(*q.last):json(nullptr)},
-        {"exchangeTime",q.exchangeTime},{"lastTime",q.lastTime},{"receivedTime",q.receivedTime},
+        {"exchangeTime",q.exchangeTime},{"exchangeNanos",q.exchangeNanos},
+        {"lastTime",q.lastTime},{"lastNanos",q.lastNanos},{"receivedTime",q.receivedTime},
         {"ageSeconds",q.exchangeTime>0?json(now-q.exchangeTime):json(nullptr)},
         {"lastAgeSeconds",q.lastTime>0?json(now-q.lastTime):json(nullptr)},
         {"entitled",q.entitled},{"demo",q.demo},{"delaySeconds",q.delaySeconds}
@@ -300,13 +301,23 @@ void Monitor::observe(const Quote& q,int64_t now){
             if(previous.value("currency","")==q.currency&&
                previous.value("feed","")==q.feed&&previous.value("venue","")==q.venue){
                 const auto oldQuote=previous.value("exchangeTime",int64_t{0});
+                const auto oldQuoteNanos=previous.value("exchangeNanos",int64_t{0});
                 const auto oldTrade=previous.value("lastTime",int64_t{0});
-                if(q.exchangeTime==0||oldQuote>q.exchangeTime){
-                    for(auto key:{"askUnits","bidUnits","exchangeTime","ageSeconds"})
+                const auto oldTradeNanos=previous.value("lastNanos",int64_t{0});
+                const auto quoteOlder=q.exchangeTime==0||
+                    (oldQuoteNanos>0&&q.exchangeNanos>0
+                        ? oldQuoteNanos>q.exchangeNanos
+                        : oldQuote>q.exchangeTime);
+                const auto tradeOlder=q.lastTime==0||
+                    (oldTradeNanos>0&&q.lastNanos>0
+                        ? oldTradeNanos>q.lastNanos
+                        : oldTrade>q.lastTime);
+                if(quoteOlder){
+                    for(auto key:{"askUnits","bidUnits","exchangeTime","exchangeNanos","ageSeconds"})
                         if(previous.contains(key))display[key]=previous[key];
                 }
-                if(q.lastTime==0||oldTrade>q.lastTime){
-                    for(auto key:{"lastUnits","lastTime","lastAgeSeconds"})
+                if(tradeOlder){
+                    for(auto key:{"lastUnits","lastTime","lastNanos","lastAgeSeconds"})
                         if(previous.contains(key))display[key]=previous[key];
                 }
             }

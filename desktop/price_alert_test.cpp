@@ -180,5 +180,49 @@ int main(){int count=0;auto check=[&](bool b){++count;if(!b)throw std::runtime_e
  }
  std::filesystem::remove(streamPath);
 
+
+ // Out-of-order ticks with the SAME whole second must never overwrite display.
+ auto nanoPath=(std::filesystem::temp_directory_path()/"ir-monitor-nanosecond.sqlite3").string();
+ std::filesystem::remove(nanoPath);
+ {Monitor m(nanoPath);
+  auto freshQuote=json{{"kind","q"},{"marketOpen",true},{"data",{
+      {"T","q"},{"S","JPM"},{"ax","V"},{"bx","V"},{"ap",151.0},{"bp",149.0},
+      {"t","2026-11-06T15:00:00.900000000Z"}}}};
+  auto oldQuote=freshQuote;
+  oldQuote["data"]["ap"]=140.0;
+  oldQuote["data"]["t"]="2026-11-06T15:00:00.100000000Z";
+  m.ingestIex(freshQuote,1793977200);
+  m.ingestIex(oldQuote,1793977200);
+  auto doc=m.snapshot();
+  check(doc["quotes"][0]["askUnits"]==decimal("151"));
+  check(doc["quotes"][0]["exchangeNanos"]>0);
+  auto freshTrade=json{{"kind","t"},{"marketOpen",true},{"data",{
+      {"T","t"},{"S","JPM"},{"x","V"},{"p",152.0},
+      {"t","2026-11-06T15:00:00.950000000Z"}}}};
+  auto oldTrade=freshTrade;
+  oldTrade["data"]["p"]=120.0;
+  oldTrade["data"]["t"]="2026-11-06T15:00:00.200000000Z";
+  m.ingestIex(freshTrade,1793977200);
+  m.ingestIex(oldTrade,1793977200);
+  doc=m.snapshot();
+  check(doc["quotes"][0]["lastUnits"]==decimal("152"));
+  check(doc["quotes"][0]["askUnits"]==decimal("151"));
+ }
+ std::filesystem::remove(nanoPath);
+ // An invalid ASK is a data gap: CROSS must wait for a new upper baseline.
+ auto invalidQuote=alpacaQuote("JPM",{{"ax","V"},{"bx","V"},
+    {"bp",149.0},{"t","2026-11-06T15:00:00.200000000Z"}},1793977200,true);
+ auto falling=alpacaQuote("JPM",{{"ax","V"},{"bx","V"},
+    {"ap",149.0},{"bp",148.0},
+    {"t","2026-11-06T15:00:00.300000000Z"}},1793977200,true);
+ auto above=alpacaQuote("JPM",{{"ax","V"},{"bx","V"},
+    {"ap",151.0},{"bp",149.0},
+    {"t","2026-11-06T15:00:00.100000000Z"}},1793977200,true);
+ State interrupted;
+ auto crossSafe=parseRule({{"instrument","JPM"},{"target","150"},{"mode","CROSS"}});
+ check(evaluate(crossSafe,interrupted,above,1793977200)=="armed");
+ check(evaluate(crossSafe,interrupted,invalidQuote,1793977200)=="missing-price");
+ check(evaluate(crossSafe,interrupted,falling,1793977200)=="armed");
+
  std::filesystem::remove(path);std::cout<<count<<" monitor assertions passed\n";
 }
