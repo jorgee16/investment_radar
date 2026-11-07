@@ -23,6 +23,25 @@ internal fun units(value:JsonElement?)=value?.jsonPrimitive?.longOrNull?.let { j
 
 // Implicit TLS only, host verification on. Secrets remain in the launching user's environment.
 // No send occurs unless both local opt-in and an email delivery are present.
+// SMTP conversation tested with fixture replies; TLS socket stays in MonitorEmail.
+internal fun smtpExchange(event:JsonObject,from:String,user:String,password:String,
+                          input:BufferedReader,out:java.io.Writer){
+ val to=event.text("email")
+  require(listOf(from,to).all{it.matches(Regex("[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+"))})
+ require(event.text("id").matches(Regex("[a-f0-9]{32}:[0-9]+"))) { "Invalid alert id" }
+ require(event.text("instrument").matches(Regex("[A-Z0-9.^:-]{1,32}"))) { "Invalid instrument" }
+ require(event.text("basis") in setOf("ASK","LAST")) { "Invalid basis" }
+ require(event.text("currency").matches(Regex("[A-Z]{3}"))) { "Invalid currency" }
+ require(event.text("feed").matches(Regex("[a-z0-9-]{1,32}"))) { "Invalid feed" }
+ require(event.text("venue").matches(Regex("[A-Z0-9]{3,8}"))) { "Invalid venue" }
+   fun response(expected:Int){var line:String;do{line=input.readLine()?:error("SMTP disconnected");require(line.length>=3&&line.take(3).toIntOrNull()==expected&&(line.length==3||line[3]=='-'||line[3]==' ')){"SMTP rejected"}}while(line.length>3&&line[3]=='-')}
+   fun cmd(s:String,code:Int){out.write(s+"\r\n");out.flush();response(code)}
+   response(220);cmd("EHLO investment-radar.local",250)
+   cmd("AUTH PLAIN "+Base64.getEncoder().encodeToString(("\u0000"+user+"\u0000"+password).toByteArray(Charsets.UTF_8)),235)
+   cmd("MAIL FROM:<$from>",250);cmd("RCPT TO:<$to>",250);cmd("DATA",354)
+   val body="Price alert: ${event.text("instrument")}\r\n${event.text("basis")}: ${units(event["priceUnits"])} ${event.text("currency")}\r\nFeed: ${event.text("feed")} / ${event.text("venue")}\r\nExchange timestamp: ${event.text("observedAt")}\r\nThis is a user-defined price threshold."
+   out.write("From: <$from>\r\nTo: <$to>\r\nSubject: Investment Radar price alert\r\nMessage-ID: <${event.text("id").replace(":","-")}@investment-radar.local>\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\n$body\r\n.\r\n");out.flush();response(250)
+}
 internal object MonitorEmail {
  fun send(event:JsonObject){
   require(System.getenv("IR_MONITOR_EMAIL_ENABLED")=="1") { "Email disabled" }
@@ -36,13 +55,7 @@ internal object MonitorEmail {
    socket.sslParameters=socket.sslParameters.apply{endpointIdentificationAlgorithm="HTTPS"}
    socket.startHandshake()
    val input=BufferedReader(InputStreamReader(socket.inputStream,Charsets.US_ASCII));val out=OutputStreamWriter(socket.outputStream,Charsets.US_ASCII)
-   fun response(expected:Int){var line:String;do{line=input.readLine()?:error("SMTP disconnected");require(line.length>=3&&line.take(3).toIntOrNull()==expected){"SMTP rejected"}}while(line.length>3&&line[3]=='-')}
-   fun cmd(s:String,code:Int){out.write(s+"\r\n");out.flush();response(code)}
-   response(220);cmd("EHLO investment-radar.local",250)
-   cmd("AUTH PLAIN "+Base64.getEncoder().encodeToString(("\u0000"+user+"\u0000"+password).toByteArray(Charsets.UTF_8)),235)
-   cmd("MAIL FROM:<$from>",250);cmd("RCPT TO:<$to>",250);cmd("DATA",354)
-   val body="Price alert: ${event.text("instrument")}\r\n${event.text("basis")}: ${units(event["priceUnits"])} ${event.text("currency")}\r\nFeed: ${event.text("feed")} / ${event.text("venue")}\r\nExchange timestamp: ${event.text("observedAt")}\r\nThis is a user-defined price threshold."
-   out.write("From: <$from>\r\nTo: <$to>\r\nSubject: Investment Radar price alert\r\nMessage-ID: <${event.text("id").replace(":","-")}@investment-radar.local>\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\n$body\r\n.\r\n");out.flush();response(250)
+   smtpExchange(event,from,user,password,input,out)
    // Accepted by SMTP, not proof of inbox delivery. Do not retry solely on QUIT failure.
   }
  }
