@@ -23,7 +23,7 @@ The user explicitly requested stopping implementation here and passing the task 
 - `desktop/src/main.cpp`: loopback monitor CRUD/status/delivery API and native source thread, using existing Host/Origin guard.
 - `desktop-compose/.../Main.kt`: initial tray hide/reopen/quit, per-user file lock, delivery loop. Not Windows-tested.
 - `desktop-compose/.../PriceMonitor.kt`: initial form/cards for six reference instruments, explicit LAST checkbox, SMTP implicit TLS port 465 scaffold with hostname verification. Not SMTP-tested; no OAuth2, STARTTLS or credential-manager implementation yet.
-- `desktop-compose/build.gradle.kts`: changed unresolved baseline Kotlin 2.4.20 / Compose 1.12.0 to Kotlin 2.1.21 / Compose 1.8.2 / serialization 1.8.1. System Java trust works whereas workspace JDK did not resolve artifacts; review whether this version change is needed. Build/test not yet established green.
+- `desktop-compose/build.gradle.kts`: changed unresolved baseline Kotlin 2.4.20 / Compose 1.12.0 to Kotlin 2.1.21 / Compose 1.8.2 / serialization 1.8.1. System Java trust works whereas workspace JDK did not resolve artifacts; review whether this version change is needed. The subsequent Linux build and JVM tests passed; Windows runtime remains untested.
 - `CMakeLists.txt`: new native sources and fixture test target.
 
 Android sources, versions, signing keys and existing provider credential storage were not modified. No paid subscriptions, brokerage links, trades or live email.
@@ -34,7 +34,8 @@ Android sources, versions, signing keys and existing provider credential storage
 - `ctest --test-dir build/monitor --output-on-failure`: core, platform, price_alert all PASS (3/3).
 - `build/monitor/price_alert_tests`: 32 assertions PASS, including duplicate suppression, restart/rearm, ASK vs LAST, stale/mismatched quotes and parsing. This does NOT cover all required handoff acceptance cases.
 - `git diff --check`: PASS at checkpoint.
-- Compose `gradle test` and Android assemble/lint/unit checks were started but had no final result at this checkpoint. Do not claim either passed; rerun them.
+- The previously started Compose `gradle test` subsequently completed: BUILD SUCCESSFUL (1m43s). This compiles the UI; it does not validate tray behavior or screenshots.
+- The previously started Android `:app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug :app:testDebugUnitTest` subsequently completed: BUILD SUCCESSFUL (1m38s). No emulator test or release signing was performed.
 - No emulator, Windows, provider, real-time latency, SMTP or screenshot validation for this feature.
 
 Cloud build tools were installed only in temporary directories. Native configure used:
