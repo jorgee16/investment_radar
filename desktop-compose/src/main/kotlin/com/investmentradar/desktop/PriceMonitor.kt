@@ -14,6 +14,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.util.Base64
+import java.net.URLEncoder
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
@@ -50,6 +51,11 @@ internal object MonitorEmail {
 @Composable internal fun PriceMonitorPanel(bridge:NativeBridge,watchSymbols:List<String> = emptyList(),portfolioSymbols:List<String> = emptyList()){
  var snapshot by remember{mutableStateOf(JsonObject(emptyMap()))};var error by remember{mutableStateOf("")}
  var search by remember{mutableStateOf("")};var selected by remember{mutableStateOf<JsonObject?>(null)}
+ var matches by remember{mutableStateOf<List<JsonObject>>(emptyList())}
+ var searchMode by remember{mutableStateOf("")}
+ var newId by remember{mutableStateOf("")};var newName by remember{mutableStateOf("")}
+ var newIsin by remember{mutableStateOf("")};var newMic by remember{mutableStateOf("")}
+ var newCurrency by remember{mutableStateOf("")}
  var target by remember{mutableStateOf("")};var email by remember{mutableStateOf("")};var last by remember{mutableStateOf(false)};var cross by remember{mutableStateOf(false)};var editId by remember{mutableStateOf("")}
  val scope=rememberCoroutineScope()
  suspend fun refresh(){snapshot=Json.parseToJsonElement(bridge.get("/api/monitor")).jsonObject}
@@ -58,15 +64,89 @@ internal object MonitorEmail {
  val instruments=snapshot["instruments"]?.jsonArray?.map{it.jsonObject}.orEmpty()
  val quotes=snapshot["quotes"]?.jsonArray?.map{it.jsonObject}.orEmpty()
  val preferred=(watchSymbols+portfolioSymbols).toSet()
+ val listingMic: (String)->String = { v ->
+     when(v.trim().uppercase()){
+         "NYSE","XNYS"->"XNYS"
+         "NASDAQ","XNAS"->"XNAS"
+         "ARCA","NYSE ARCA","ARCX"->"ARCX"
+         "AMEX","NYSE AMERICAN","XASE"->"XASE"
+         "BATS"->"BATS"
+         "XETRA","XETR"->"XETR"
+         "PARIS","EURONEXT PARIS","XPAR"->"XPAR"
+         else->v.trim().uppercase().takeIf{it.length==4}.orEmpty()
+     }
+ }
+ fun register(){
+     scope.launch{
+         try{
+             val registered=Json.parseToJsonElement(bridge.post("/api/monitor/instruments",buildJsonObject{
+                 put("id",newId.trim().uppercase());put("name",newName.trim())
+                 put("isin",newIsin.trim().uppercase());put("mic",newMic.trim().uppercase())
+                 put("currency",newCurrency.trim().uppercase())
+             }.toString())).jsonObject
+             refresh();selected=registered;error="Instrumento registado como não verificado. Sem cotações reais até validar fonte e permissões."
+         }catch(_:Exception){error="Falha ao registar: confirma o ticker, ISIN, MIC, moeda e identidade da listagem."}
+     }
+ }
  LazyColumn(Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
   item{Text("Alertas de preço",style=MaterialTheme.typography.headlineSmall);Text("O PC deve ficar ligado e sem suspensão. Fechar a janela mantém o monitor na área de notificação quando disponível.")}
   item{Card{Column(Modifier.padding(12.dp)){Text("Fonte: "+(snapshot["health"]?.jsonObject?.text("status")?:"a iniciar"));Text(snapshot["health"].toString(),style=MaterialTheme.typography.bodySmall);Text("IEX: uma praça americana, não preço consolidado. Europa: acesso não verificado. Sem ativação automática de fontes pagas.")}}}
   item{if(error.isNotEmpty())Text(error,color=MaterialTheme.colorScheme.error)}
-  item{Text("Carteira e favoritos verificados: "+instruments.filter{it.text("id") in preferred}.joinToString{it.text("id")}.ifEmpty{"nenhum dos seis símbolos testados"})}
-  item{OutlinedTextField(search,{search=it},label={Text("Procurar nome, ticker ou ISIN — catálogo inicial de seis instrumentos")},modifier=Modifier.fillMaxWidth())}
-  items(instruments.filter{(it.text("name")+it.text("id")+it.text("isin")).contains(search,true)}){i->TextButton(onClick={selected=i}){Text("${if(selected==i) "✓ " else ""}${i.text("name")} · ${i.text("id")} · ${i.text("currency")} · ${i.text("mic")}")}}
+  item{Text("Carteira e favoritos",style=MaterialTheme.typography.titleMedium)}
+  item{Text("Podes selecionar qualquer instrumento já registado; os que não têm feed confirmado ficam assinalados como indisponíveis.",style=MaterialTheme.typography.bodySmall)}
+  items(instruments.filter{it.text("id") in preferred}){i->
+    TextButton(onClick={selected=i}){Text("${i.text("id")} · ${i.text("name")} · ${i.text("currency")} · ${i.text("source")}")}}
+  item{OutlinedTextField(search,{search=it},label={Text("Pesquisar nome, ticker ou ISIN")},modifier=Modifier.fillMaxWidth())}
+  item{Row{
+     Button(enabled=search.trim().length>=2,onClick={scope.launch{
+       try{
+         val query=URLEncoder.encode(search.trim(),"UTF-8")
+         val response=Json.parseToJsonElement(bridge.get("/api/monitor/search?query=$query")).jsonObject
+         matches=response["results"]?.jsonArray?.map{it.jsonObject}.orEmpty()
+         searchMode=if(response["demo"]?.jsonPrimitive?.booleanOrNull==true)
+           "Pesquisa em DEMO — resultados não confirmam o instrumento nem a fonte." else
+           "Metadados de pesquisa — confirma a bolsa, ISIN e moeda antes de registar."
+       }catch(_:Exception){searchMode="Pesquisa indisponível. Podes introduzir os dados manualmente.";matches=emptyList()}
+     }){Text("Pesquisar catálogo")}
+  }}
+  item{if(searchMode.isNotBlank())Text(searchMode,style=MaterialTheme.typography.bodySmall)}
+  items(matches){hit->
+    val symbol=hit.text("symbol").uppercase()
+    TextButton(onClick={
+      newId=symbol;newName=hit.text("name")
+      newIsin=hit.text("isin").uppercase();newCurrency=hit.text("currency").uppercase()
+      newMic=listingMic(hit.text("exchange"));selected=null
+    }){Text("${hit.text("name")} · $symbol · ${hit.text("exchange")} · ${hit.text("currency")} · ${hit.text("isin")}")}}
+  item{Card{Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
+    Text("Registar cotação concreta",style=MaterialTheme.typography.titleMedium)
+    Text("Os metadados da pesquisa não garantem acesso à bolsa. Confirma a listagem e a moeda; nenhum ETF é automaticamente substituído.",style=MaterialTheme.typography.bodySmall)
+    OutlinedTextField(newId,{newId=it},label={Text("Ticker da listagem, por exemplo MSFT ou VUAA.DE")})
+    OutlinedTextField(newName,{newName=it},label={Text("Nome do instrumento")})
+    OutlinedTextField(newIsin,{newIsin=it},label={Text("ISIN (opcional se não confirmado)")})
+    Row{
+      OutlinedTextField(newMic,{newMic=it},label={Text("MIC, por exemplo XETR")},modifier=Modifier.weight(1f))
+      Spacer(Modifier.width(8.dp))
+      OutlinedTextField(newCurrency,{newCurrency=it},label={Text("Moeda, por exemplo EUR")},modifier=Modifier.weight(1f))
+    }
+    Button(onClick={register()},enabled=newId.isNotBlank()&&newName.isNotBlank()&&newMic.length==4&&newCurrency.length==3){Text("Adicionar ao monitor (não verificado)")}
+  }}}
+  item{Text("Instrumentos registados",style=MaterialTheme.typography.titleMedium)}
+  items(instruments.filter{(it.text("name")+it.text("id")+it.text("isin")).contains(search,true)}){i->
+     Column {
+       TextButton(onClick={selected=i}){Text("${if(selected?.text("id")==i.text("id")) "✓ " else ""}${i.text("name")} · ${i.text("id")} · ${i.text("currency")} · ${i.text("mic")} · ${i.text("source")}") }
+       if(i.text("source")=="unverified"&&i.text("currency")=="USD"&&i.text("mic") in setOf("XNYS","XNAS","ARCX","XASE","BATS")){
+         TextButton(onClick={scope.launch{
+             try{
+               bridge.post("/api/monitor/verify-iex",buildJsonObject{put("symbol",i.text("id"))}.toString())
+               refresh();selected=snapshot["instruments"]?.jsonArray?.map{it.jsonObject}?.firstOrNull{it.text("id")==i.text("id")}
+               error="Símbolo verificado no catálogo Alpaca. O acesso a cotações IEX continua sujeito a permissões reais."
+             }catch(_:Exception){error="Verificação Alpaca indisponível ou símbolo/bolsa incompatível. Requer autorização local."}
+         }){Text("Verificar símbolo na Alpaca (IEX gratuito, opcional)")}
+       }
+     }
+  }
   item{Card{Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-   Text(selected?.let{"${it.text("id")} · ${it.text("isin")}"}?:"Seleciona uma cotação concreta")
+   Text(selected?.let{"${it.text("id")} · ${it.text("isin")} · ${it.text("source")}; fonte sem validação de feed não dispara alertas"}?:"Seleciona uma cotação concreta")
    OutlinedTextField(target,{target=it},label={Text("Preço limite na moeda da cotação (ponto decimal)")})
    Row{Checkbox(last,{last=it});Text("Usar LAST explicitamente em vez de ASK (sem fallback automático)")}
    Row{Checkbox(cross,{cross=it});Text("Exigir cruzamento observado; sem marcação: igual ou abaixo")}

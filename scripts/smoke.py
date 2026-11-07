@@ -48,6 +48,14 @@ def run(binary):
    rule=req("/api/monitor/rules",{"instrument":"JPM","target":"150","basis":"ASK","mode":"LEVEL"})
    rule_id=rule["id"]
    assert rule["instrument"]=="JPM" and rule["feed"]=="alpaca-iex"
+   registered=req("/api/monitor/instruments",{"id":"MSFT","name":"Microsoft",
+       "mic":"XNAS","currency":"USD","isin":"US5949181045","source":"alpaca-iex"})
+   assert registered["source"]=="unverified"
+   assert len(req("/api/monitor")["instruments"])==7
+   added=req("/api/monitor/rules",{"instrument":"MSFT","target":"200"})
+   assert added["feed"]=="unverified"
+   req("/api/monitor/verify-iex",{"symbol":"MSFT"},400)
+
    assert len(req("/api/monitor")["rules"])==1
    req("/api/monitor/action",{"id":rule_id,"action":"pause"})
    assert req("/api/monitor")["rules"][0]["armed"]==False
@@ -55,9 +63,12 @@ def run(binary):
    assert req("/api/monitor")["rules"][0]["armed"]==True
    stop();base=start()
    assert req("/api/status")["mode"]=="live"
-   assert req("/api/monitor")["rules"][0]["id"]==rule_id
+   assert len(req("/api/monitor")["rules"])==2
+   assert len(req("/api/monitor")["instruments"])==7
+   assert req("/api/monitor")["rules"][0]["id"] in (rule_id,added["id"])
    assert req("/api/monitor")["events"]==[]
    req("/api/monitor/action",{"id":rule_id,"action":"delete"})
+   req("/api/monitor/action",{"id":added["id"],"action":"delete"})
    assert req("/api/monitor")["rules"]==[]
    req("/api/settings",{"demo":True})
    assert req("/api/snapshot?symbol=AIR.PA")["price"]==188

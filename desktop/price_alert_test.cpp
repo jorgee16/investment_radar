@@ -117,5 +117,35 @@ int main(){int count=0;auto check=[&](bool b){++count;if(!b)throw std::runtime_e
  }
  std::filesystem::remove(exhausted);
  
+
+ // Persistent user-added instrument metadata is NOT automatically Alpaca-entitled.
+ auto directory=(std::filesystem::temp_directory_path()/"ir-monitor-directory.sqlite3").string();
+ std::filesystem::remove(directory);
+ {Monitor m(directory);
+  auto item=m.registerInstrument({{"id","MSFT"},{"name","Microsoft Corporation"},
+        {"isin","US5949181045"},{"currency","USD"},{"mic","XNAS"},{"source","alpaca-iex"}});
+  check(item["source"]=="unverified");
+  auto listing=m.snapshot()["instruments"];
+  check(listing.size()==7);
+  auto newRule=m.save({{"instrument","MSFT"},{"target","150"}});
+  check(newRule["feed"]=="unverified"); // Never trust caller's source.
+  try{m.registerInstrument({{"id","MSFT"},{"name","Wrong company"},
+       {"isin","US5949181045"},{"mic","XNYS"},{"currency","USD"}});check(false);}
+  catch(const std::invalid_argument&){check(true);}
+  try{m.authorizeIexAsset("MSFT",{{"symbol","MSFT"},{"asset_class","us_equity"},
+                       {"status","active"},{"exchange","NYSE"}});check(false);}
+  catch(const std::invalid_argument&){check(true);}
+  auto verified=m.authorizeIexAsset("MSFT",{{"symbol","MSFT"},{"asset_class","us_equity"},
+             {"status","active"},{"exchange","NASDAQ"}});
+  check(verified["source"]=="alpaca-iex");
+  check(m.snapshot()["rules"][0]["feed"]=="alpaca-iex");
+  Quote live{"MSFT","USD","IEX","alpaca-iex","open",decimal("149"),
+             decimal("148"),std::nullopt,7000,7000,true,false,0};
+  m.observe(live,7000);check(m.snapshot()["events"].size()==1);
+ }
+ {Monitor m(directory);check(m.snapshot()["instruments"].size()==7);
+  check(m.snapshot()["events"].size()==1);}
+ std::filesystem::remove(directory);
+
  std::filesystem::remove(path);std::cout<<count<<" monitor assertions passed\n";
 }
