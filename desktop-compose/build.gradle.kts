@@ -1,8 +1,8 @@
 plugins {
-    kotlin("jvm") version "2.4.20"
-    kotlin("plugin.serialization") version "2.4.20"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.4.20"
-    id("org.jetbrains.compose") version "1.12.0"
+    kotlin("jvm") version "2.1.21"
+    kotlin("plugin.serialization") version "2.1.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.1.21"
+    id("org.jetbrains.compose") version "1.8.2"
 }
 
 group = "com.investmentradar"
@@ -15,7 +15,7 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
     testImplementation("junit:junit:4.13.2")
 }
 

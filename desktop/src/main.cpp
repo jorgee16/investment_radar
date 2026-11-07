@@ -1,4 +1,6 @@
 #include "platform_services.hpp"
+#include "price_monitor.hpp"
+#include "monitor_source.hpp"
 #include <httplib.h>
 #ifdef IR_WITH_WEBVIEW
 #include <webview/webview.h>
@@ -128,6 +130,9 @@ int main(int argc, char **argv) {
         if (!std::filesystem::is_regular_file(assets / "index.html"))
             throw std::runtime_error("UI assets missing; build the executable again");
         Runtime rt;
+        ConfigStore monitorConfig;
+        ir::alerts::Monitor monitor((monitorConfig.path().parent_path()/"price-monitor.sqlite3").string());
+        std::jthread monitorThread([&](std::stop_token stop){ir::alerts::runSource(monitor,stop);});
         httplib::Server server;
         server.set_payload_max_length(16384);
         server.new_task_queue = [] { return new httplib::ThreadPool(4); };
@@ -177,6 +182,11 @@ int main(int argc, char **argv) {
             s["platform"] = "desktop";
             reply(r, s);
         });
+        server.Get("/api/monitor", [&](const auto &, auto &r) { reply(r,monitor.snapshot()); });
+        server.Post("/api/monitor/rules", [&](const auto &q, auto &r) { reply(r,monitor.save(json::parse(q.body))); });
+        server.Post("/api/monitor/action", [&](const auto &q, auto &r) { auto j=json::parse(q.body);monitor.action(j.at("id"),j.at("action"));reply(r,{{"ok",true}}); });
+        server.Post("/api/monitor/claim", [&](const auto &, auto &r) { reply(r,monitor.claim(ir::alerts::wallNow())); });
+        server.Post("/api/monitor/complete", [&](const auto &q, auto &r) { auto j=json::parse(q.body);monitor.complete(j.at("id"),j.at("accepted"),ir::alerts::wallNow());reply(r,{{"ok",true}}); });
         server.Get("/api/providers", [&](const auto &, auto &r) {
             reply(r, rt.read([](auto &s) { return s.providers(); }));
         });
