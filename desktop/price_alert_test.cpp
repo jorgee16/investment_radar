@@ -55,17 +55,21 @@ int main(){int count=0;auto check=[&](bool b){++count;if(!b)throw std::runtime_e
   const auto id=first[0]["deliveryId"].get<std::string>();
   check(first[0]["leaseToken"]!=renewed[0]["leaseToken"]);
   m.complete(id,first[0]["leaseToken"],true,2122);
-  bool sending=false;for(auto d:m.snapshot()["deliveries"])
+  // Keep the JSON document alive: iterating over a subobject of a temporary
+  // nlohmann::json value would be undefined behavior in a C++ range-for.
+  auto afterStale=m.snapshot();
+  bool sending=false;for(const auto& d:afterStale["deliveries"])
       if(d["id"]==id)sending=d["status"]=="sending";
-  if(!sending)std::cerr<<"Stale-ACK state: first="<<first.dump()<<" renewed="<<renewed.dump()<<" snapshot="<<m.snapshot().dump()<<std::endl;
   check(sending);
   m.complete(id,renewed[0]["leaseToken"],true,2123);
-  bool accepted=false;for(auto d:m.snapshot()["deliveries"])
+  auto afterAccept=m.snapshot();
+  bool accepted=false;for(const auto& d:afterAccept["deliveries"])
       if(d["id"]==id)accepted=d["status"]=="accepted";
   check(accepted);
   m.action(saved["id"],"pause");
   m.complete(renewed[1]["deliveryId"],renewed[1]["leaseToken"],true,2124);
-  for(auto d:m.snapshot()["deliveries"])
+  auto afterPause=m.snapshot();
+  for(const auto& d:afterPause["deliveries"])
       if(d["id"]!=id)check(d["status"]=="cancelled");
   check(m.snapshot()["quotes"].size()==1);
  }
