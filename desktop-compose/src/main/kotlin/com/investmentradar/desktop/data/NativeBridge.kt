@@ -10,6 +10,8 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 interface NativeBridge:AutoCloseable {
     suspend fun request(path:String, method:String="GET", body:String?=null):String
@@ -22,6 +24,7 @@ class LoopbackNativeBridge:NativeBridge {
     private var process:Process?=null
     private var port:Int=0
     private val monitorToken=UUID.randomUUID().toString()
+    private val startMutex=Mutex()
 
     private fun candidateHosts():List<File> {
         val env=System.getenv("IR_NATIVE_HOST")?.takeIf{it.isNotBlank()}?.let(::File)
@@ -43,7 +46,7 @@ class LoopbackNativeBridge:NativeBridge {
         ).distinctBy{it.absolutePath}
     }
 
-    private suspend fun ensureStarted()=withContext(Dispatchers.IO) {
+    private suspend fun ensureStarted()=startMutex.withLock { withContext(Dispatchers.IO) {
         if(started.get()) return@withContext
         val host=candidateHosts().firstOrNull{it.isFile}
             ?: error("Native C++ host not found. Build the C++ core or set IR_NATIVE_HOST.")
@@ -64,7 +67,7 @@ class LoopbackNativeBridge:NativeBridge {
             delay(50)
         }
         error("Native C++ host did not become ready.")
-    }
+    }}
 
     override suspend fun request(path:String,method:String,body:String?):String {
         ensureStarted()

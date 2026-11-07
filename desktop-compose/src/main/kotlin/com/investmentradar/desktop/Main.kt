@@ -41,6 +41,9 @@ fun main(){
         if(tray!=null){val menu=PopupMenu();menu.add(MenuItem("Abrir Investment Radar").apply{addActionListener{visible=true}});menu.add(MenuItem("Sair completamente").apply{addActionListener{quit()}});tray.popupMenu=menu;tray.addActionListener{visible=true;showMonitor=true};SystemTray.getSystemTray().add(tray)}
         onDispose{if(tray!=null)SystemTray.getSystemTray().remove(tray)}
     }
+    // Runs in the application composition, not a screen. Closing to tray keeps
+    // this connection and the native alert evaluator alive.
+    LaunchedEffect(bridge) { AlpacaIexStreamAgent(bridge).run() }
     LaunchedEffect(Unit){while(isActive){
         try {
             val emailReady=listOf("IR_MONITOR_SMTP_HOST","IR_MONITOR_SMTP_USER","IR_MONITOR_SMTP_PASSWORD","IR_MONITOR_SMTP_FROM").all{!System.getenv(it).isNullOrBlank()} && System.getenv("IR_MONITOR_EMAIL_ENABLED")=="1"
