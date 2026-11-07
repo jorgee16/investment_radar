@@ -71,6 +71,36 @@ int main(){int count=0;auto check=[&](bool b){++count;if(!b)throw std::runtime_e
  std::filesystem::remove(retryPath);
  // Crash at the fifth attempt: stale 'sending' must eventually become 'failed'.
  auto exhausted=(std::filesystem::temp_directory_path()/"ir-monitor-exhausted.sqlite3").string();
+
+ // ASK and LAST are independent prices with independent exchange timestamps.
+ auto both=alpacaQuote("JPM",{{"ax","V"},{"bx","V"},{"ap",151.0},{"bp",149.0},
+             {"t","2026-11-06T15:00:01.000000001Z"}},1793977201,true);
+ alpacaTrade(both,{{"x","V"},{"p",149.75},{"t","2026-11-06T15:00:00.900000001Z"}});
+ check(both.last==decimal("149.75"));
+ check(both.lastTime<both.exchangeTime);
+ State as,ls;
+ auto aRule=parseRule({{"instrument","JPM"},{"target","150"},{"basis","ASK"}});
+ auto lRule=parseRule({{"instrument","JPM"},{"target","150"},{"basis","LAST"}});
+ check(evaluate(aRule,as,both,1793977201)=="armed"); // ASK 151
+ check(evaluate(lRule,ls,both,1793977201)=="trigger"); // LAST 149.75
+ auto wrong=both;wrong.last.reset();wrong.lastTime=0;wrong.lastNanos=0;
+ alpacaTrade(wrong,{{"x","Q"},{"p",140.0},{"t","2026-11-06T15:00:01.900000001Z"}});
+ check(!wrong.last);check(evaluate(lRule,ls,wrong,1793977201)=="stale");
+ // SMTP opt-in disabled: only local notification lease is claimed; email remains pending.
+ auto gatedPath=(std::filesystem::temp_directory_path()/"ir-monitor-gated.sqlite3").string();
+ std::filesystem::remove(gatedPath);
+ {Monitor m(gatedPath);m.save({{"instrument","JPM"},{"target","150"},
+                                     {"email","test@example.invalid"}});
+  Quote sample{"JPM","USD","IEX","alpaca-iex","open",decimal("150"),
+               decimal("149"),std::nullopt,4000,4000,true,false,0};
+  m.observe(sample,4000);
+  auto notification=m.claim(4000,false);
+  check(notification.size()==1&&notification[0]["channel"]=="notification");
+  auto emailClaim=m.claim(4001,true);
+  check(emailClaim.size()==1&&emailClaim[0]["channel"]=="email");
+ }
+ std::filesystem::remove(gatedPath);
+
  std::filesystem::remove(exhausted);
  {Monitor m(exhausted);m.save({{"instrument","JPM"},{"target","150"}});
   Quote sample{"JPM","USD","IEX","alpaca-iex","open",decimal("150"),
