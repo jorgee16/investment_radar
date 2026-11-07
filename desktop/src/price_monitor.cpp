@@ -1,6 +1,8 @@
 #include "price_monitor.hpp"
 #include <ctime>
 #include <stdexcept>
+#include <algorithm>
+#include <cctype>
 
 namespace ir::alerts {
 namespace {
@@ -67,7 +69,7 @@ Monitor::Monitor(const std::string& path){
     Stmt version(db,"PRAGMA user_version");
     version.row();
     const int schema=sqlite3_column_int(version.p,0);
-    if(schema>2)throw std::runtime_error("Monitor database requires newer application");
+    if(schema>3)throw std::runtime_error("Monitor database requires newer application");
     sql("BEGIN IMMEDIATE");
     try {
         if(schema==0){
@@ -82,14 +84,21 @@ Monitor::Monitor(const std::string& path){
             sql("ALTER TABLE delivery_outbox ADD COLUMN lease TEXT;");
         sql("CREATE TABLE IF NOT EXISTS latest_quotes("
             "instrument TEXT PRIMARY KEY,body TEXT NOT NULL);"
-            "PRAGMA user_version=2;");
+            "CREATE TABLE IF NOT EXISTS registered_instruments(id TEXT PRIMARY KEY,body TEXT NOT NULL);"
+            "PRAGMA user_version=3;");
         sql("COMMIT");
     }catch(...){sql("ROLLBACK");throw;}
 }
 Monitor::~Monitor(){if(db)sqlite3_close(db);}
+json Monitor::catalogUnlocked(){
+    json list=instruments();
+    Stmt s(db,"SELECT body FROM registered_instruments ORDER BY id");
+    while(s.row())list.push_back(json::parse(s.str(0)));
+    return list;
+}
 json Monitor::snapshot(){
     std::lock_guard lock(mu);
-    json j={{"health",health},{"instruments",instruments()},{"rules",json::array()},
+    json j={{"health",health},{"instruments",catalogUnlocked()},{"rules",json::array()},
             {"events",json::array()},{"deliveries",json::array()},
             {"quotes",json::array()}};
     for(auto table:{"alert_rules","alert_events","latest_quotes"}){
@@ -113,9 +122,97 @@ json Monitor::snapshot(){
         {{"id",d.str(0)},{"status",d.str(1)},{"attempts",sqlite3_column_int(d.p,2)}});
     return j;
 }
+namespace {
+bool validUpper(const std::string& s,size_t lo,size_t hi,const std::string& extra=""){
+    if(s.size()<lo||s.size()>hi)return false;
+    return std::all_of(s.begin(),s.end(),[&](unsigned char c){
+        return (c>='A'&&c<='Z')||(c>='0'&&c<='9')||
+               extra.find(char(c))!=std::string::npos;
+    });
+}
+std::string micFromAlpaca(const std::string& exchange){
+    if(exchange=="NYSE")return "XNYS";
+    if(exchange=="NASDAQ")return "XNAS";
+    if(exchange=="ARCA")return "ARCX";
+    if(exchange=="AMEX")return "XASE";
+    if(exchange=="BATS")return "BATS";
+    return "";
+}
+}
+// Register selected metadata only; user/provider catalog search is NOT entitlement proof.
+// Any new listing is initially unverified regardless of caller-supplied 'source'.
+json Monitor::registerInstrument(const json& input){
+    std::lock_guard lock(mu);
+    const std::string id=input.at("id").get<std::string>();
+    const std::string name=input.at("name").get<std::string>();
+    const std::string currency=input.at("currency").get<std::string>();
+    const std::string mic=input.at("mic").get<std::string>();
+    const std::string isin=input.value("isin",std::string());
+    if(!validUpper(id,1,32,".^:-")||name.empty()||name.size()>120||
+       name.find_first_of("\r\n")!=std::string::npos||
+       !validUpper(currency,3,3)||!validUpper(mic,4,4)||
+       (!isin.empty()&&!validUpper(isin,12,12)))
+        throw std::invalid_argument("Invalid instrument identity");
+    for(const auto& seed:instruments())if(seed["id"]==id){
+        if(seed["currency"]!=currency||seed["mic"]!=mic||
+           (!isin.empty()&&seed["isin"]!=isin))
+            throw std::invalid_argument("Instrument identity conflicts with reference listing");
+        return seed;
+    }
+    Stmt old(db,"SELECT body FROM registered_instruments WHERE id=?");
+    old.text(1,id);
+    if(old.row()){
+        auto current=json::parse(old.str(0));
+        if(current["currency"]!=currency||current["mic"]!=mic||
+           current.value("isin","")!=isin)
+            throw std::invalid_argument("Instrument already exists with a different listing");
+        return current;
+    }
+    json item={{"id",id},{"name",name},{"currency",currency},{"mic",mic},
+               {"isin",isin},{"source","unverified"},{"verification","catalog-selection-only"}};
+    Stmt insert(db,"INSERT INTO registered_instruments(id,body) VALUES(?,?)");
+    insert.text(1,id);insert.text(2,item.dump());insert.row();
+    return item;
+}
+json Monitor::authorizeIexAsset(const std::string& symbol,const json& asset){
+    std::lock_guard lock(mu);
+    if(!asset.is_object()||asset.value("symbol","")!=symbol||
+       asset.value("asset_class","")!="us_equity"||
+       asset.value("status","")!="active")
+        throw std::invalid_argument("Alpaca asset does not match active US equity");
+    const auto mic=micFromAlpaca(asset.value("exchange",""));
+    if(mic.empty())throw std::invalid_argument("Unsupported US listing exchange");
+    Stmt old(db,"SELECT body FROM registered_instruments WHERE id=?");
+    old.text(1,symbol);
+    if(!old.row())throw std::invalid_argument("Register instrument first");
+    auto current=json::parse(old.str(0));
+    if(current.value("currency","")!="USD"||current.value("mic","")!=mic)
+        throw std::invalid_argument("Alpaca asset conflicts with selected listing");
+    current["source"]="alpaca-iex";
+    current["verification"]="alpaca-asset-lookup; live IEX data entitlement NOT tested";
+    // The broker asset-directory lookup alone does not confirm quote permission.
+    sql("BEGIN IMMEDIATE");
+    try{
+        Stmt update(db,"UPDATE registered_instruments SET body=? WHERE id=?");
+        update.text(1,current.dump());update.text(2,symbol);update.row();
+        Stmt rules(db,"SELECT id,body FROM alert_rules");
+        while(rules.row()){
+            Rule r=load(json::parse(rules.str(1)));
+            if(r.instrument!=symbol)continue;
+            cancelPending(db,r.id);
+            r.feed="alpaca-iex";r.venue="IEX";r.generation++;
+            Stmt u(db,"UPDATE alert_rules SET body=? WHERE id=?");
+            u.text(1,ruleJson(r).dump());u.text(2,r.id);u.row();
+            states.erase(r.id);
+        }
+        sql("COMMIT");
+    }catch(...){sql("ROLLBACK");throw;}
+    return current;
+}
+
 json Monitor::save(const json& j){
     std::lock_guard lock(mu);
-    Rule r=parseRule(j);
+    Rule r=parseRule(j,catalogUnlocked());
     sql("BEGIN IMMEDIATE");
     try {
         if(r.id.empty()){

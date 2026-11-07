@@ -31,5 +31,6 @@ Quote alpacaQuote(const std::string& symbol,const json&,int64_t now,bool marketO
 void alpacaTrade(Quote&,const json&);
 json instruments();
 Rule parseRule(const json&);
+Rule parseRule(const json&,const json& listingCatalog);
 json ruleJson(const Rule&);
 }

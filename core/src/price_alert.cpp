@@ -22,12 +22,13 @@ json instruments(){return json::array({
  {{"id","JPM"},{"name","JPMorgan Chase & Co"},{"isin","US46625H1005"},{"mic","XNYS"},{"currency","USD"},{"source","alpaca-iex"}},
  {{"id","GS"},{"name","Goldman Sachs Group"},{"isin","US38141G1040"},{"mic","XNYS"},{"currency","USD"},{"source","alpaca-iex"}},
  {{"id","TSM"},{"name","TSMC sponsored ADR"},{"isin","US8740391003"},{"mic","XNYS"},{"currency","USD"},{"source","alpaca-iex"}}});}
-Rule parseRule(const json& j){
+Rule parseRule(const json& j,const json& catalog){
  Rule r;r.id=j.value("id","");r.instrument=j.at("instrument");r.basis=j.value("basis","ASK");r.mode=j.value("mode","LEVEL");r.target=decimal(j.at("target").get<std::string>());r.email=j.value("email","");r.maxAge=j.value("maxAge",60);
- bool found=false;for(auto i:instruments())if(i["id"]==r.instrument){r.currency=i["currency"];r.feed=i["source"];r.venue=r.feed=="alpaca-iex"?"IEX":i["mic"].get<std::string>();found=true;}
+ bool found=false;for(const auto& i:catalog)if(i["id"]==r.instrument){r.currency=i["currency"];r.feed=i["source"];r.venue=r.feed=="alpaca-iex"?"IEX":i["mic"].get<std::string>();found=true;}
  if(!found||r.maxAge<1||r.maxAge>300||(r.basis!="ASK"&&r.basis!="LAST")||(r.mode!="LEVEL"&&r.mode!="CROSS")||r.email.size()>254||r.email.find_first_of("\r\n")!=std::string::npos||(!r.email.empty()&&(r.email.find('@')==std::string::npos||r.email.find_first_of(" <>\t")!=std::string::npos)))throw std::invalid_argument("Invalid rule");
  return r;
 }
+Rule parseRule(const json& j){return parseRule(j,instruments());}
 json ruleJson(const Rule&r){return {{"id",r.id},{"instrument",r.instrument},{"currency",r.currency},{"venue",r.venue},{"feed",r.feed},{"basis",r.basis},{"mode",r.mode},{"targetUnits",r.target},{"maxAge",r.maxAge},{"armed",r.armed},{"generation",r.generation},{"email",r.email}};}
 std::string evaluate(const Rule&r,State&s,const Quote&q,int64_t now){
  auto reject=[&](const char*why){s={};return std::string(why);};

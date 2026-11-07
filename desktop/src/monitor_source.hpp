@@ -13,7 +13,7 @@ inline void runSource(Monitor&m,std::stop_token stop){
  if(key.empty()||secret.empty()){m.disconnect("credentials-missing");return;}
  int failures=0,wait=1;while(!stop.stop_requested()){
   try{
-   auto snapshot=m.snapshot();std::string symbols,lastSymbols;for(auto i:instruments()){bool active=false,needsLast=false;for(auto r:snapshot["rules"])if(r["armed"]==true&&r["instrument"]==i["id"]){active=true;if(r["basis"]=="LAST")needsLast=true;}if(active&&i["source"]=="alpaca-iex"){if(!symbols.empty())symbols+=",";symbols+=i["id"].get<std::string>();if(needsLast){if(!lastSymbols.empty())lastSymbols+=",";lastSymbols+=i["id"].get<std::string>();}}}
+   auto snapshot=m.snapshot();std::string symbols,lastSymbols;for(auto i:snapshot["instruments"]){bool active=false,needsLast=false;for(auto r:snapshot["rules"])if(r["armed"]==true&&r["instrument"]==i["id"]){active=true;if(r["basis"]=="LAST")needsLast=true;}if(active&&i["source"]=="alpaca-iex"){if(!symbols.empty())symbols+=",";symbols+=i["id"].get<std::string>();if(needsLast){if(!lastSymbols.empty())lastSymbols+=",";lastSymbols+=i["id"].get<std::string>();}}}
    if(symbols.empty()){m.sourceHealth({{"status","idle"},{"detail","No armed supported instruments; EU feeds unverified"}});wait=10;}
    else{
     httplib::Headers h={{"APCA-API-KEY-ID",key},{"APCA-API-SECRET-KEY",secret}};
@@ -45,7 +45,7 @@ inline void runSource(Monitor&m,std::stop_token stop){
        {"transport","HTTP polling 10 seconds"},{"consolidated",false},
        {"lastTradeTransport",tradeStatus}});
      // No arbitrary/unrequested symbols from provider data may become monitored.
-     for(auto i:instruments()){
+     for(auto i:snapshot["instruments"]){
       if(i["source"]!="alpaca-iex")continue;
       auto symbol=i["id"].get<std::string>();
       if(!quotes.contains(symbol)||!quotes[symbol].is_object())continue;

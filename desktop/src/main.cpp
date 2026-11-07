@@ -6,6 +6,7 @@
 #include <webview/webview.h>
 #endif
 #include <atomic>
+#include <algorithm>
 #include <csignal>
 #include <ctime>
 #include <fstream>
@@ -183,6 +184,37 @@ int main(int argc, char **argv) {
             reply(r, s);
         });
         server.Get("/api/monitor", [&](const auto &, auto &r) { reply(r,monitor.snapshot()); });
+        server.Get("/api/monitor/search", [&](const auto &q, auto &r) {
+            if(!q.has_param("query"))throw std::invalid_argument("Search query required");
+            reply(r,rt.read([&](auto &s){return s.search(q.get_param_value("query"));}));
+        });
+        server.Post("/api/monitor/instruments", [&](const auto &q, auto &r) {
+            reply(r,monitor.registerInstrument(json::parse(q.body)));
+        });
+        server.Post("/api/monitor/verify-iex", [&](const auto &q, auto &r) {
+            auto request=json::parse(q.body);
+            auto symbol=request.at("symbol").get<std::string>();
+            if(symbol.empty()||symbol.size()>32||
+               !std::all_of(symbol.begin(),symbol.end(),[](unsigned char c){
+                   return (c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='-';
+               }))throw std::invalid_argument("Invalid US symbol");
+            if(ir::alerts::environment("IR_MONITOR_ALPACA_ENABLED")!="1")
+                throw std::invalid_argument("Alpaca IEX requires explicit local opt-in");
+            auto key=ir::alerts::environment("IR_MONITOR_ALPACA_KEY");
+            auto secret=ir::alerts::environment("IR_MONITOR_ALPACA_SECRET");
+            if(key.empty()||secret.empty())
+                throw std::invalid_argument("Alpaca credentials not configured locally");
+            httplib::SSLClient client("paper-api.alpaca.markets");
+            client.enable_server_certificate_verification(true);
+            client.set_connection_timeout(5);
+            client.set_read_timeout(10);
+            auto resp=client.Get("/v2/assets/"+symbol,
+                httplib::Headers{{"APCA-API-KEY-ID",key},{"APCA-API-SECRET-KEY",secret}});
+            if(!resp||resp->status!=200)
+                throw std::invalid_argument("Alpaca asset lookup unavailable or unauthorized");
+            reply(r,monitor.authorizeIexAsset(symbol,json::parse(resp->body)));
+        });
+
         server.Post("/api/monitor/rules", [&](const auto &q, auto &r) { reply(r,monitor.save(json::parse(q.body))); });
         server.Post("/api/monitor/action", [&](const auto &q, auto &r) { auto j=json::parse(q.body);monitor.action(j.at("id"),j.at("action"));reply(r,{{"ok",true}}); });
         server.Post("/api/monitor/claim", [&](const auto &q, auto &r) { auto j=json::parse(q.body);reply(r,monitor.claim(ir::alerts::wallNow(),j.value("emailEnabled",false))); });
