@@ -166,8 +166,8 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                                         System.currentTimeMillis() < clockExpires)
                                 }
                                 bridge.post("/api/monitor/ingest", event.toString())
-                            } catch (_: CancellationException) {
-                                throw
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
                             } catch (_: Exception) {
                                 signals.trySend("backend-error")
                                 break
