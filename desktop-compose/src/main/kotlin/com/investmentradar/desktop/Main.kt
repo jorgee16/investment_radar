@@ -43,7 +43,8 @@ fun main(){
     }
     LaunchedEffect(Unit){while(isActive){
         try {
-            val deliveries=Json.parseToJsonElement(bridge.post("/api/monitor/claim","{}")).jsonArray
+            val emailReady=listOf("IR_MONITOR_SMTP_HOST","IR_MONITOR_SMTP_USER","IR_MONITOR_SMTP_PASSWORD","IR_MONITOR_SMTP_FROM").all{!System.getenv(it).isNullOrBlank()} && System.getenv("IR_MONITOR_EMAIL_ENABLED")=="1"
+            val deliveries=Json.parseToJsonElement(bridge.post("/api/monitor/claim",buildJsonObject{put("emailEnabled",emailReady)}.toString())).jsonArray
             for(item in deliveries){val e=item.jsonObject
                 val accepted=withContext(Dispatchers.IO){runCatching{
                     if(e.text("channel")=="email") MonitorEmail.send(e)
