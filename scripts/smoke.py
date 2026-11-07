@@ -45,7 +45,8 @@ def run(binary):
    mon=req("/api/monitor")
    assert mon["rules"]==[] and mon["events"]==[] and len(mon["instruments"])==6
    assert mon["health"]["status"]=="disabled"
-   assert req("/api/monitor/claim",{"emailEnabled":False})==[]
+   req("/api/monitor/claim",{"emailEnabled":False},403)
+   assert req("/api/monitor/claim",{"emailEnabled":False},ingest_token=True)==[]
    req("/api/monitor/ingest",{"kind":"q","marketOpen":True,"data":{}},403)
    # A capability token must not allow an unregistered/malformed event.
    req("/api/monitor/ingest",{"kind":"q","marketOpen":True,"data":{}},400,ingest_token=True)
@@ -68,6 +69,12 @@ def run(binary):
    req("/api/monitor/ingest",tick,ingest_token=True)
    assert len(req("/api/monitor")["events"])==1
    assert req("/api/monitor")["quotes"][0]["venue"]=="IEX"
+   sends=req("/api/monitor/claim",{"emailEnabled":False},ingest_token=True)
+   assert len(sends)==1 and sends[0]["channel"]=="notification"
+   report={"id":sends[0]["deliveryId"],"leaseToken":sends[0]["leaseToken"],"accepted":True}
+   req("/api/monitor/complete",report,403)
+   assert req("/api/monitor/complete",report,ingest_token=True)["ok"] is True
+   assert req("/api/monitor")["deliveries"][0]["status"]=="accepted"
    req("/api/monitor/action",{"id":rule_id,"action":"pause"})
    assert next(r for r in req("/api/monitor")["rules"] if r["id"]==rule_id)["armed"]==False
    req("/api/monitor/action",{"id":rule_id,"action":"rearm"})

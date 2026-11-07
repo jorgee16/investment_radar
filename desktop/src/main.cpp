@@ -249,8 +249,8 @@ int main(int argc, char **argv) {
 
         server.Post("/api/monitor/rules", [&](const auto &q, auto &r) { reply(r,monitor.save(json::parse(q.body))); });
         server.Post("/api/monitor/action", [&](const auto &q, auto &r) { auto j=json::parse(q.body);monitor.action(j.at("id"),j.at("action"));reply(r,{{"ok",true}}); });
-        server.Post("/api/monitor/claim", [&](const auto &q, auto &r) { auto j=json::parse(q.body);reply(r,monitor.claim(ir::alerts::wallNow(),j.value("emailEnabled",false))); });
-        server.Post("/api/monitor/complete", [&](const auto &q, auto &r) { auto j=json::parse(q.body);monitor.complete(j.at("id"),j.at("leaseToken"),j.at("accepted"),ir::alerts::wallNow());reply(r,{{"ok",true}}); });
+        server.Post("/api/monitor/claim", [&](const auto &q, auto &r) { if(!requireIngestToken(q,r))return;auto j=json::parse(q.body);reply(r,monitor.claim(ir::alerts::wallNow(),j.value("emailEnabled",false))); });
+        server.Post("/api/monitor/complete", [&](const auto &q, auto &r) { if(!requireIngestToken(q,r))return;auto j=json::parse(q.body);monitor.complete(j.at("id"),j.at("leaseToken"),j.at("accepted"),ir::alerts::wallNow());reply(r,{{"ok",true}}); });
         server.Get("/api/providers", [&](const auto &, auto &r) {
             reply(r, rt.read([](auto &s) { return s.providers(); }));
         });
