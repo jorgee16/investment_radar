@@ -32,4 +32,27 @@ class AlpacaIexStreamContractTest {
         assertEquals(listOf("TSM"),value["trades"]?.jsonArray?.map{it.jsonPrimitive.content})
         assertNull(value["bars"])
     }
+    @Test fun alpacaErrorCodesDifferentiatePermanentAndTransientFailures() {
+        assertEquals("permission-denied", alpacaErrorAction(402))
+        assertEquals("permission-denied", alpacaErrorAction(409))
+        assertEquals("limit-exceeded", alpacaErrorAction(405))
+        assertEquals("connection-limit", alpacaErrorAction(406))
+        assertEquals("stream-overflow", alpacaErrorAction(407))
+        assertEquals("server-error", alpacaErrorAction(500))
+        assertEquals("protocol-error", alpacaErrorAction(400))
+    }
+
+    @Test fun subscriptionAcknowledgementMustMatchRequestedChannels() {
+        val expected=IexSubscriptions(setOf("JPM","GS"),setOf("TSM"))
+        val actual=Json.parseToJsonElement("""
+            {"T":"subscription","quotes":["GS","JPM"],"trades":["TSM"],"bars":[]}
+        """.trimIndent()).jsonObject
+        assertTrue(subscriptionMatches(actual,expected))
+        val partial=Json.parseToJsonElement("""
+            {"T":"subscription","quotes":["JPM"],"trades":["TSM"]}
+        """.trimIndent()).jsonObject
+        assertFalse(subscriptionMatches(partial,expected))
+        assertFalse(subscriptionMatches(Json.parseToJsonElement("{}").jsonObject,expected))
+    }
+
 }
