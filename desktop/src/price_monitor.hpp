@@ -11,7 +11,7 @@ class Monitor {
  explicit Monitor(const std::string& path);~Monitor();
  json snapshot(); json save(const json&);void action(const std::string&,const std::string&);
  void observe(const Quote&,int64_t);void disconnect(const std::string&);
- json claim(int64_t);void complete(const std::string&,bool,int64_t);
+ json claim(int64_t);void complete(const std::string&,const std::string&,bool,int64_t);
  void sourceHealth(const json&);
 };
 }
