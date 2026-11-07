@@ -11,12 +11,12 @@ struct Quote {
  std::string instrument, currency, venue, feed, session;
  std::optional<int64_t> ask,bid,last;
  int64_t exchangeTime=0, receivedTime=0;
- // Nanosecond ordering distinguishes multiple quotes within the same wall-clock second.
+ bool entitled=false, demo=false;
+ int delaySeconds=-1;
+ // Append new fields to preserve the original aggregate construction order.
  int64_t exchangeNanos=0;
  // LAST has its own trade timestamp; never evaluate a trade at the quote time.
  int64_t lastTime=0, lastNanos=0;
- bool entitled=false, demo=false;
- int delaySeconds=-1;
 };
 struct Rule {
  std::string id,instrument,currency,venue,feed,basis="ASK",mode="LEVEL",email;
