@@ -61,7 +61,7 @@ def run(binary):
    assert added["feed"]=="unverified"
    req("/api/monitor/verify-iex",{"symbol":"MSFT"},400)
 
-   assert len(req("/api/monitor")["rules"])==1
+   assert len(req("/api/monitor")["rules"])==2
    import datetime
    now=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="microseconds").replace("+00:00","Z")
    tick={"kind":"q","marketOpen":True,"data":{"T":"q","S":"JPM","ax":"V","bx":"V","ap":149.0,"bp":148.0,"t":now}}
@@ -69,9 +69,9 @@ def run(binary):
    assert len(req("/api/monitor")["events"])==1
    assert req("/api/monitor")["quotes"][0]["venue"]=="IEX"
    req("/api/monitor/action",{"id":rule_id,"action":"pause"})
-   assert req("/api/monitor")["rules"][0]["armed"]==False
+   assert next(r for r in req("/api/monitor")["rules"] if r["id"]==rule_id)["armed"]==False
    req("/api/monitor/action",{"id":rule_id,"action":"rearm"})
-   assert req("/api/monitor")["rules"][0]["armed"]==True
+   assert next(r for r in req("/api/monitor")["rules"] if r["id"]==rule_id)["armed"]==True
    stop();base=start()
    assert req("/api/status")["mode"]=="live"
    assert len(req("/api/monitor")["rules"])==2
