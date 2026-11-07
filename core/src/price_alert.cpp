@@ -34,15 +34,20 @@ std::string evaluate(const Rule&r,State&s,const Quote&q,int64_t now){
  if(!r.armed)return reject("paused-or-fired");
  if(q.instrument!=r.instrument||q.currency!=r.currency||q.venue!=r.venue||q.feed!=r.feed)return reject("identity-mismatch");
  if(!q.entitled||q.demo||q.delaySeconds<0||q.session!="open")return reject("unverified-or-closed");
- if(q.exchangeTime<=0||q.exchangeTime>now+2||q.receivedTime>now+2||now-q.exchangeTime>r.maxAge||q.receivedTime<q.exchangeTime-2||now-q.receivedTime>r.maxAge)return reject("stale");
- if((q.ask&&*q.ask<=0)||(q.bid&&*q.bid<=0)||(q.ask&&q.bid&&*q.bid>*q.ask))return reject("invalid-spread");
- auto p=r.basis=="ASK"?q.ask:q.last;if(!p||*p<=0)return reject("missing-price");
- const int64_t order=q.exchangeNanos>0?q.exchangeNanos:q.exchangeTime*1000000000LL;
+ const bool isLast=r.basis=="LAST";
+ const int64_t time=isLast?q.lastTime:q.exchangeTime;
+ const int64_t nanos=isLast?q.lastNanos:q.exchangeNanos;
+ if(time<=0||time>now+2||q.receivedTime>now+2||now-time>r.maxAge||
+    q.receivedTime<time-2||now-q.receivedTime>r.maxAge)return reject("stale");
+ if(!isLast&&((q.ask&&*q.ask<=0)||(q.bid&&*q.bid<=0)||
+    (q.ask&&q.bid&&*q.bid>*q.ask)))return reject("invalid-spread");
+ auto p=isLast?q.last:q.ask;if(!p||*p<=0)return reject("missing-price");
+ const int64_t order=nanos>0?nanos:time*1000000000LL;
  const int64_t previousOrder=s.sequence>0?s.sequence:s.timestamp*1000000000LL;
  if(order<=previousOrder)return "duplicate-or-out-of-order";
- bool continuous=s.previous&&q.exchangeTime>=s.timestamp&&q.exchangeTime-s.timestamp<=r.maxAge;
+ bool continuous=s.previous&&time>=s.timestamp&&time-s.timestamp<=r.maxAge;
  bool fire=*p<=r.target&&(r.mode=="LEVEL"||(continuous&&*s.previous>r.target));
- s.previous=p;s.timestamp=q.exchangeTime;s.sequence=order;return fire?"trigger":"armed";
+ s.previous=p;s.timestamp=time;s.sequence=order;return fire?"trigger":"armed";
 }
 namespace {
 // Alpaca documents RFC3339 with nanosecond precision. Reject malformed dates and
@@ -102,5 +107,19 @@ Quote alpacaQuote(const std::string&symbol,const json&j,int64_t now,bool open){
      }
  }
  return q;
+}
+void alpacaTrade(Quote& q,const json& trade){
+ // A trade is from IEX only when Alpaca identifies the execution exchange V.
+ if(!trade.is_object()||trade.value("x","")!="V")return;
+ if(!trade.contains("t")||!trade["t"].is_string()||
+    !trade.contains("p")||!trade["p"].is_number())return;
+ const auto parsed=alpacaTimestamp(trade["t"].get<std::string>());
+ if(!parsed)return;
+ try{
+     auto last=decimal(trade["p"].dump());
+     q.last=last;
+     q.lastTime=parsed->first;
+     q.lastNanos=parsed->second;
+ }catch(const std::invalid_argument&){ /* Invalid trade is unavailable, never guessed. */ }
 }
 }
