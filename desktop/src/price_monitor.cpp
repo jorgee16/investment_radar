@@ -45,8 +45,9 @@ json quoteJson(const Quote& q,int64_t now){
         {"askUnits",q.ask?json(*q.ask):json(nullptr)},
         {"bidUnits",q.bid?json(*q.bid):json(nullptr)},
         {"lastUnits",q.last?json(*q.last):json(nullptr)},
-        {"exchangeTime",q.exchangeTime},{"receivedTime",q.receivedTime},
+        {"exchangeTime",q.exchangeTime},{"lastTime",q.lastTime},{"receivedTime",q.receivedTime},
         {"ageSeconds",q.exchangeTime>0?json(now-q.exchangeTime):json(nullptr)},
+        {"lastAgeSeconds",q.lastTime>0?json(now-q.lastTime):json(nullptr)},
         {"entitled",q.entitled},{"demo",q.demo},{"delaySeconds",q.delaySeconds}
     };
 }
@@ -101,6 +102,8 @@ json Monitor::snapshot(){
             if(std::string(table)=="latest_quotes"){
                 const auto stamp=b.value("exchangeTime",int64_t{0});
                 b["ageSeconds"]=stamp>0?json(std::time(nullptr)-stamp):json(nullptr);
+                const auto lastStamp=b.value("lastTime",int64_t{0});
+                b["lastAgeSeconds"]=lastStamp>0?json(std::time(nullptr)-lastStamp):json(nullptr);
             }
             j[key].push_back(b);
         }
@@ -180,7 +183,7 @@ void Monitor::observe(const Quote& q,int64_t now){
         auto event=ruleJson(r);
         event["id"]=id;
         event["ruleId"]=r.id;
-        event["observedAt"]=q.exchangeTime;event["receivedAt"]=now;
+        event["observedAt"]=r.basis=="LAST"?q.lastTime:q.exchangeTime;event["receivedAt"]=now;
         event["priceUnits"]=r.basis=="ASK"?*q.ask:*q.last;
         event["delaySeconds"]=q.delaySeconds;event["session"]=q.session;
         sql("BEGIN IMMEDIATE");
