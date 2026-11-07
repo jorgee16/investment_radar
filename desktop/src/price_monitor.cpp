@@ -214,7 +214,7 @@ void Monitor::sourceHealth(const json& j){
     std::lock_guard lock(mu);
     health=j;
 }
-json Monitor::claim(int64_t now){
+json Monitor::claim(int64_t now,bool includeEmail){
     std::lock_guard lock(mu);
     json rows=json::array();
     sql("BEGIN IMMEDIATE");
@@ -227,8 +227,9 @@ json Monitor::claim(int64_t now){
         }
         Stmt s(db,"SELECT id,body FROM delivery_outbox "
                   "WHERE status IN ('pending','sending') AND due<=? AND attempts<5 "
+                  "AND (? OR id NOT LIKE '%:email') "
                   "ORDER BY due,rowid LIMIT 10");
-        s.num(1,now);
+        s.num(1,now);s.num(2,includeEmail?1:0);
         while(s.row()){
             const auto id=s.str(0);
             Stmt token(db,"SELECT lower(hex(randomblob(16)))");token.row();
