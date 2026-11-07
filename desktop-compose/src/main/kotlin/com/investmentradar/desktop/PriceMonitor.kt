@@ -78,14 +78,14 @@ internal object MonitorEmail {
    Text("${r.text("basis")} · ${r.text("venue")} · ${r.text("mode")} · ${if(r["armed"]?.jsonPrimitive?.booleanOrNull==true)"Armado" else "Pausado / disparado"}")
    val quote=quotes.firstOrNull{it.text("instrument")==r.text("instrument")}
    val observed=quote?.get(if(r.text("basis")=="ASK")"askUnits" else "lastUnits")
-   val age=quote?.get("ageSeconds")?.jsonPrimitive?.longOrNull
+   val age=quote?.get(if(r.text("basis")=="LAST")"lastAgeSeconds" else "ageSeconds")?.jsonPrimitive?.longOrNull
    val maxAge=r["maxAge"]?.jsonPrimitive?.longOrNull?:60L
    val price=observed?.jsonPrimitive?.longOrNull
    val threshold=r["targetUnits"]?.jsonPrimitive?.longOrNull
    val percent=if(price!=null&&threshold!=null&&threshold>0)
        "%.2f%%".format(java.util.Locale.ROOT, (price.toDouble()/threshold-1.0)*100.0) else "—"
    Text("Cotação ${r.text("basis")}: ${units(observed)} ${r.text("currency")} · distância ${percent}")
-   Text("Feed: ${quote?.text("feed")?:r.text("feed")} / ${quote?.text("venue")?:r.text("venue")} · hora bolsa ${quote?.get("exchangeTime")?.jsonPrimitive?.longOrNull?.takeIf{it>0}?.let{java.time.Instant.ofEpochSecond(it).toString()}?:"indisponível"}",
+   Text("Feed: ${quote?.text("feed")?:r.text("feed")} / ${quote?.text("venue")?:r.text("venue")} · hora bolsa ${quote?.get(if(r.text("basis")=="LAST")"lastTime" else "exchangeTime")?.jsonPrimitive?.longOrNull?.takeIf{it>0}?.let{java.time.Instant.ofEpochSecond(it).toString()}?:"indisponível"}",
         style=MaterialTheme.typography.bodySmall)
    Text("Qualidade: ${if(quote==null)"Sem observações" else if(age==null)"Timestamp inválido" else if(age>maxAge)"COTAÇÃO ANTIGA (${age}s)" else if(quote.text("session")!="open")"Mercado fechado" else if(quote["entitled"]?.jsonPrimitive?.booleanOrNull!=true)"Sem permissão confirmada" else "Observação recebida há ${age}s"}",
         style=MaterialTheme.typography.bodySmall)
