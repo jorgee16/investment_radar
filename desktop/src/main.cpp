@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
         server.Post("/api/monitor/stream-status", [&](const auto &q, auto &r) {
             if(!requireIngestToken(q,r))return;
             auto body=json::parse(q.body);
-            const std::string status=body.at("status").get<std::string>();
+            const std::string status=body.at("status").template get<std::string>();
             if(status=="disconnected"||status=="stream-overflow"||status=="permission-denied"||
                status=="clock-unavailable"){
                 monitor.disconnect(status);
@@ -224,7 +224,7 @@ int main(int argc, char **argv) {
         });
         server.Post("/api/monitor/verify-iex", [&](const auto &q, auto &r) {
             auto request=json::parse(q.body);
-            auto symbol=request.at("symbol").get<std::string>();
+            auto symbol=request.at("symbol").template get<std::string>();
             if(symbol.empty()||symbol.size()>32||
                !std::all_of(symbol.begin(),symbol.end(),[](unsigned char c){
                    return (c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='.'||c=='-';

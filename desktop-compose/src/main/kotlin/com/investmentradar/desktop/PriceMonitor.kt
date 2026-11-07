@@ -107,7 +107,7 @@ internal object MonitorEmail {
            "Pesquisa em DEMO — resultados não confirmam o instrumento nem a fonte." else
            "Metadados de pesquisa — confirma a bolsa, ISIN e moeda antes de registar."
        }catch(_:Exception){searchMode="Pesquisa indisponível. Podes introduzir os dados manualmente.";matches=emptyList()}
-     }){Text("Pesquisar catálogo")}
+     }}){Text("Pesquisar catálogo")}
   }}
   item{if(searchMode.isNotBlank())Text(searchMode,style=MaterialTheme.typography.bodySmall)}
   items(matches){hit->
@@ -141,7 +141,7 @@ internal object MonitorEmail {
                refresh();selected=snapshot["instruments"]?.jsonArray?.map{it.jsonObject}?.firstOrNull{it.text("id")==i.text("id")}
                error="Símbolo verificado no catálogo Alpaca. O acesso a cotações IEX continua sujeito a permissões reais."
              }catch(_:Exception){error="Verificação Alpaca indisponível ou símbolo/bolsa incompatível. Requer autorização local."}
-         }){Text("Verificar símbolo na Alpaca (IEX gratuito, opcional)")}
+         }}){Text("Verificar símbolo na Alpaca (IEX gratuito, opcional)")}
        }
      }
   }
