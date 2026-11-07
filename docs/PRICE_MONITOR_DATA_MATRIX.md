@@ -30,7 +30,9 @@
 
 ## Implementation reality at checkpoint
 
-The opt-in prototype uses the official Alpaca **HTTP latest quotes endpoint** every approximately 10 seconds. It does NOT use WebSocket streaming and may miss a temporary crossing between samples. The prototype now calls the separate official IEX HTTP latest trades endpoint **only when LAST rules are armed**, preserving independent trade timestamps. LAST access is still **not authenticated/tested**. Source set is three US symbols only; European subscriptions are unimplemented. Source/status/venue/age and last-vs-ask must be visible before claims of working monitoring.
+For **Compose Desktop**, the opt-in implementation now defaults to the official **Alpaca IEX WebSocket** at https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data . It subscribes to quote or trade channels only for registered and armed symbols, with a cap of 30 unique symbols and independent timestamps. A per-process token protects the native ingestion API; the C++ alert engine remains separate from charts and window rendering. For a deliberate fallback, `IR_MONITOR_TRANSPORT=http` retains the existing latest quotes/trades HTTP polling at about ten seconds, which can miss transient crosses. None of these transports has been tested with user credentials or live feed entitlements.
+
+The monitor can now register further instruments (selected name/ticker/ISIN/MIC/currency). Registrations start with **source=unverified**. A user can explicitly authorize US symbol lookup via the read-only Alpaca paper assets endpoint and enable the IEX adapter only after symbol, exchange and US equity class match. This verifies **asset identity at Alpaca**, not an ISIN, trading account eligibility or actual bid/ask subscription permission. European symbols are currently metadata-only with no authenticated feed; no automatic European source fallback is provided.
 
 ## Credential-safe manual probe when actual local authorization is available
 
