@@ -38,8 +38,8 @@ std::string evaluate(const Rule&r,State&s,const Quote&q,int64_t now){
  const bool isLast=r.basis=="LAST";
  // Streaming transmits independent quote and trade messages. A message for the
  // other price basis is not evidence of a gap or an invalid crossing.
- if(isLast&&!q.last)return "unrelated-quote-event";
- if(!isLast&&!q.ask)return "unrelated-trade-event";
+ if(isLast&&!q.last)return "missing-price";
+ if(!isLast&&!q.ask)return "missing-price";
  const int64_t time=isLast?q.lastTime:q.exchangeTime;
  const int64_t nanos=isLast?q.lastNanos:q.exchangeNanos;
  if(time<=0||time>now+2||q.receivedTime>now+2||now-time>r.maxAge||
