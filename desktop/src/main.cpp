@@ -212,10 +212,11 @@ int main(int argc, char **argv) {
             auto body=json::parse(q.body);
             const std::string status=body.at("status").template get<std::string>();
             if(status=="disconnected"||status=="stream-overflow"||status=="permission-denied"||
-               status=="clock-unavailable"){
+               status=="clock-unavailable"||status=="connection-limit"||
+               status=="protocol-error"||status=="server-error"){
                 monitor.disconnect(status);
             }else if(status=="connecting"||status=="connected"||status=="idle"||
-                     status=="limit-exceeded"||status=="subscribed"){
+                     status=="limit-exceeded"||status=="subscribed"||status=="subscription-mismatch"){
                 monitor.sourceHealth({{"status",status},{"feed","alpaca-iex"},
                      {"transport","WebSocket v2/iex"},{"consolidated",false},
                      {"detail","Subscription entitlement is instrument-specific"}});
