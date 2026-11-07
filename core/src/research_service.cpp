@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <ctime>
 #include <stdexcept>
 using json = nlohmann::json;
 namespace ir {
@@ -15,6 +16,21 @@ struct DemoRow {
     double price, change, pe, fpe, rev, eps, fcf, roe, debt, surprise, revisions;
     const char *sector;
 };
+// The synthetic earnings calendar must remain within the app's moving
+// [-7, +90] day view; a fixed sample date silently expires over time.
+std::string demo_earnings_date() {
+    const auto now = std::time(nullptr) + static_cast<std::time_t>(5) * 86400;
+    std::tm utc{};
+#ifdef _WIN32
+    gmtime_s(&utc, &now);
+#else
+    gmtime_r(&now, &utc);
+#endif
+    char day[16]{};
+    if (!std::strftime(day, sizeof(day), "%Y-%m-%d", &utc))
+        throw std::runtime_error("Cannot format UTC demo earnings date");
+    return day;
+}
 std::optional<DemoRow> demo_row(const std::string &s) {
     if (s == "AIR.PA")
         return DemoRow{"Airbus SE", "EUR", 188,  -.8,  28.4, 23.2, 12,
@@ -134,9 +150,10 @@ class DemoProvider final : public IMarketDataProvider {
     std::vector<EarningsEvent> earnings(const std::string &s, const std::string &f,
                                         const std::string &t) override {
         std::vector<EarningsEvent> out;
+        const auto date = demo_earnings_date();
         for (auto sym : {"AIR.PA", "JPM", "GS"})
-            if ((s.empty() || s == sym) && f <= "2026-10-28" && t >= "2026-10-28")
-                out.push_back({"2026-10-28",
+            if ((s.empty() || s == sym) && f <= date && t >= date)
+                out.push_back({date,
                                sym,
                                "Illustration",
                                "Synthetic demo event",

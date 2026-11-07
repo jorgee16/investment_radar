@@ -79,17 +79,36 @@ class AndroidFlowTest {
         }
         val node = ui.onNodeWithTag(tag)
         // Scroll only when offscreen; dialog and navigation nodes have no scroll parent.
-        runCatching { node.assertIsDisplayed() }.onFailure {
+        if (runCatching { node.assertIsDisplayed() }.isFailure) {
+            // First ask Compose to reveal the target through its nearest scroll
+            // parent. The editor has a VERTICAL scroll parent, not a horizontal
+            // one: never call onFirst() on an empty horizontal ancestor query.
             node.performScrollTo()
-            // performScrollTo targets the nearest scroll container. A period
-            // chip is inside a horizontal strip which can itself be below the
-            // vertical viewport on a short display. Reveal that strip first,
-            // then scroll horizontally to the same requested control.
+            ui.waitForIdle()
             if (runCatching { node.assertIsDisplayed() }.isFailure) {
-                node.onAncestors().filter(SemanticsMatcher.keyIsDefined(
+                val horizontal = node.onAncestors().filter(SemanticsMatcher.keyIsDefined(
                     androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange))
-                    .onFirst().performScrollTo()
-                node.performScrollTo()
+                if (horizontal.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()) {
+                    horizontal.onFirst().performScrollTo()
+                    node.performScrollTo()
+                    ui.waitForIdle()
+                }
+            }
+            if (runCatching { node.assertIsDisplayed() }.isFailure) {
+                // Very tall plan editors can remeasure after a data update or
+                // keyboard dismissal. Move the actual vertical viewport, then
+                // remeasure, rather than searching for a nonexistent horizontal
+                // container or clicking a clipped control.
+                val vertical = node.onAncestors().filter(SemanticsMatcher.keyIsDefined(
+                    androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange))
+                if (vertical.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()) {
+                    for (attempt in 0 until 6) {
+                        vertical.onFirst().performTouchInput { swipeUp() }
+                        ui.waitForIdle()
+                        node.performScrollTo()
+                        if (runCatching { node.assertIsDisplayed() }.isSuccess) break
+                    }
+                }
             }
         }
         if (tag in setOf("search-submit", "watch-submit")) {
@@ -559,6 +578,8 @@ class AndroidFlowTest {
         assertEquals(86.25, state().snapshot!!.getJSONObject("fund").getDouble("otherWeight"), .001)
     }
     @Test fun calendarSelectsDatesFiltersUniverseAndOpensTheRightAsset() {
+        // The demo dates must be relative to UTC now; a fixed historical sample
+        // would make this real UI scenario fail after its seven-day lookback.
         page(Page.Calendar)
         await("calendar events") { !state().auxiliaryLoading && state().events.isNotEmpty() }
         val date = java.time.LocalDate.parse(state().events.first().text("date"))

@@ -6,6 +6,7 @@
 #include "provider_error.hpp"
 #include "research_service.hpp"
 #include <cmath>
+#include <ctime>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -1469,6 +1470,29 @@ int main() {
         auto demo = ir::ResearchService({}, [](const std::string &) { return std::string("{}"); });
         CHECK(!demo.snapshot("AIR.PA")["history"].empty());
         CHECK(demo.snapshot("AIR.PA", 30, "unknown", false)["history"].empty());
+    });
+    test("demo earnings stay in the rolling calendar window", [] {
+        ir::ResearchService demo({}, [](const std::string &) { return std::string("{}"); });
+        const auto when = std::time(nullptr) + static_cast<std::time_t>(5) * 86400;
+        std::tm utc{};
+#ifdef _WIN32
+        gmtime_s(&utc, &when);
+#else
+        gmtime_r(&when, &utc);
+#endif
+        char iso[16]{};
+        CHECK(std::strftime(iso, sizeof(iso), "%Y-%m-%d", &utc) != 0);
+        const auto date = std::string(iso);
+        const auto events = demo.earnings("", "2000-01-01", "2999-12-31");
+        CHECK(events.size() == 3);
+        for (const auto &event : events) {
+            CHECK(event["date"] == date);
+            CHECK(event["source"] == "Demo");
+            CHECK(event["note"] == "Synthetic demo event");
+        }
+        CHECK(demo.earnings("", date, date).size() == 3);
+        CHECK(demo.earnings("AIR.PA", date, date).size() == 1);
+        CHECK(demo.earnings("", "2000-01-01", "2001-01-01").empty());
     });
     test("research impact aggregates lots and preserves total weights", [] {
         json input = {{"symbol", "NEW"}, {"amount", "300,50"}, {"mode", "live"},
