@@ -264,7 +264,8 @@ void Monitor::ingestIex(const json& frame,int64_t now){
         throw std::invalid_argument("Missing instrument symbol");
     const std::string symbol=data["S"].get<std::string>();
     const std::string kind=frame.value("kind","");
-    if(kind!="q"&&kind!="t")throw std::invalid_argument("Unsupported stream event");
+    if((kind!="q"&&kind!="t")||data.value("T","")!=kind)
+        throw std::invalid_argument("Unsupported stream event");
     bool found=false;
     {
         std::lock_guard lock(mu);

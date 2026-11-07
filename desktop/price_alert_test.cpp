@@ -147,5 +147,38 @@ int main(){int count=0;auto check=[&](bool b){++count;if(!b)throw std::runtime_e
   check(m.snapshot()["events"].size()==1);}
  std::filesystem::remove(directory);
 
+
+ // Native stream transport is fixture-driven and never touches a real provider.
+ auto streamPath=(std::filesystem::temp_directory_path()/"ir-monitor-stream-fixture.sqlite3").string();
+ std::filesystem::remove(streamPath);
+ {Monitor m(streamPath);
+  m.save({{"instrument","JPM"},{"target","150"},{"basis","ASK"},{"mode","CROSS"}});
+  m.save({{"instrument","JPM"},{"target","149"},{"basis","LAST"},{"mode","LEVEL"}});
+  auto quoteFrame=[&](const char* stamp,double ask){
+      return json{{"kind","q"},{"marketOpen",true},{"data",{
+          {"T","q"},{"S","JPM"},{"ax","V"},{"bx","V"},
+          {"ap",ask},{"bp",140.0},{"t",stamp}}}};
+  };
+  m.ingestIex(quoteFrame("2026-11-06T15:00:00.100000001Z",151.0),1793977200);
+  m.ingestIex({{"kind","t"},{"marketOpen",true},{"data",{
+          {"T","t"},{"S","JPM"},{"x","V"},{"p",150.0},
+          {"t","2026-11-06T15:00:00.200000001Z"}}}},1793977200);
+  m.ingestIex(quoteFrame("2026-11-06T15:00:00.300000001Z",150.0),1793977200);
+  // LAST intervening between two ASK events must not reset a witnessed ASK cross.
+  check(m.snapshot()["events"].size()==1);
+  m.ingestIex({{"kind","t"},{"marketOpen",true},{"data",{
+          {"T","t"},{"S","JPM"},{"x","V"},{"p",148.0},
+          {"t","2026-11-06T15:00:00.400000001Z"}}}},1793977200);
+  auto streamSnap=m.snapshot();
+  check(streamSnap["events"].size()==2);
+  check(streamSnap["quotes"][0]["askUnits"]==decimal("150"));
+  check(streamSnap["quotes"][0]["lastUnits"]==decimal("148"));
+  try{m.ingestIex({{"kind","q"},{"marketOpen",true},{"data",{
+          {"T","t"},{"S","JPM"},{"x","V"},{"p",1},
+          {"t","2026-11-06T15:00:00Z"}}}},1793977200);check(false);}
+  catch(const std::invalid_argument&){check(true);}
+ }
+ std::filesystem::remove(streamPath);
+
  std::filesystem::remove(path);std::cout<<count<<" monitor assertions passed\n";
 }
