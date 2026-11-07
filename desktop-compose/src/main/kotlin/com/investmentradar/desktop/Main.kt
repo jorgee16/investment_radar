@@ -60,7 +60,7 @@ fun main(){
         title="Investment Radar",
         state=rememberWindowState(width=1440.dp,height=900.dp)
     ){
-        RadarTheme{Column{Row{TextButton(onClick={showMonitor=false}){Text("Aplicação")};TextButton(onClick={showMonitor=true}){Text("Alertas de preço")};TextButton(onClick={quit()}){Text("Sair completamente")}};Box(Modifier.weight(1f)){if(showMonitor)PriceMonitorPanel(bridge) else RadarScreen(state,viewModel::dispatch)}}}
+        RadarTheme{Column{Row{TextButton(onClick={showMonitor=false}){Text("Aplicação")};TextButton(onClick={showMonitor=true}){Text("Alertas de preço")};TextButton(onClick={quit()}){Text("Sair completamente")}};Box(Modifier.weight(1f)){if(showMonitor)PriceMonitorPanel(bridge,state.watchSymbols,state.portfolio.map{it.symbol}) else RadarScreen(state,viewModel::dispatch)}}}
     }
 }
 
