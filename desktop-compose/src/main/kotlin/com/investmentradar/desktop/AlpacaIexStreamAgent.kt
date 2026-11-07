@@ -114,9 +114,10 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                                     val obj = part.jsonObject
                                     when (obj["T"]?.jsonPrimitive?.contentOrNull) {
                                         "success" -> signals.trySend(obj["msg"]?.jsonPrimitive?.contentOrNull.orEmpty())
-                                        "subscription" -> signals.trySend("subscribed")
+                                        "subscription" -> signals.trySend("subscription:" + obj.toString())
                                         "error" -> {
-                                            signals.trySend("permission-denied")
+                                            val code=obj["code"]?.jsonPrimitive?.intOrNull ?: 0
+                                            signals.trySend(alpacaErrorAction(code))
                                             webSocket.abort()
                                         }
                                         "q", "t" -> {
@@ -191,17 +192,22 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                                             put("secret", secret)
                                         }.toString())
                                     "authenticated" -> authenticated = true
-                                    "subscribed" -> status("subscribed")
-                                    "permission-denied" -> {
-                                        status("permission-denied")
-                                        return // never retry entitlement/auth errors automatically
+                                    "permission-denied", "protocol-error", "limit-exceeded" -> {
+                                        status(signal)
+                                        return // wait for explicit change, never retry permanent rejection
                                     }
-                                    "stream-overflow" -> {
-                                        status("stream-overflow")
-                                        error("Inbound quote buffer exceeded")
-                                    }
+                                    "stream-overflow", "connection-limit", "server-error" ->
+                                        throw TransientStreamFailure(signal)
                                     "disconnected", "stream-error", "backend-error" ->
-                                        error("IEX stream disconnected")
+                                        throw TransientStreamFailure("disconnected")
+                                    else -> if (signal.startsWith("subscription:")) {
+                                        val ack=runCatching {
+                                            Json.parseToJsonElement(signal.removePrefix("subscription:")).jsonObject
+                                        }.getOrNull()
+                                        val desired=selection()
+                                        status(if(ack!=null && subscriptionMatches(ack,desired))
+                                            "subscribed" else "subscription-mismatch")
+                                    }
                                 }
                             }
                             val now = System.currentTimeMillis()
@@ -250,6 +256,11 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                 failures = 0
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (failure: TransientStreamFailure) {
+                failures++
+                status(failure.reason)
+                val wait = min(300_000L, 5_000L * (1L shl min(failures, 6)))
+                delay(wait + Random.nextLong(0, 2_000))
             } catch (_: Exception) {
                 failures++
                 status("disconnected")
@@ -294,3 +305,27 @@ internal fun command(action: String, quotes: Set<String>, trades: Set<String>): 
         put("quotes", JsonArray(quotes.sorted().map(::JsonPrimitive)))
         put("trades", JsonArray(trades.sorted().map(::JsonPrimitive)))
     }.toString()
+
+/** Official Alpaca v2 WebSocket error semantics. */
+internal fun alpacaErrorAction(code: Int): String = when (code) {
+    401, 402, 404, 409 -> "permission-denied"
+    400, 403, 410 -> "protocol-error"
+    405 -> "limit-exceeded"
+    406 -> "connection-limit"
+    407 -> "stream-overflow"
+    500 -> "server-error"
+    else -> "server-error"
+}
+
+private class TransientStreamFailure(val reason: String) : RuntimeException()
+
+/** A subscribe command is not proof: match the provider's acknowledged channels. */
+internal fun subscriptionMatches(ack: JsonObject, expected: IexSubscriptions): Boolean {
+    if(ack["T"]?.jsonPrimitive?.contentOrNull != "subscription")return false
+    fun acknowledged(channel:String):Set<String>? {
+        val entries=ack[channel] as? JsonArray ?: return null
+        val names=entries.mapNotNull{(it as? JsonPrimitive)?.contentOrNull}
+        return if(names.size==entries.size) names.toSet() else null
+    }
+    return acknowledged("quotes")==expected.quotes && acknowledged("trades")==expected.trades
+}
