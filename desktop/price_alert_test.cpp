@@ -90,7 +90,7 @@ int main(){int count=0;auto check=[&](bool b){++count;if(!b)throw std::runtime_e
  check(evaluate(lRule,ls,both,1793977201)=="trigger"); // LAST 149.75
  auto wrong=both;wrong.last.reset();wrong.lastTime=0;wrong.lastNanos=0;
  alpacaTrade(wrong,{{"x","Q"},{"p",140.0},{"t","2026-11-06T15:00:01.900000001Z"}});
- check(!wrong.last);check(evaluate(lRule,ls,wrong,1793977201)=="stale");
+ check(!wrong.last);check(evaluate(lRule,ls,wrong,1793977201)=="missing-price");
  // SMTP opt-in disabled: only local notification lease is claimed; email remains pending.
  auto gatedPath=(std::filesystem::temp_directory_path()/"ir-monitor-gated.sqlite3").string();
  std::filesystem::remove(gatedPath);
