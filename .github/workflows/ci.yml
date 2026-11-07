@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test Android update identity guard
         run: python3 -m unittest discover -s scripts -p test_android_update_guard.py -v
+      - name: Test price-monitor Alpaca IEX probe (offline fixtures)
+        run: python3 -m unittest discover -s scripts -p test_price_monitor_probe.py -v
       - run: ./install.sh
       - run: node --check shared/web/app.js
       - run: node --test scripts/mobile_ui_contract.test.cjs
