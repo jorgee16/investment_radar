@@ -191,6 +191,37 @@ int main(int argc, char **argv) {
         server.Post("/api/monitor/instruments", [&](const auto &q, auto &r) {
             reply(r,monitor.registerInstrument(json::parse(q.body)));
         });
+        // Only the Compose process that launched this host knows this per-session
+        // capability token; hostile browser pages must not forge market ticks.
+        auto requireIngestToken=[&](const auto& request,auto& response)->bool{
+            const auto expected=ir::alerts::environment("IR_MONITOR_INGEST_TOKEN");
+            if(expected.empty()||request.get_header_value("X-IR-Monitor-Token")!=expected){
+                response.status=403;
+                reply(response,{{"error","Stream ingestion not authorized"}});
+                return false;
+            }
+            return true;
+        };
+        server.Post("/api/monitor/ingest", [&](const auto &q, auto &r) {
+            if(!requireIngestToken(q,r))return;
+            monitor.ingestIex(json::parse(q.body),ir::alerts::wallNow());
+            reply(r,{{"ok",true}});
+        });
+        server.Post("/api/monitor/stream-status", [&](const auto &q, auto &r) {
+            if(!requireIngestToken(q,r))return;
+            auto body=json::parse(q.body);
+            const std::string status=body.at("status").get<std::string>();
+            if(status=="disconnected"||status=="stream-overflow"||status=="permission-denied"||
+               status=="clock-unavailable"){
+                monitor.disconnect(status);
+            }else if(status=="connecting"||status=="connected"||status=="idle"||
+                     status=="limit-exceeded"||status=="subscribed"){
+                monitor.sourceHealth({{"status",status},{"feed","alpaca-iex"},
+                     {"transport","WebSocket v2/iex"},{"consolidated",false},
+                     {"detail","Subscription entitlement is instrument-specific"}});
+            }else throw std::invalid_argument("Unknown stream status");
+            reply(r,{{"ok",true}});
+        });
         server.Post("/api/monitor/verify-iex", [&](const auto &q, auto &r) {
             auto request=json::parse(q.body);
             auto symbol=request.at("symbol").get<std::string>();

@@ -256,13 +256,63 @@ void Monitor::action(const std::string& id,const std::string& a){
         states.erase(id);
     }catch(...){sql("ROLLBACK");throw;}
 }
+void Monitor::ingestIex(const json& frame,int64_t now){
+    if(!frame.is_object()||!frame.contains("data")||!frame["data"].is_object())
+        throw std::invalid_argument("Malformed stream frame");
+    const auto& data=frame["data"];
+    if(!data.contains("S")||!data["S"].is_string())
+        throw std::invalid_argument("Missing instrument symbol");
+    const std::string symbol=data["S"].get<std::string>();
+    const std::string kind=frame.value("kind","");
+    if(kind!="q"&&kind!="t")throw std::invalid_argument("Unsupported stream event");
+    bool found=false;
+    {
+        std::lock_guard lock(mu);
+        for(const auto& asset:catalogUnlocked()){
+            if(asset.value("id","")==symbol&&asset.value("source","")=="alpaca-iex"&&
+               asset.value("currency","")=="USD"){found=true;break;}
+        }
+    }
+    if(!found)throw std::invalid_argument("Unregistered or unverified stream instrument");
+    const bool open=frame.value("marketOpen",false);
+    Quote q;
+    if(kind=="q"){
+        q=alpacaQuote(symbol,data,now,open);
+    }else{
+        q.instrument=symbol;q.currency="USD";q.feed="alpaca-iex";q.venue="IEX";
+        q.session=open?"open":"closed";q.receivedTime=now;q.delaySeconds=0;
+        alpacaTrade(q,data);
+        q.entitled=q.last.has_value(); // Never mark an unknown venue as IEX.
+    }
+    observe(q,now);
+}
 void Monitor::observe(const Quote& q,int64_t now){
     std::lock_guard lock(mu);
-    // Display last observation with its true exchange age, even when it is stale.
+    // Merge separate quote/trade channels. Do not erase ASK when a new LAST
+    // arrives, or overwrite a newer channel timestamp with an older message.
     {
+        auto display=quoteJson(q,now);
+        Stmt prior(db,"SELECT body FROM latest_quotes WHERE instrument=?");
+        prior.text(1,q.instrument);
+        if(prior.row()){
+            const auto previous=json::parse(prior.str(0));
+            if(previous.value("currency","")==q.currency&&
+               previous.value("feed","")==q.feed&&previous.value("venue","")==q.venue){
+                const auto oldQuote=previous.value("exchangeTime",int64_t{0});
+                const auto oldTrade=previous.value("lastTime",int64_t{0});
+                if(q.exchangeTime==0||oldQuote>q.exchangeTime){
+                    for(auto key:{"askUnits","bidUnits","exchangeTime","ageSeconds"})
+                        if(previous.contains(key))display[key]=previous[key];
+                }
+                if(q.lastTime==0||oldTrade>q.lastTime){
+                    for(auto key:{"lastUnits","lastTime","lastAgeSeconds"})
+                        if(previous.contains(key))display[key]=previous[key];
+                }
+            }
+        }
         Stmt u(db,"INSERT INTO latest_quotes VALUES(?,?) "
                   "ON CONFLICT(instrument) DO UPDATE SET body=excluded.body");
-        u.text(1,q.instrument);u.text(2,quoteJson(q,now).dump());u.row();
+        u.text(1,q.instrument);u.text(2,display.dump());u.row();
     }
     health["lastReceived"]=now;
     health["instrument"]=q.instrument;

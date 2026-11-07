@@ -8,6 +8,7 @@ inline int64_t wallNow(){return std::time(nullptr);}
 inline std::string environment(const char*k){auto v=std::getenv(k);return v?v:"";}
 // Explicit free IEX path only. No fallback to SIP/paid feeds or existing provider keys.
 inline void runSource(Monitor&m,std::stop_token stop){
+ if(environment("IR_MONITOR_TRANSPORT")=="websocket"){m.disconnect("websocket-awaiting-connection");return;}
  if(environment("IR_MONITOR_ALPACA_ENABLED")!="1"){m.disconnect("disabled");return;}
  auto key=environment("IR_MONITOR_ALPACA_KEY"),secret=environment("IR_MONITOR_ALPACA_SECRET");
  if(key.empty()||secret.empty()){m.disconnect("credentials-missing");return;}

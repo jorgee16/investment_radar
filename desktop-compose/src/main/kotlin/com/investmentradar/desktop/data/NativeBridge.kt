@@ -9,6 +9,7 @@ import java.net.ServerSocket
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.UUID
 
 interface NativeBridge:AutoCloseable {
     suspend fun request(path:String, method:String="GET", body:String?=null):String
@@ -20,6 +21,7 @@ class LoopbackNativeBridge:NativeBridge {
     private val started=AtomicBoolean(false)
     private var process:Process?=null
     private var port:Int=0
+    private val monitorToken=UUID.randomUUID().toString()
 
     private fun candidateHosts():List<File> {
         val env=System.getenv("IR_NATIVE_HOST")?.takeIf{it.isNotBlank()}?.let(::File)
@@ -46,8 +48,13 @@ class LoopbackNativeBridge:NativeBridge {
         val host=candidateHosts().firstOrNull{it.isFile}
             ?: error("Native C++ host not found. Build the C++ core or set IR_NATIVE_HOST.")
         ServerSocket(0).use{port=it.localPort}
-        process=ProcessBuilder(host.absolutePath,"--headless","--port",port.toString())
-            .redirectErrorStream(true).start()
+        val command=ProcessBuilder(host.absolutePath,"--headless","--port",port.toString())
+            .redirectErrorStream(true)
+        command.environment()["IR_MONITOR_INGEST_TOKEN"]=monitorToken
+        if(System.getenv("IR_MONITOR_ALPACA_ENABLED")=="1" &&
+           System.getenv("IR_MONITOR_TRANSPORT")!="http")
+            command.environment()["IR_MONITOR_TRANSPORT"]="websocket"
+        process=command.start()
         repeat(100) {
             if(runCatching{rawRequest("/api/status","GET",null)}.isSuccess){
                 started.set(true)
@@ -71,6 +78,7 @@ class LoopbackNativeBridge:NativeBridge {
             readTimeout=20000
             requestMethod=method
             setRequestProperty("Host","127.0.0.1:$port")
+            setRequestProperty("X-IR-Monitor-Token",monitorToken)
             if(body!=null){
                 doOutput=true
                 setRequestProperty("Content-Type","application/json")
