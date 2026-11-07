@@ -47,7 +47,7 @@ internal object MonitorEmail {
  }
 }
 
-@Composable internal fun PriceMonitorPanel(bridge:NativeBridge){
+@Composable internal fun PriceMonitorPanel(bridge:NativeBridge,watchSymbols:List<String> = emptyList(),portfolioSymbols:List<String> = emptyList()){
  var snapshot by remember{mutableStateOf(JsonObject(emptyMap()))};var error by remember{mutableStateOf("")}
  var search by remember{mutableStateOf("")};var selected by remember{mutableStateOf<JsonObject?>(null)}
  var target by remember{mutableStateOf("")};var email by remember{mutableStateOf("")};var last by remember{mutableStateOf(false)};var cross by remember{mutableStateOf(false)};var editId by remember{mutableStateOf("")}
@@ -56,11 +56,14 @@ internal object MonitorEmail {
  LaunchedEffect(Unit){while(isActive){try{refresh();error=""}catch(_:Exception){error="Monitor indisponível. Verifica o host C++."};delay(2000)}}
  fun action(id:String,a:String){scope.launch{try{bridge.post("/api/monitor/action",buildJsonObject{put("id",id);put("action",a)}.toString());refresh()}catch(_:Exception){error="Não foi possível alterar o alerta."}}}
  val instruments=snapshot["instruments"]?.jsonArray?.map{it.jsonObject}.orEmpty()
+ val quotes=snapshot["quotes"]?.jsonArray?.map{it.jsonObject}.orEmpty()
+ val preferred=(watchSymbols+portfolioSymbols).toSet()
  LazyColumn(Modifier.fillMaxSize().padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
   item{Text("Alertas de preço",style=MaterialTheme.typography.headlineSmall);Text("O PC deve ficar ligado e sem suspensão. Fechar a janela mantém o monitor na área de notificação quando disponível.")}
   item{Card{Column(Modifier.padding(12.dp)){Text("Fonte: "+(snapshot["health"]?.jsonObject?.text("status")?:"a iniciar"));Text(snapshot["health"].toString(),style=MaterialTheme.typography.bodySmall);Text("IEX: uma praça americana, não preço consolidado. Europa: acesso não verificado. Sem ativação automática de fontes pagas.")}}}
   item{if(error.isNotEmpty())Text(error,color=MaterialTheme.colorScheme.error)}
-  item{OutlinedTextField(search,{search=it},label={Text("Procurar nome, ticker ou ISIN — seis instrumentos de validação")},modifier=Modifier.fillMaxWidth())}
+  item{Text("Carteira e favoritos verificados: "+instruments.filter{it.text("id") in preferred}.joinToString{it.text("id")}.ifEmpty{"nenhum dos seis símbolos testados"})}
+  item{OutlinedTextField(search,{search=it},label={Text("Procurar nome, ticker ou ISIN — catálogo inicial de seis instrumentos")},modifier=Modifier.fillMaxWidth())}
   items(instruments.filter{(it.text("name")+it.text("id")+it.text("isin")).contains(search,true)}){i->TextButton(onClick={selected=i}){Text("${if(selected==i) "✓ " else ""}${i.text("name")} · ${i.text("id")} · ${i.text("currency")} · ${i.text("mic")}")}}
   item{Card{Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
    Text(selected?.let{"${it.text("id")} · ${it.text("isin")}"}?:"Seleciona uma cotação concreta")
@@ -73,6 +76,19 @@ internal object MonitorEmail {
   items(snapshot["rules"]?.jsonArray?.map{it.jsonObject}.orEmpty()){r->Card{Column(Modifier.padding(12.dp)){
    Text("${r.text("instrument")} · ≤ ${units(r["targetUnits"])} ${r.text("currency")}",style=MaterialTheme.typography.titleMedium)
    Text("${r.text("basis")} · ${r.text("venue")} · ${r.text("mode")} · ${if(r["armed"]?.jsonPrimitive?.booleanOrNull==true)"Armado" else "Pausado / disparado"}")
+   val quote=quotes.firstOrNull{it.text("instrument")==r.text("instrument")}
+   val observed=quote?.get(if(r.text("basis")=="ASK")"askUnits" else "lastUnits")
+   val age=quote?.get("ageSeconds")?.jsonPrimitive?.longOrNull
+   val maxAge=r["maxAge"]?.jsonPrimitive?.longOrNull?:60L
+   val price=observed?.jsonPrimitive?.longOrNull
+   val threshold=r["targetUnits"]?.jsonPrimitive?.longOrNull
+   val percent=if(price!=null&&threshold!=null&&threshold>0)
+       "%.2f%%".format(java.util.Locale.ROOT, (price.toDouble()/threshold-1.0)*100.0) else "—"
+   Text("Cotação ${r.text("basis")}: ${units(observed)} ${r.text("currency")} · distância ${percent}")
+   Text("Feed: ${quote?.text("feed")?:r.text("feed")} / ${quote?.text("venue")?:r.text("venue")} · hora bolsa ${quote?.get("exchangeTime")?.jsonPrimitive?.longOrNull?.takeIf{it>0}?.let{java.time.Instant.ofEpochSecond(it).toString()}?:"indisponível"}",
+        style=MaterialTheme.typography.bodySmall)
+   Text("Qualidade: ${if(quote==null)"Sem observações" else if(age==null)"Timestamp inválido" else if(age>maxAge)"COTAÇÃO ANTIGA (${age}s)" else if(quote.text("session")!="open")"Mercado fechado" else if(quote["entitled"]?.jsonPrimitive?.booleanOrNull!=true)"Sem permissão confirmada" else "Observação recebida há ${age}s"}",
+        style=MaterialTheme.typography.bodySmall)
    Row{TextButton(onClick={editId=r.text("id");selected=instruments.find{it.text("id")==r.text("instrument")};target=units(r["targetUnits"]);email=r.text("email");last=r.text("basis")=="LAST";cross=r.text("mode")=="CROSS"}){Text("Editar")};for(a in listOf("pause","rearm","delete"))TextButton(onClick={action(r.text("id"),a)}){Text(mapOf("pause" to "Pausar","rearm" to "Rearmar","delete" to "Eliminar")[a]!!)}}
   }}}
   item{Text("Entregas: aceitação pelo serviço não confirma receção na caixa de email.");Text(snapshot["deliveries"]?.toString()?:"Sem entregas");Text("Histórico de eventos");Text(snapshot["events"]?.toString()?:"Sem eventos")}
