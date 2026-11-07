@@ -49,7 +49,7 @@ fun main(){
                     if(e.text("channel")=="email") MonitorEmail.send(e)
                     else {require(tray!=null);EventQueue.invokeAndWait{tray.displayMessage("Investment Radar", "${e.text("instrument")}: ${units(e["priceUnits"])} ${e.text("currency")} · ${e.text("basis")} · ${e.text("venue")}",TrayIcon.MessageType.INFO)}}
                 }.isSuccess}
-                bridge.post("/api/monitor/complete",buildJsonObject{put("id",e.text("deliveryId"));put("accepted",accepted)}.toString())
+                bridge.post("/api/monitor/complete",buildJsonObject{put("id",e.text("deliveryId"));put("leaseToken",e.text("leaseToken"));put("accepted",accepted)}.toString())
             }
         }catch(_:Exception){ /* Outbox leases expire; no credentials or payloads logged. */ }
         delay(2000)
