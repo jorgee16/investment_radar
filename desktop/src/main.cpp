@@ -216,7 +216,8 @@ int main(int argc, char **argv) {
                status=="protocol-error"||status=="server-error"){
                 monitor.disconnect(status);
             }else if(status=="connecting"||status=="connected"||status=="idle"||
-                     status=="limit-exceeded"||status=="subscribed"||status=="subscription-mismatch"){
+                     status=="limit-exceeded"||status=="subscribed"||
+                      status=="subscription-pending"||status=="subscription-mismatch"){
                 monitor.sourceHealth({{"status",status},{"feed","alpaca-iex"},
                      {"transport","WebSocket v2/iex"},{"consolidated",false},
                      {"detail","Subscription entitlement is instrument-specific"}});

@@ -55,4 +55,21 @@ class AlpacaIexStreamContractTest {
         assertFalse(subscriptionMatches(Json.parseToJsonElement("{}").jsonObject,expected))
     }
 
+    @Test fun streamTicksRequireMatchingConfirmedChannelAndSymbol() {
+        val quotesOnly = IexSubscriptions(setOf("JPM"), emptySet())
+        val tradesOnly = IexSubscriptions(emptySet(), setOf("JPM"))
+        val q = Json.parseToJsonElement("""{"T":"q","S":"JPM","ap":151}""").jsonObject
+        val t = Json.parseToJsonElement("""{"T":"t","S":"JPM","p":149}""").jsonObject
+        val foreign = Json.parseToJsonElement("""{"T":"q","S":"GS","ap":100}""").jsonObject
+        val malformed = Json.parseToJsonElement("""{"T":"q","ap":151}""").jsonObject
+        assertFalse(streamFrameAllowed(q, null))
+        assertFalse(streamFrameAllowed(t, null))
+        assertTrue(streamFrameAllowed(q, quotesOnly))
+        assertFalse(streamFrameAllowed(t, quotesOnly))
+        assertTrue(streamFrameAllowed(t, tradesOnly))
+        assertFalse(streamFrameAllowed(q, tradesOnly))
+        assertFalse(streamFrameAllowed(foreign, quotesOnly))
+        assertFalse(streamFrameAllowed(malformed, quotesOnly))
+    }
+
 }

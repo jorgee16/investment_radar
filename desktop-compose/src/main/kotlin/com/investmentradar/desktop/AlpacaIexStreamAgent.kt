@@ -13,6 +13,7 @@ import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -95,6 +96,9 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                 status("connecting")
                 val signals = Channel<String>(Channel.BUFFERED)
                 val frames = Channel<JsonObject>(512)
+                // Authorization is per connection, channel and symbol. Never ingest
+                // messages just because a subscription command was sent.
+                val confirmed = AtomicReference<IexSubscriptions?>(null)
                 var socket: WebSocket? = null
                 val listener = object : WebSocket.Listener {
                     private val buffer = StringBuilder()
@@ -121,6 +125,9 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                                             webSocket.abort()
                                         }
                                         "q", "t" -> {
+                                            // Drop messages arriving before the explicit provider
+                                            // ACK (including ticks in the same WebSocket payload).
+                                            if (!streamFrameAllowed(obj, confirmed.get())) continue
                                             if (frames.trySend(obj).isFailure) {
                                                 signals.trySend("stream-overflow")
                                                 webSocket.abort()
@@ -157,6 +164,9 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                     val consumer = CoroutineScope(currentCoroutineContext()).launch(Dispatchers.IO) {
                         for (part in frames) {
                             try {
+                                // ACK can be revoked while a tick is queued or a rule
+                                // is edited; check at the native-ingestion boundary too.
+                                if (!streamFrameAllowed(part, confirmed.get())) continue
                                 val kind = part["T"]?.jsonPrimitive?.contentOrNull.orEmpty()
                                 val event = buildJsonObject {
                                     put("kind", kind)
@@ -205,8 +215,10 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                                             Json.parseToJsonElement(signal.removePrefix("subscription:")).jsonObject
                                         }.getOrNull()
                                         val desired=selection()
-                                        status(if(ack!=null && subscriptionMatches(ack,desired))
-                                            "subscribed" else "subscription-mismatch")
+                                        val accepted=authenticated && ack!=null &&
+                                            subscriptionMatches(ack,desired)
+                                        confirmed.set(if(accepted) desired else null)
+                                        status(if(accepted) "subscribed" else "subscription-mismatch")
                                     }
                                 }
                             }
@@ -220,6 +232,13 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                                 if (current.size == 0 || current.size > 30) {
                                     status(if (current.size > 30) "limit-exceeded" else "idle")
                                     break
+                                }
+                                if (current.quotes != subscribedQuotes ||
+                                    current.trades != subscribedTrades) {
+                                    // Revoke the old confirmation BEFORE changing either
+                                    // subscription; C++ must also drop CROSS continuity.
+                                    confirmed.set(null)
+                                    status("subscription-pending")
                                 }
                                 val removedQuotes = subscribedQuotes - current.quotes
                                 val removedTrades = subscribedTrades - current.trades
@@ -248,6 +267,7 @@ internal class AlpacaIexStreamAgent(private val bridge: NativeBridge) {
                         consumer.cancelAndJoin()
                     }
                 } finally {
+                    confirmed.set(null)
                     socket?.sendClose(WebSocket.NORMAL_CLOSURE, "finished")
                     socket?.abort()
                     signals.close()
@@ -318,6 +338,17 @@ internal fun alpacaErrorAction(code: Int): String = when (code) {
 }
 
 private class TransientStreamFailure(val reason: String) : RuntimeException()
+
+/** A quote/trade is usable only after the provider ACKs that exact channel and symbol. */
+internal fun streamFrameAllowed(frame: JsonObject, confirmed: IexSubscriptions?): Boolean {
+    if (confirmed == null) return false
+    val symbol = frame["S"]?.jsonPrimitive?.contentOrNull ?: return false
+    return when (frame["T"]?.jsonPrimitive?.contentOrNull) {
+        "q" -> symbol in confirmed.quotes
+        "t" -> symbol in confirmed.trades
+        else -> false
+    }
+}
 
 /** A subscribe command is not proof: match the provider's acknowledged channels. */
 internal fun subscriptionMatches(ack: JsonObject, expected: IexSubscriptions): Boolean {
