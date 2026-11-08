@@ -251,5 +251,50 @@ int main(){int count=0;auto check=[&](bool b){++count;if(!b)throw std::runtime_e
  }
  std::filesystem::remove(reconnectPath);
 
+
+ // A LAST trade can be entitled while a preceding ASK quote was NOT.
+ // Display must report permission, session and receive time for each basis,
+ // never borrowing LAST status to label ASK as trustworthy.
+ auto channelPath=(std::filesystem::temp_directory_path()/"ir-monitor-channel-quality.sqlite3").string();
+ std::filesystem::remove(channelPath);
+ {Monitor m(channelPath);
+  const auto stamp="2026-11-06T15:00:00.100000000Z";
+  m.ingestIex({{"kind","q"},{"marketOpen",true},{"data",{
+      {"T","q"},{"S","JPM"},{"ax","V"},{"bx","Q"},{"ap",151.0},
+      {"bp",149.0},{"t",stamp}}}},1793977200);
+  auto qdoc=m.snapshot()["quotes"][0];
+  check(qdoc["askUnits"]==decimal("151"));
+  check(qdoc["askEntitled"]==false);
+  check(qdoc["lastEntitled"]==false);
+  check(qdoc["askSession"]=="open");
+  check(qdoc["askReceivedTime"]==1793977200);
+  m.ingestIex({{"kind","t"},{"marketOpen",true},{"data",{
+      {"T","t"},{"S","JPM"},{"x","V"},{"p",149.0},
+      {"t","2026-11-06T15:00:00.200000000Z"}}}},1793977201);
+  auto bothDoc=m.snapshot()["quotes"][0];
+  check(bothDoc["askEntitled"]==false);
+  check(bothDoc["lastEntitled"]==true);
+  check(bothDoc["lastReceivedTime"]==1793977201);
+  check(bothDoc["askReceivedTime"]==1793977200);
+  check(bothDoc["lastSession"]=="open");
+  // A repeated ASK timestamp with a conflicting price is not newer.
+  m.ingestIex({{"kind","q"},{"marketOpen",true},{"data",{
+      {"T","q"},{"S","JPM"},{"ax","V"},{"bx","V"},{"ap",140.0},
+      {"bp",139.0},{"t",stamp}}}},1793977201);
+  auto duplicateDoc=m.snapshot()["quotes"][0];
+  check(duplicateDoc["askUnits"]==decimal("151"));
+  check(duplicateDoc["askEntitled"]==false);
+  // A newer valid ASK changes only the ASK channel.
+  m.ingestIex({{"kind","q"},{"marketOpen",true},{"data",{
+      {"T","q"},{"S","JPM"},{"ax","V"},{"bx","V"},{"ap",152.0},
+      {"bp",150.0},{"t","2026-11-06T15:00:00.300000000Z"}}}},1793977202);
+  auto current=m.snapshot()["quotes"][0];
+  check(current["askEntitled"]==true);
+  check(current["lastEntitled"]==true);
+  check(current["askUnits"]==decimal("152"));
+  check(current["lastUnits"]==decimal("149"));
+ }
+ std::filesystem::remove(channelPath);
+
  std::filesystem::remove(path);std::cout<<count<<" monitor assertions passed\n";
 }

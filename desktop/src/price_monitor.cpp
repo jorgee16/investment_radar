@@ -47,6 +47,17 @@ json quoteJson(const Quote& q,int64_t now){
         {"askUnits",q.ask?json(*q.ask):json(nullptr)},
         {"bidUnits",q.bid?json(*q.bid):json(nullptr)},
         {"lastUnits",q.last?json(*q.last):json(nullptr)},
+        // ASK and LAST are separate channels and may have different
+        // timestamps, permission status and session status. They must never
+        // borrow the latest packet's quality fields from one another.
+        {"askEntitled",q.ask.has_value()&&q.entitled},
+        {"lastEntitled",q.last.has_value()&&q.entitled},
+        {"askSession",q.exchangeTime>0?q.session:std::string("unknown")},
+        {"lastSession",q.lastTime>0?q.session:std::string("unknown")},
+        {"askReceivedTime",q.exchangeTime>0?q.receivedTime:int64_t{0}},
+        {"lastReceivedTime",q.lastTime>0?q.receivedTime:int64_t{0}},
+        {"askDelaySeconds",q.exchangeTime>0?q.delaySeconds:-1},
+        {"lastDelaySeconds",q.lastTime>0?q.delaySeconds:-1},
         {"exchangeTime",q.exchangeTime},{"exchangeNanos",q.exchangeNanos},
         {"lastTime",q.lastTime},{"lastNanos",q.lastNanos},{"receivedTime",q.receivedTime},
         {"ageSeconds",q.exchangeTime>0?json(now-q.exchangeTime):json(nullptr)},
@@ -306,18 +317,20 @@ void Monitor::observe(const Quote& q,int64_t now){
                 const auto oldTradeNanos=previous.value("lastNanos",int64_t{0});
                 const auto quoteOlder=q.exchangeTime==0||
                     (oldQuoteNanos>0&&q.exchangeNanos>0
-                        ? oldQuoteNanos>q.exchangeNanos
-                        : oldQuote>q.exchangeTime);
+                        ? oldQuoteNanos>=q.exchangeNanos
+                        : oldQuote>=q.exchangeTime);
                 const auto tradeOlder=q.lastTime==0||
                     (oldTradeNanos>0&&q.lastNanos>0
-                        ? oldTradeNanos>q.lastNanos
-                        : oldTrade>q.lastTime);
+                        ? oldTradeNanos>=q.lastNanos
+                        : oldTrade>=q.lastTime);
                 if(quoteOlder){
-                    for(auto key:{"askUnits","bidUnits","exchangeTime","exchangeNanos","ageSeconds"})
+                    for(auto key:{"askUnits","bidUnits","exchangeTime","exchangeNanos","ageSeconds",
+                                  "askEntitled","askSession","askReceivedTime","askDelaySeconds"})
                         if(previous.contains(key))display[key]=previous[key];
                 }
                 if(tradeOlder){
-                    for(auto key:{"lastUnits","lastTime","lastNanos","lastAgeSeconds"})
+                    for(auto key:{"lastUnits","lastTime","lastNanos","lastAgeSeconds",
+                                  "lastEntitled","lastSession","lastReceivedTime","lastDelaySeconds"})
                         if(previous.contains(key))display[key]=previous[key];
                 }
             }

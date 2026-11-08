@@ -209,7 +209,11 @@ internal object MonitorEmail {
    Text("${r.text("basis")} · ${r.text("venue")} · ${r.text("mode")} · ${if(r["armed"]?.jsonPrimitive?.booleanOrNull==true)"Armado" else "Pausado / disparado"}")
    val quote=quotes.firstOrNull{it.text("instrument")==r.text("instrument")}
    val observed=quote?.get(if(r.text("basis")=="ASK")"askUnits" else "lastUnits")
-   val age=quote?.get(if(r.text("basis")=="LAST")"lastAgeSeconds" else "ageSeconds")?.jsonPrimitive?.longOrNull
+   val isLast=r.text("basis")=="LAST"
+   val age=quote?.get(if(isLast)"lastAgeSeconds" else "ageSeconds")?.jsonPrimitive?.longOrNull
+   val channelEntitled=quote?.get(if(isLast)"lastEntitled" else "askEntitled")?.jsonPrimitive?.booleanOrNull==true
+   val channelSession=quote?.text(if(isLast)"lastSession" else "askSession")
+   val channelDelay=quote?.get(if(isLast)"lastDelaySeconds" else "askDelaySeconds")?.jsonPrimitive?.intOrNull?:-1
    val maxAge=r["maxAge"]?.jsonPrimitive?.longOrNull?:60L
    val price=observed?.jsonPrimitive?.longOrNull
    val threshold=r["targetUnits"]?.jsonPrimitive?.longOrNull
@@ -218,7 +222,7 @@ internal object MonitorEmail {
    Text("Cotação ${r.text("basis")}: ${units(observed)} ${r.text("currency")} · distância ${percent}")
    Text("Feed: ${quote?.text("feed")?:r.text("feed")} / ${quote?.text("venue")?:r.text("venue")} · hora bolsa ${quote?.get(if(r.text("basis")=="LAST")"lastTime" else "exchangeTime")?.jsonPrimitive?.longOrNull?.takeIf{it>0}?.let{java.time.Instant.ofEpochSecond(it).toString()}?:"indisponível"}",
         style=MaterialTheme.typography.bodySmall)
-   Text("Qualidade: ${if(quote==null)"Sem observações" else if(age==null)"Timestamp inválido" else if(age>maxAge)"COTAÇÃO ANTIGA (${age}s)" else if(quote.text("session")!="open")"Mercado fechado" else if(quote["entitled"]?.jsonPrimitive?.booleanOrNull!=true)"Sem permissão confirmada" else "Observação recebida há ${age}s"}",
+   Text("Qualidade: ${if(quote==null)"Sem observações" else if(age==null||age<0)"Timestamp inválido" else if(age>maxAge)"COTAÇÃO ANTIGA (${age}s)" else if(channelSession!="open")"Mercado fechado / sessão não verificada" else if(channelDelay!=0||!channelEntitled)"Feed ou permissão não confirmados" else "Observação recebida há ${age}s"}",
         style=MaterialTheme.typography.bodySmall)
    Row{TextButton(onClick={editId=r.text("id");selected=instruments.find{it.text("id")==r.text("instrument")};target=units(r["targetUnits"]);email=r.text("email");last=r.text("basis")=="LAST";cross=r.text("mode")=="CROSS"}){Text("Editar")};for(a in listOf("pause","rearm","delete"))TextButton(onClick={action(r.text("id"),a)}){Text(mapOf("pause" to "Pausar","rearm" to "Rearmar","delete" to "Eliminar")[a]!!)}}
   }}}
