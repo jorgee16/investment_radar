@@ -169,19 +169,6 @@ int main(int argc, char **argv) {
                 r.status = 403;
                 return httplib::Server::HandlerResponse::Handled;
             }
-            // The Compose JVM owns a unique per-process capability token.
-            // All monitor data (including destination emails, instruments and
-            // mutable rules) is private to that process, not just stream ticks.
-            // Apply this before routing, so GET, POST and future monitor routes
-            // cannot accidentally introduce an unauthenticated entry point.
-            if (q.path == "/api/monitor" || q.path.rfind("/api/monitor/",0) == 0) {
-                const auto expected=ir::alerts::environment("IR_MONITOR_INGEST_TOKEN");
-                if (expected.empty() || q.get_header_value("X-IR-Monitor-Token") != expected) {
-                    r.status=403;
-                    reply(r,{{"error","Monitor capability token required"}});
-                    return httplib::Server::HandlerResponse::Handled;
-                }
-            }
             return httplib::Server::HandlerResponse::Unhandled;
         });
         server.set_post_routing_handler([](const auto &, auto &r) {
@@ -196,25 +183,30 @@ int main(int argc, char **argv) {
             s["platform"] = "desktop";
             reply(r, s);
         });
-        server.Get("/api/monitor", [&](const auto &, auto &r) { reply(r,monitor.snapshot()); });
-        server.Get("/api/monitor/search", [&](const auto &q, auto &r) {
-            if(!q.has_param("query"))throw std::invalid_argument("Search query required");
-            reply(r,rt.read([&](auto &s){return s.search(q.get_param_value("query"));}));
-        });
-        server.Post("/api/monitor/instruments", [&](const auto &q, auto &r) {
-            reply(r,monitor.registerInstrument(json::parse(q.body)));
-        });
-        // Defense in depth for privileged stream writes and outbox claims.
-        // The pre-routing guard above also protects all monitor read/mutation endpoints.
+        // Do not reject token-protected POSTs in a pre-routing hook: on Windows
+        // that can close the socket before its request body is consumed, causing
+        // client-side WSAECONNRESET instead of a deterministic 403 response.
+        // Every monitor handler checks the process capability token after
+        // cpp-httplib has consumed the request. All routes are covered below.
         auto requireIngestToken=[&](const auto& request,auto& response)->bool{
             const auto expected=ir::alerts::environment("IR_MONITOR_INGEST_TOKEN");
             if(expected.empty()||request.get_header_value("X-IR-Monitor-Token")!=expected){
                 response.status=403;
-                reply(response,{{"error","Stream ingestion not authorized"}});
+                reply(response,{{"error","Monitor capability token required"}});
                 return false;
             }
             return true;
         };
+        server.Get("/api/monitor", [&](const auto &q, auto &r) { if(!requireIngestToken(q,r))return;reply(r,monitor.snapshot()); });
+        server.Get("/api/monitor/search", [&](const auto &q, auto &r) {
+            if(!requireIngestToken(q,r))return;
+            if(!q.has_param("query"))throw std::invalid_argument("Search query required");
+            reply(r,rt.read([&](auto &s){return s.search(q.get_param_value("query"));}));
+        });
+        server.Post("/api/monitor/instruments", [&](const auto &q, auto &r) {
+            if(!requireIngestToken(q,r))return;
+            reply(r,monitor.registerInstrument(json::parse(q.body)));
+        });
         server.Post("/api/monitor/ingest", [&](const auto &q, auto &r) {
             if(!requireIngestToken(q,r))return;
             monitor.ingestIex(json::parse(q.body),ir::alerts::wallNow());
@@ -238,6 +230,7 @@ int main(int argc, char **argv) {
             reply(r,{{"ok",true}});
         });
         server.Post("/api/monitor/verify-iex", [&](const auto &q, auto &r) {
+            if(!requireIngestToken(q,r))return;
             auto request=json::parse(q.body);
             auto symbol=request.at("symbol").template get<std::string>();
             if(symbol.empty()||symbol.size()>32||
@@ -261,8 +254,8 @@ int main(int argc, char **argv) {
             reply(r,monitor.authorizeIexAsset(symbol,json::parse(resp->body)));
         });
 
-        server.Post("/api/monitor/rules", [&](const auto &q, auto &r) { reply(r,monitor.save(json::parse(q.body))); });
-        server.Post("/api/monitor/action", [&](const auto &q, auto &r) { auto j=json::parse(q.body);monitor.action(j.at("id"),j.at("action"));reply(r,{{"ok",true}}); });
+        server.Post("/api/monitor/rules", [&](const auto &q, auto &r) { if(!requireIngestToken(q,r))return;reply(r,monitor.save(json::parse(q.body))); });
+        server.Post("/api/monitor/action", [&](const auto &q, auto &r) { if(!requireIngestToken(q,r))return;auto j=json::parse(q.body);monitor.action(j.at("id"),j.at("action"));reply(r,{{"ok",true}}); });
         server.Post("/api/monitor/claim", [&](const auto &q, auto &r) { if(!requireIngestToken(q,r))return;auto j=json::parse(q.body);reply(r,monitor.claim(ir::alerts::wallNow(),j.value("emailEnabled",false))); });
         server.Post("/api/monitor/complete", [&](const auto &q, auto &r) { if(!requireIngestToken(q,r))return;auto j=json::parse(q.body);monitor.complete(j.at("id"),j.at("leaseToken"),j.at("accepted"),ir::alerts::wallNow());reply(r,{{"ok",true}}); });
         server.Get("/api/providers", [&](const auto &, auto &r) {
