@@ -50,6 +50,20 @@ jobs:
           key: gradle-wrapper-${{ runner.os }}-8.9
       - name: Use SHA-256-pinned Gradle 8.9 CI mirror
         run: python scripts/ci_gradle_mirror.py
+      - name: Use WiX Toolset already installed on Windows runner
+        shell: pwsh
+        run: |
+          # Compose's createDistributable otherwise downloads archived WiX 3.11
+          # binaries from a GitHub release (HTTP 504 during outages).
+          $programFiles = ${env:ProgramFiles(x86)}
+          $installed = Get-ChildItem -Path $programFiles -Directory -Filter 'WiX Toolset v3*' -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending
+          $bin = $installed | ForEach-Object { Join-Path $_.FullName 'bin' } |
+            Where-Object { (Test-Path (Join-Path $_ 'candle.exe')) -and (Test-Path (Join-Path $_ 'light.exe')) } |
+            Select-Object -First 1
+          if (-not $bin) { throw 'WiX 3.x tools not found on the Windows runner' }
+          "WIX_PATH=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Using installed WiX Toolset: $bin"
       - name: Compile and unit-test Compose desktop
         shell: pwsh
         run: |
@@ -95,6 +109,20 @@ jobs:
           }
       - name: Use SHA-256-pinned Gradle 8.9 CI mirror
         run: python scripts/ci_gradle_mirror.py
+      - name: Use WiX Toolset already installed on Windows runner
+        shell: pwsh
+        run: |
+          # Compose's createDistributable otherwise downloads archived WiX 3.11
+          # binaries from a GitHub release (HTTP 504 during outages).
+          $programFiles = ${env:ProgramFiles(x86)}
+          $installed = Get-ChildItem -Path $programFiles -Directory -Filter 'WiX Toolset v3*' -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending
+          $bin = $installed | ForEach-Object { Join-Path $_.FullName 'bin' } |
+            Where-Object { (Test-Path (Join-Path $_ 'candle.exe')) -and (Test-Path (Join-Path $_ 'light.exe')) } |
+            Select-Object -First 1
+          if (-not $bin) { throw 'WiX 3.x tools not found on the Windows runner' }
+          "WIX_PATH=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Using installed WiX Toolset: $bin"
       - name: Build native Windows app and tests
         shell: cmd
         env:
