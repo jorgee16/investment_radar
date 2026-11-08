@@ -5,6 +5,8 @@ concurrency:
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
+env:
+  IR_CI_KOTLIN_MIRROR: '1'
 jobs:
   android:
     runs-on: ubuntu-24.04

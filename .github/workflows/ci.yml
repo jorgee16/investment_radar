@@ -6,6 +6,8 @@ concurrency:
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
+env:
+  IR_CI_KOTLIN_MIRROR: '1'
 jobs:
   linux:
     runs-on: ubuntu-24.04
@@ -84,6 +86,10 @@ jobs:
     runs-on: windows-2022
     env:
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.tools\vcpkg-binary-cache
+      # vcpkg's official flag avoids downloading CMake/Ninja releases;
+      # PATH is explicitly passed because Windows port builds use a clean env.
+      VCPKG_FORCE_SYSTEM_BINARIES: '1'
+      VCPKG_KEEP_ENV_VARS: 'PATH'
     steps:
       - uses: actions/checkout@v4
       - name: Prepare dependency cache
