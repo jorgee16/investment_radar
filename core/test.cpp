@@ -4,6 +4,7 @@
 #include "portfolio_research.hpp"
 #include "price_analysis.hpp"
 #include "provider_error.hpp"
+#include "quote_feed_policy.hpp"
 #include "research_service.hpp"
 #include <cmath>
 #include <ctime>
@@ -66,6 +67,78 @@ int main() {
             std::exit(1);
         }
     };
+
+    test("quote feed policy requires exact listing/source/venue and consent", [] {
+        using namespace ir::feeds;
+        ListingKey us{"JPM","US46625H1005","XNYS","USD"};
+        FeedCapability iex;
+        iex.source_id="alpaca-iex";iex.provider_symbol="JPM";
+        iex.listing=us;iex.observation_venue="IEX";
+        iex.basis=PriceBasis::ExchangeAsk;
+        iex.kind=ObservationKind::OrderBookQuote;
+        iex.realtime=iex.identity_verified=iex.authenticated=
+            iex.subscription_confirmed=iex.non_display_rights_confirmed=true;
+        AlertFeedRequest wanted{us,"alpaca-iex","IEX",PriceBasis::ExchangeAsk};
+        CHECK(eligibility(iex,wanted)=="eligible");
+        wanted.source_id="tiingo-derived";
+        CHECK(eligibility(iex,wanted)=="source-unavailable");
+        wanted.source_id="alpaca-iex";
+        wanted.observation_venue="XNYS";
+        CHECK(eligibility(iex,wanted)=="venue-mismatch");
+        wanted.observation_venue="IEX";
+        wanted.listing.isin="US0000000000";
+        CHECK(eligibility(iex,wanted)=="listing-mismatch");
+        wanted.listing=us;
+        iex.subscription_confirmed=false;
+        CHECK(eligibility(iex,wanted)=="subscription-unverified");
+        iex.subscription_confirmed=true;
+        iex.non_display_rights_confirmed=false;
+        CHECK(eligibility(iex,wanted)=="monitoring-license-unverified");
+    });
+    test("derived US reference never silently becomes ASK or executed LAST", [] {
+        using namespace ir::feeds;
+        ListingKey us{"GS","US38141G1040","XNYS","USD"};
+        FeedCapability derived;
+        derived.source_id="tiingo-consolidated-reference";
+        derived.provider_symbol="GS";derived.listing=us;
+        derived.observation_venue="TIINGO-DERIVED";
+        derived.basis=PriceBasis::DerivedReference;
+        derived.kind=ObservationKind::DerivedValuation;
+        derived.realtime=derived.identity_verified=derived.authenticated=
+            derived.subscription_confirmed=derived.non_display_rights_confirmed=true;
+        AlertFeedRequest wanted{us,derived.source_id,derived.observation_venue,
+                                PriceBasis::ExchangeAsk};
+        CHECK(eligibility(derived,wanted)=="price-basis-mismatch");
+        wanted.basis=PriceBasis::ExchangeLast;
+        CHECK(eligibility(derived,wanted)=="price-basis-mismatch");
+        wanted.basis=PriceBasis::DerivedReference;
+        CHECK(eligibility(derived,wanted)=="eligible");
+        derived.kind=ObservationKind::ExecutedTrade;
+        CHECK(eligibility(derived,wanted)=="data-semantics-mismatch");
+    });
+    test("European Cboe feed keeps original UCITS ISIN and requires paid opt in", [] {
+        using namespace ir::feeds;
+        ListingKey etf{"VUAA.DE","IE00BFMXXD54","XETR","EUR"};
+        FeedCapability europe;
+        europe.source_id="eodhd-eu-cboe";europe.provider_symbol="VUAA.XETRA";
+        europe.listing=etf;europe.observation_venue="CBOE-EU";
+        europe.basis=PriceBasis::ExchangeAsk;
+        europe.kind=ObservationKind::OrderBookQuote;
+        europe.realtime=europe.identity_verified=europe.authenticated=
+            europe.subscription_confirmed=europe.non_display_rights_confirmed=true;
+        europe.paid=true;
+        AlertFeedRequest wanted{etf,europe.source_id,"CBOE-EU",
+                                PriceBasis::ExchangeAsk};
+        CHECK(eligibility(europe,wanted)=="paid-source-not-approved");
+        wanted.paid_opt_in=true;
+        CHECK(eligibility(europe,wanted)=="eligible");
+        wanted.listing.isin="LU1829221024";
+        CHECK(eligibility(europe,wanted)=="listing-mismatch");
+        wanted.listing=etf;wanted.listing.currency="USD";
+        CHECK(eligibility(europe,wanted)=="listing-mismatch");
+        wanted.listing=etf;wanted.observation_venue="XETR";
+        CHECK(eligibility(europe,wanted)=="venue-mismatch");
+    });
     test("missing metrics serialize as null", [] {
         auto j = json::parse(ir::evaluation_json(ir::evaluate({})));
         CHECK(j["total"].is_null());

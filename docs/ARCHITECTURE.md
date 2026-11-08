@@ -1,8 +1,11 @@
 # Arquitetura
 
-O core partilhado não depende de Android, WebView, SQLite ou de um cliente HTTP
-específico. Recebe uma função `HttpGet`. Pode servir uma UI Android Compose se a
-avaliação de performance justificar essa mudança.
+O core financeiro C++20 partilhado entre Android Compose (JNI) e Desktop Compose
+(loopback local) não depende de componentes gráficos, SQLite ou HTTP específico.
+Recebe transportes HTTP injetáveis. O motor puro de avaliação de alertas
+(`core/src/price_alert.cpp`) faz agora parte de `investment_core` nas duas
+plataformas; persistência/outbox continua no adaptador desktop, e notificações
+pertencem à aplicação Windows.
 
 ```text
 Desktop Compose (Kotlin)
@@ -13,7 +16,7 @@ MarketRepository
   ↓
 NativeBridge → investment-radar-core-host (loopback local)
                                    │
-Android WebView → Kotlin/JNI ──────┤
+Android Compose → Kotlin/JNI ──────┤
                                    ▼
                             ResearchService C++
                                    │
@@ -50,8 +53,19 @@ Android WebView → Kotlin/JNI ──────┤
   executor. O endpoint interno de validação não é exposto à interface WebView.
 - Desktop Compose: UI nativa Kotlin, MVVM/UDF, Canvas para séries e `StateFlow`.
   Não contém fórmulas de scoring/valuation nem conhecimento de providers.
-- WebView: continua no Android e como fallback desktop temporário; sem fórmulas
-  de scoring/valuation no JavaScript.
+- Android: Jetpack Compose é a UI principal; assets WebView legados subsistem
+  para compatibilidade e migração. Sem fórmulas de scoring/valuation em JS.
+- `quote_feed_policy.hpp`: contrato puro C++ que valida a identidade exata
+  (símbolo canónico + ISIN + MIC + moeda), a fonte, a praça de observação,
+  o tipo do preço (ASK de livro, LAST de negócio ou referência derivada), o
+  consentimento explícito para feeds pagos, as permissões de monitorização e a
+  confirmação real da subscrição. **Ainda não é um router em produção**.
+  Contém regras testadas para integrar fontes sem fazer fallback silencioso.
+- Os adaptadores de streaming Alpaca (JVM) e polling (host C++) ainda não
+  implementam uma interface universal de feeds. O próximo refactor consiste em
+  `IQuoteStreamSource` / `IQuoteSnapshotSource` + normalizador comum e
+  dependência explícita de `InstrumentResolver`. Não ligar Tiingo a ASK/LAST
+  sem introduzir uma regra separada `REFERENCE` com opt-in específico.
 
 ## Segurança e empacotamento
 
@@ -70,8 +84,9 @@ desktop. Windows tem presets/vcpkg e script PowerShell; não requer WSL.
 
 ## Limitações deliberadas
 
-Sem contas de utilizador, cloud backend, brokerage, negociação, sincronização,
-conversão FX ou notificações. Não existe ainda um motor de pesquisa de todo o
+Sem contas de utilizador, cloud backend, brokerage, negociação, sincronização
+ou conversão FX. Há agora notificações de alerta no protótipo Windows, mas
+a entrega real e as permissões dos dados continuam por validar. Não existe ainda um motor de pesquisa de todo o
 mercado. O calendário demo é uma ilustração com datas fixas, não uma previsão.
 A persistência de consenso comparável para calcular revisões ainda falta.
 

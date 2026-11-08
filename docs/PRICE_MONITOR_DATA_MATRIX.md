@@ -1,6 +1,6 @@
 # Price monitor: official source evidence matrix
 
-**Documentary checks: 2026-11-07.** Source documentation and listing identities were checked on official public websites. **No authenticated quote, subscription permission, actual bid/ask latency, email, or Windows tray was tested.** Do not mark a feed validated based on catalog search alone.
+**Documentary checks: 2026-11-07 (initial) and 2026-11-08 (new providers).** Source documentation and listing identities were checked on official public websites. **No authenticated quote, subscription permission, actual bid/ask latency, email, or Windows tray was tested.** Do not mark a feed validated based on catalog search alone.
 
 ## Six required instruments
 
@@ -51,3 +51,12 @@ The monitor can now register further instruments (selected name/ticker/ISIN/MIC/
 - PC off/suspended/offline means no continuous monitoring.
 - No automation of trading, new paid subscriptions or real email in CI.
 - Confirm licensing for personal automated alert or non-display purposes before distribution.
+
+## Updated research, 2026-11-08
+
+See [provider architecture and source-selection decision](PROVIDER_STRATEGY_2026_11.md):
+Tiingo free 24x5 US derived reference streaming (not ASK/LAST), Tiingo EOD,
+SEC EDGAR free US companyfacts, optional EODHD Europe Cboe stream, explicit
+identity/permission/venue policy in `core/include/quote_feed_policy.hpp`.
+Nothing here proves authenticated instrument access or grants third-party
+redistribution/non-display rights.
