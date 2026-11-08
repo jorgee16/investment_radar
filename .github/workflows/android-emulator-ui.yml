@@ -51,6 +51,10 @@ jobs:
           echo "IR_ANDROID_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
           export IR_ANDROID_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
           keytool -list -keystore "$keystore" -storepass:env IR_ANDROID_STORE_PASSWORD -alias investment-radar >/dev/null
+      - uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-8.9
       - name: Build Release and instrumentation APKs and run lint
         working-directory: android
         run: ./gradlew :app:assembleRelease :app:assembleReleaseAndroidTest :app:lintRelease :app:testReleaseUnitTest -PirTestBuildType=release --no-daemon --console=plain
@@ -165,9 +169,10 @@ jobs:
             android/app/build/reports/lint-results-release.*
             android/app/build/test-results/testReleaseUnitTest/
 
+  # Do not publish an APK on every development push: only explicit manual dispatch.
   publish:
     needs: android
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/codex/initial-implementation'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/initial-implementation'
     runs-on: ubuntu-24.04
     permissions:
       contents: write

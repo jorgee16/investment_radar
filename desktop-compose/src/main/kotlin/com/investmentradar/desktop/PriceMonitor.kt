@@ -21,8 +21,30 @@ import javax.net.ssl.SSLSocketFactory
 internal fun JsonObject.text(key:String)=get(key)?.jsonPrimitive?.contentOrNull.orEmpty()
 internal fun units(value:JsonElement?)=value?.jsonPrimitive?.longOrNull?.let { java.math.BigDecimal.valueOf(it,6).stripTrailingZeros().toPlainString() }?:"—"
 
-// Implicit TLS only, host verification on. Secrets remain in the launching user's environment.
+// Required verified TLS: implicit 465 (default) or explicit STARTTLS 587. Secrets stay in the local environment.
 // No send occurs unless both local opt-in and an email delivery are present.
+/** Only the SMTP capability negotiation is allowed in cleartext on port 587.
+ * Never fall back to plaintext authentication when STARTTLS is not offered. */
+internal fun smtpStartTlsUpgrade(input:BufferedReader,out:java.io.Writer,skipGreeting:Boolean=false){
+    fun reply(code:Int):List<String>{
+        val lines=mutableListOf<String>()
+        repeat(32){
+            val line=input.readLine()?:error("SMTP disconnected before TLS")
+            require(line.length>=4 && line.take(3).toIntOrNull()==code &&
+                    (line[3]=='-' || line[3]==' ')){"SMTP negotiation rejected"}
+            lines.add(line.substring(4))
+            if(line[3]==' ')return lines
+        }
+        error("Too many SMTP capability lines")
+    }
+    reply(220)
+    out.write("EHLO investment-radar.local\r\n");out.flush()
+    val capabilities=reply(250)
+    require(capabilities.any{it.trim().equals("STARTTLS",ignoreCase=true) ||
+        it.trim().startsWith("STARTTLS ",ignoreCase=true)}){"SMTP server does not advertise STARTTLS"}
+    out.write("STARTTLS\r\n");out.flush()
+    reply(220) // No SMTP commands until the SSL socket handshake succeeds.
+}
 // SMTP conversation tested with fixture replies; TLS socket stays in MonitorEmail.
 internal fun smtpExchange(event:JsonObject,from:String,user:String,password:String,
                           input:BufferedReader,out:java.io.Writer){
@@ -36,7 +58,7 @@ internal fun smtpExchange(event:JsonObject,from:String,user:String,password:Stri
  require(event.text("venue").matches(Regex("[A-Z0-9]{3,8}"))) { "Invalid venue" }
    fun response(expected:Int){var line:String;do{line=input.readLine()?:error("SMTP disconnected");require(line.length>=3&&line.take(3).toIntOrNull()==expected&&(line.length==3||line[3]=='-'||line[3]==' ')){"SMTP rejected"}}while(line.length>3&&line[3]=='-')}
    fun cmd(s:String,code:Int){out.write(s+"\r\n");out.flush();response(code)}
-   response(220);cmd("EHLO investment-radar.local",250)
+   if(!skipGreeting)response(220);cmd("EHLO investment-radar.local",250)
    cmd("AUTH PLAIN "+Base64.getEncoder().encodeToString(("\u0000"+user+"\u0000"+password).toByteArray(Charsets.UTF_8)),235)
    cmd("MAIL FROM:<$from>",250);cmd("RCPT TO:<$to>",250);cmd("DATA",354)
    val body="Price alert: ${event.text("instrument")}\r\n${event.text("basis")}: ${units(event["priceUnits"])} ${event.text("currency")}\r\nFeed: ${event.text("feed")} / ${event.text("venue")}\r\nExchange timestamp: ${event.text("observedAt")}\r\nThis is a user-defined price threshold."
@@ -49,14 +71,30 @@ internal object MonitorEmail {
   val host=env("IR_MONITOR_SMTP_HOST");val user=env("IR_MONITOR_SMTP_USER");val password=env("IR_MONITOR_SMTP_PASSWORD")
   val from=env("IR_MONITOR_SMTP_FROM");val to=event.text("email")
   require(listOf(from,to).all{it.matches(Regex("[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+"))})
-  val raw=java.net.Socket();raw.connect(java.net.InetSocketAddress(host,465),5000)
-  ((SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(raw,host,465,true) as SSLSocket).use { socket ->
-   socket.soTimeout=10000
-   socket.sslParameters=socket.sslParameters.apply{endpointIdentificationAlgorithm="HTTPS"}
-   socket.startHandshake()
-   val input=BufferedReader(InputStreamReader(socket.inputStream,Charsets.US_ASCII));val out=OutputStreamWriter(socket.outputStream,Charsets.US_ASCII)
-   smtpExchange(event,from,user,password,input,out)
-   // Accepted by SMTP, not proof of inbox delivery. Do not retry solely on QUIT failure.
+  val transport=System.getenv("IR_MONITOR_SMTP_TRANSPORT")?.lowercase()?:"implicit-tls"
+  val port=when(transport){
+      "implicit-tls" -> 465
+      "starttls" -> 587
+      else -> error("Unsupported SMTP transport; use implicit-tls or starttls")
+  }
+  java.net.Socket().use { raw ->
+   raw.connect(java.net.InetSocketAddress(host,port),5000)
+   raw.soTimeout=10000
+   if(transport=="starttls") {
+    val input=BufferedReader(InputStreamReader(raw.inputStream,Charsets.US_ASCII))
+    val out=OutputStreamWriter(raw.outputStream,Charsets.US_ASCII)
+    smtpStartTlsUpgrade(input,out)
+   }
+   ((SSLSocketFactory.getDefault() as SSLSocketFactory)
+       .createSocket(raw,host,port,false) as SSLSocket).use { socket ->
+    socket.soTimeout=10000
+    socket.sslParameters=socket.sslParameters.apply{endpointIdentificationAlgorithm="HTTPS"}
+    socket.startHandshake() // Authentication is never sent before verified TLS.
+    val input=BufferedReader(InputStreamReader(socket.inputStream,Charsets.US_ASCII))
+    val out=OutputStreamWriter(socket.outputStream,Charsets.US_ASCII)
+    smtpExchange(event,from,user,password,input,out,skipGreeting=transport=="starttls")
+    // Server acceptance != inbox receipt; do not retry solely on QUIT failure.
+   }
   }
  }
 }

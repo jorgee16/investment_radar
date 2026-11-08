@@ -62,4 +62,36 @@ class MonitorSmtpProtocolTest {
             }catch(expected:IllegalArgumentException){ }
         }
     }
+    @Test fun starttlsIsRequiredBeforeAuthenticationAndEhloRepeatsInsideTls() {
+        val plaintext=StringWriter()
+        smtpStartTlsUpgrade(
+            BufferedReader(StringReader(
+                "220 service ready\r\n250-local\r\n250-STARTTLS\r\n250 SIZE 2048\r\n220 go ahead\r\n")),
+            plaintext
+        )
+        assertEquals("EHLO investment-radar.local\r\nSTARTTLS\r\n",plaintext.toString())
+        assertFalse(plaintext.toString().contains("AUTH"))
+        val secured=StringWriter()
+        smtpExchange(alert(),"sender@example.invalid","fixture-user","fixture-password",
+            BufferedReader(StringReader(
+                "250 post-tls hello\r\n235 auth ok\r\n250 from ok\r\n250 to ok\r\n354 data\r\n250 queued\r\n")),
+            secured,skipGreeting=true)
+        assertTrue(secured.toString().startsWith("EHLO investment-radar.local\r\nAUTH PLAIN "))
+        assertFalse(plaintext.toString().contains("fixture-password"))
+    }
+
+    @Test fun starttlsRejectsMissingCapabilityOrHandshakeDenial() {
+        for(replies in listOf(
+            "220 service ready\r\n250 local\r\n",
+            "220 service ready\r\n250-STARTTLS\r\n250 SIZE\r\n454 TLS unavailable\r\n"
+        )){
+            val plaintext=StringWriter()
+            try {
+                smtpStartTlsUpgrade(BufferedReader(StringReader(replies)),plaintext)
+                fail("STARTTLS must never downgrade to plaintext auth")
+            }catch(expected:IllegalArgumentException){ }
+            assertFalse(plaintext.toString().contains("AUTH"))
+        }
+    }
+
 }
