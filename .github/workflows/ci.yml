@@ -79,6 +79,20 @@ jobs:
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: windows-vcpkg-${{ hashFiles('vcpkg.json', 'CMakePresets.json', 'cmake/triplets/**') }}
+      - name: Reuse runner-provisioned vcpkg tool
+        shell: pwsh
+        run: |
+          # GitHub windows-2022 images contain vcpkg and the executable already.
+          # Avoid bootstrapping the exe via a GitHub release during HTTP 504
+          # incidents. Keep manifest/builtin-baseline pinning untouched.
+          $root = $env:VCPKG_INSTALLATION_ROOT
+          if ($root -and (Test-Path (Join-Path $root 'vcpkg.exe')) -and
+              (Test-Path (Join-Path $root 'scripts/buildsystems/vcpkg.cmake'))) {
+            "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            Write-Host "Using preinstalled vcpkg: $root"
+          } else {
+            Write-Host 'Runner has no vcpkg tool; pinned source checkout will be used.'
+          }
       - name: Use SHA-256-pinned Gradle 8.9 CI mirror
         run: python scripts/ci_gradle_mirror.py
       - name: Build native Windows app and tests
