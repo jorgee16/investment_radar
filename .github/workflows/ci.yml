@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Test CI Gradle mirror checksum guard
+        run: python3 -m unittest discover -s scripts -p test_ci_gradle_mirror.py -v
       - name: Test Android update identity guard
         run: python3 -m unittest discover -s scripts -p test_android_update_guard.py -v
       - name: Test price-monitor Alpaca IEX probe (offline fixtures)
@@ -46,6 +48,8 @@ jobs:
         with:
           path: ~/.gradle/wrapper/dists
           key: gradle-wrapper-${{ runner.os }}-8.9
+      - name: Use SHA-256-pinned Gradle 8.9 CI mirror
+        run: python scripts/ci_gradle_mirror.py
       - name: Compile and unit-test Compose desktop
         shell: pwsh
         run: |
@@ -75,6 +79,8 @@ jobs:
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: windows-vcpkg-${{ hashFiles('vcpkg.json', 'CMakePresets.json', 'cmake/triplets/**') }}
+      - name: Use SHA-256-pinned Gradle 8.9 CI mirror
+        run: python scripts/ci_gradle_mirror.py
       - name: Build native Windows app and tests
         shell: cmd
         env:
@@ -173,6 +179,8 @@ jobs:
           SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)
           test -x "$SDKMANAGER"
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+      - name: Use SHA-256-pinned Gradle 8.9 CI mirror
+        run: python3 scripts/ci_gradle_mirror.py
       - name: Test Android provider policy and build APK with JNI core
         run: ./android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug --no-daemon
       - name: Validate shared web UI contracts
