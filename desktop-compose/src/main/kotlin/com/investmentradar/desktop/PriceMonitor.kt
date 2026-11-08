@@ -25,7 +25,7 @@ internal fun units(value:JsonElement?)=value?.jsonPrimitive?.longOrNull?.let { j
 // No send occurs unless both local opt-in and an email delivery are present.
 /** Only the SMTP capability negotiation is allowed in cleartext on port 587.
  * Never fall back to plaintext authentication when STARTTLS is not offered. */
-internal fun smtpStartTlsUpgrade(input:BufferedReader,out:java.io.Writer,skipGreeting:Boolean=false){
+internal fun smtpStartTlsUpgrade(input:BufferedReader,out:java.io.Writer){
     fun reply(code:Int):List<String>{
         val lines=mutableListOf<String>()
         repeat(32){
@@ -47,7 +47,7 @@ internal fun smtpStartTlsUpgrade(input:BufferedReader,out:java.io.Writer,skipGre
 }
 // SMTP conversation tested with fixture replies; TLS socket stays in MonitorEmail.
 internal fun smtpExchange(event:JsonObject,from:String,user:String,password:String,
-                          input:BufferedReader,out:java.io.Writer){
+                          input:BufferedReader,out:java.io.Writer,skipGreeting:Boolean=false){
  val to=event.text("email")
   require(listOf(from,to).all{it.matches(Regex("[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+"))})
  require(event.text("id").matches(Regex("[a-f0-9]{32}:[0-9]+"))) { "Invalid alert id" }
