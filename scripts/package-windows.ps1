@@ -39,6 +39,7 @@ try {
             throw "Falta um ficheiro necessario no pacote: $relative"
         }
     }
+    Copy-Item -LiteralPath (Join-Path $repoDirectory 'docs/WINDOWS_PREVIEW_README.txt') -Destination (Join-Path $applicationPath 'COMECAR_AQUI.txt')
     $archivePath = Join-Path $outputPath ($packageName + '.zip')
     $temporaryArchive = Join-Path $stagingPath ($packageName + '.zip')
     Compress-Archive -LiteralPath $applicationPath -DestinationPath $temporaryArchive
