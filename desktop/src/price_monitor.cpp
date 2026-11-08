@@ -371,6 +371,12 @@ void Monitor::disconnect(const std::string& reason){
 }
 void Monitor::sourceHealth(const json& j){
     std::lock_guard lock(mu);
+    // A CROSS needs two consecutive *observed* ticks. A transport outage,
+    // session-clock failure or rejected subscription destroys that guarantee
+    // even if a later tick arrives before maxAge expires. Preserve rules and
+    // quote display but discard all crossing baselines until re-established.
+    const auto status=j.is_object()?j.value("status",std::string("unknown")):"unknown";
+    if(status!="subscribed"&&status!="received")states.clear();
     health=j;
 }
 json Monitor::claim(int64_t now,bool includeEmail){

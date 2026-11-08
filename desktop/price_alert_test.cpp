@@ -224,5 +224,32 @@ int main(){int count=0;auto check=[&](bool b){++count;if(!b)throw std::runtime_e
  check(evaluate(crossSafe,interrupted,invalidQuote,1793977200)=="missing-price");
  check(evaluate(crossSafe,interrupted,falling,1793977200)=="armed");
 
+
+ // A quick WebSocket drop/reconnect does not prove that price stayed above
+ // the threshold while offline: never fire CROSS from the pre-drop tick.
+ auto reconnectPath=(std::filesystem::temp_directory_path()/"ir-monitor-reconnect.sqlite3").string();
+ std::filesystem::remove(reconnectPath);
+ {Monitor m(reconnectPath);
+  m.save({{"instrument","JPM"},{"target","150"},{"mode","CROSS"}});
+  Quote high{"JPM","USD","IEX","alpaca-iex","open",decimal("152"),
+             decimal("151"),std::nullopt,9000,9000,true,false,0};
+  auto low=high;low.ask=decimal("149");low.bid=decimal("148");
+  low.exchangeTime=9001;low.receivedTime=9001;
+  m.sourceHealth({{"status","subscribed"}});
+  m.observe(high,9000);
+  m.sourceHealth({{"status","disconnected"}});
+  m.sourceHealth({{"status","connecting"}});
+  m.sourceHealth({{"status","subscribed"}});
+  m.observe(low,9001);
+  check(m.snapshot()["events"].empty());
+  // A new fresh upper baseline AFTER reconnect is needed to witness CROSS.
+  high.exchangeTime=9002;high.receivedTime=9002;
+  m.observe(high,9002);
+  low.exchangeTime=9003;low.receivedTime=9003;
+  m.observe(low,9003);
+  check(m.snapshot()["events"].size()==1);
+ }
+ std::filesystem::remove(reconnectPath);
+
  std::filesystem::remove(path);std::cout<<count<<" monitor assertions passed\n";
 }
