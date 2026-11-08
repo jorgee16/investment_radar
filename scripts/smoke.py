@@ -17,7 +17,10 @@ def run(binary):
   def stop():
    if p and p.poll() is None:p.terminate();p.wait(timeout=5)
   base=start()
-  def req(path,data=None,expected=200,ingest_token=False):
+  def req(path,data=None,expected=200,ingest_token=None):
+   # All /api/monitor operations require a per-process token by default.
+   # Explicit False below checks that unauthorized reads/writes are rejected.
+   if ingest_token is None:ingest_token=(path=="/api/monitor" or path.startswith("/api/monitor/"))
    body=json.dumps(data).encode() if data is not None else None
    headers={"Content-Type":"application/json"}
    if ingest_token:headers["X-IR-Monitor-Token"]="ci-fixture-token"
@@ -42,12 +45,19 @@ def run(binary):
    assert live["price"] is None and live["history"]==[]
    assert req("/api/news?symbol=AIR.PA")==[]
    # Price monitor smoke is offline and shares neither Demo quotes nor provider keys.
+   # The complete monitor namespace, not only ingestion and delivery, is private.
+   req("/api/monitor",expected=403,ingest_token=False)
+   req("/api/monitor/search?query=JPM",expected=403,ingest_token=False)
+   req("/api/monitor/rules",{"instrument":"JPM","target":"150"},403,ingest_token=False)
+   req("/api/monitor/instruments",{"id":"MSFT","name":"Microsoft","mic":"XNAS","currency":"USD"},403,ingest_token=False)
+   req("/api/monitor/action",{"id":"arbitrary","action":"pause"},403,ingest_token=False)
+   req("/api/monitor/verify-iex",{"symbol":"MSFT"},403,ingest_token=False)
    mon=req("/api/monitor")
    assert mon["rules"]==[] and mon["events"]==[] and len(mon["instruments"])==6
    assert mon["health"]["status"]=="disabled"
-   req("/api/monitor/claim",{"emailEnabled":False},403)
+   req("/api/monitor/claim",{"emailEnabled":False},403,ingest_token=False)
    assert req("/api/monitor/claim",{"emailEnabled":False},ingest_token=True)==[]
-   req("/api/monitor/ingest",{"kind":"q","marketOpen":True,"data":{}},403)
+   req("/api/monitor/ingest",{"kind":"q","marketOpen":True,"data":{}},403,ingest_token=False)
    # A capability token must not allow an unregistered/malformed event.
    req("/api/monitor/ingest",{"kind":"q","marketOpen":True,"data":{}},400,ingest_token=True)
    req("/api/monitor/rules",{"instrument":"UNKNOWN","target":"150"},400)
@@ -72,7 +82,7 @@ def run(binary):
    sends=req("/api/monitor/claim",{"emailEnabled":False},ingest_token=True)
    assert len(sends)==1 and sends[0]["channel"]=="notification"
    report={"id":sends[0]["deliveryId"],"leaseToken":sends[0]["leaseToken"],"accepted":True}
-   req("/api/monitor/complete",report,403)
+   req("/api/monitor/complete",report,403,ingest_token=False)
    assert req("/api/monitor/complete",report,ingest_token=True)["ok"] is True
    assert req("/api/monitor")["deliveries"][0]["status"]=="accepted"
    req("/api/monitor/action",{"id":rule_id,"action":"pause"})

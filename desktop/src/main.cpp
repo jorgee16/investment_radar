@@ -169,6 +169,19 @@ int main(int argc, char **argv) {
                 r.status = 403;
                 return httplib::Server::HandlerResponse::Handled;
             }
+            // The Compose JVM owns a unique per-process capability token.
+            // All monitor data (including destination emails, instruments and
+            // mutable rules) is private to that process, not just stream ticks.
+            // Apply this before routing, so GET, POST and future monitor routes
+            // cannot accidentally introduce an unauthenticated entry point.
+            if (q.path == "/api/monitor" || q.path.rfind("/api/monitor/",0) == 0) {
+                const auto expected=ir::alerts::environment("IR_MONITOR_INGEST_TOKEN");
+                if (expected.empty() || q.get_header_value("X-IR-Monitor-Token") != expected) {
+                    r.status=403;
+                    reply(r,{{"error","Monitor capability token required"}});
+                    return httplib::Server::HandlerResponse::Handled;
+                }
+            }
             return httplib::Server::HandlerResponse::Unhandled;
         });
         server.set_post_routing_handler([](const auto &, auto &r) {
@@ -191,8 +204,8 @@ int main(int argc, char **argv) {
         server.Post("/api/monitor/instruments", [&](const auto &q, auto &r) {
             reply(r,monitor.registerInstrument(json::parse(q.body)));
         });
-        // Only the Compose process that launched this host knows this per-session
-        // capability token; hostile browser pages must not forge market ticks.
+        // Defense in depth for privileged stream writes and outbox claims.
+        // The pre-routing guard above also protects all monitor read/mutation endpoints.
         auto requireIngestToken=[&](const auto& request,auto& response)->bool{
             const auto expected=ir::alerts::environment("IR_MONITOR_INGEST_TOKEN");
             if(expected.empty()||request.get_header_value("X-IR-Monitor-Token")!=expected){
